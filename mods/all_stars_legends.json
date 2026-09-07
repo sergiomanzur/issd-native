@@ -1,0 +1,90 @@
+{
+  "name": "All-Star Legends",
+  "author": "Retro Konami Masters",
+  "version": "1.0.0",
+  "description": "Historic soccer legends with god-tier skills",
+  "teams": [
+    {
+      "team_id": 35,
+      "name": "World Legends XI",
+      "short_name": "ALL",
+      "country_code": "ALL",
+      "formation": 0,
+      "strategy": 0,
+      "home_shirt_rgb": 16766720,
+      "home_shorts_rgb": 0,
+      "away_shirt_rgb": 16777215,
+      "away_shorts_rgb": 16766720,
+      "players": [
+        {
+          "shirt_number": 1,
+          "name": "Buffon",
+          "position": "GK",
+          "skin_tone": 0,
+          "hair_style": 0,
+          "acceleration": 82,
+          "speed": 80,
+          "shooting": 10,
+          "technique": 78,
+          "balance": 94,
+          "intelligence": 98,
+          "dribbling": 50,
+          "jumping": 95,
+          "stamina": 90,
+          "goalkeeping": 99
+        },
+        {
+          "shirt_number": 10,
+          "name": "Pele",
+          "position": "FW",
+          "skin_tone": 2,
+          "hair_style": 0,
+          "acceleration": 99,
+          "speed": 98,
+          "shooting": 99,
+          "technique": 99,
+          "balance": 96,
+          "intelligence": 99,
+          "dribbling": 99,
+          "jumping": 98,
+          "stamina": 95,
+          "goalkeeping": 10
+        },
+        {
+          "shirt_number": 9,
+          "name": "Ronaldo R9",
+          "position": "FW",
+          "skin_tone": 1,
+          "hair_style": 2,
+          "acceleration": 99,
+          "speed": 99,
+          "shooting": 98,
+          "technique": 98,
+          "balance": 97,
+          "intelligence": 95,
+          "dribbling": 99,
+          "jumping": 90,
+          "stamina": 92,
+          "goalkeeping": 10
+        },
+        {
+          "shirt_number": 14,
+          "name": "Cruyff",
+          "position": "MF",
+          "skin_tone": 0,
+          "hair_style": 1,
+          "acceleration": 96,
+          "speed": 95,
+          "shooting": 94,
+          "technique": 99,
+          "balance": 92,
+          "intelligence": 99,
+          "dribbling": 98,
+          "jumping": 88,
+          "stamina": 94,
+          "goalkeeping": 10
+        }
+      ]
+    }
+  ]
+}

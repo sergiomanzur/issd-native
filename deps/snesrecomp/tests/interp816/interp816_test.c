@@ -1,0 +1,219 @@
+/*
+ * interp816 Phase-0 validation harness.
+ *
+ * Proves the vendored + renamed + de-cruft'd LakeSnes core is semantically
+ * intact: directed 65816 opcode sequences over a flat-RAM bus, asserting
+ * register / flag / memory results. Build/run via WSL (validation only).
+ *   gcc -I runner/src/snes _interp_recover/interp816_test.c \
+ *       runner/src/snes/interp816.c -o _interp_recover/interp816_test
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include "interp816.h"
+
+#define MEMSZ 0x1000000u            /* 16 MB, 24-bit address space */
+static uint8_t *MEM;
+
+static uint8_t bus_read(void *mem, uint32_t adr)            { (void)mem; return MEM[adr & 0xFFFFFF]; }
+static void    bus_write(void *mem, uint32_t adr, uint8_t v){ (void)mem; MEM[adr & 0xFFFFFF] = v; }
+
+/* BRK bridge seam stub — Phase 0 has no bridge; treat BRK as a no-op. */
+int interp816_opcode_hook(uint32_t addr) { (void)addr; return 0; }
+
+static int g_fail = 0, g_check = 0;
+#define CHECK(cond, ...) do { g_check++; if (!(cond)) { \
+    g_fail++; printf("    FAIL: "); printf(__VA_ARGS__); printf("\n"); } } while (0)
+
+static Interp816 *g_cpu;
+
+/* Reset, lay code at 00:8000, point PC at it. Returns the cpu. */
+static Interp816 *prep(const uint8_t *code, int len) {
+  memset(MEM, 0, MEMSZ);
+  interp816_reset(g_cpu);            /* e=1, mf=xf=1, sp=0x100, DB=0 */
+  memcpy(&MEM[0x8000], code, (size_t)len);
+  g_cpu->pc = 0x8000;
+  g_cpu->k  = 0;
+  return g_cpu;
+}
+static void run(Interp816 *cpu, int n) { for (int i = 0; i < n; i++) interp816_runOpcode(cpu); }
+
+int main(void) {
+  MEM = malloc(MEMSZ);
+  g_cpu = interp816_init(NULL, bus_read, bus_write);
+
+  /* T1: LDA #$42 (8-bit) */
+  { uint8_t c[] = {0xA9,0x42};            Interp816 *p = prep(c,sizeof c); run(p,1);
+    printf("T1 LDA #$42\n");
+    CHECK((p->a & 0xFF)==0x42, "A.lo=%02X exp 42", p->a & 0xFF);
+    CHECK(!p->z && !p->n, "z=%d n=%d exp 0/0", p->z, p->n); }
+
+  /* T2: LDA #$00 -> Z set */
+  { uint8_t c[] = {0xA9,0x00};            Interp816 *p = prep(c,sizeof c); run(p,1);
+    printf("T2 LDA #$00\n");
+    CHECK(p->z, "z=%d exp 1", p->z); }
+
+  /* T3: LDA #$80 -> N set */
+  { uint8_t c[] = {0xA9,0x80};            Interp816 *p = prep(c,sizeof c); run(p,1);
+    printf("T3 LDA #$80\n");
+    CHECK(p->n, "n=%d exp 1", p->n); }
+
+  /* T4: CLC; XCE; REP #$30; LDA #$1234  -> native 16-bit, A=0x1234 */
+  { uint8_t c[] = {0x18,0xFB,0xC2,0x30,0xA9,0x34,0x12}; Interp816 *p = prep(c,sizeof c); run(p,4);
+    printf("T4 enter native 16-bit + LDA #$1234\n");
+    CHECK(!p->e, "e=%d exp 0 (native)", p->e);
+    CHECK(!p->mf && !p->xf, "mf=%d xf=%d exp 0/0 (16-bit)", p->mf, p->xf);
+    CHECK(p->a==0x1234, "A=%04X exp 1234", p->a); }
+
+  /* T5: 16-bit store then reload from RAM */
+  { uint8_t c[] = {0x18,0xFB,0xC2,0x30, 0xA9,0x34,0x12, 0x8D,0x10,0x00,
+                   0xA9,0x00,0x00, 0xAD,0x10,0x00};
+    Interp816 *p = prep(c,sizeof c); run(p,7);
+    printf("T5 STA $0010 / LDA $0010 (16-bit)\n");
+    CHECK(MEM[0x10]==0x34 && MEM[0x11]==0x12, "mem[10,11]=%02X %02X exp 34 12", MEM[0x10], MEM[0x11]);
+    CHECK(p->a==0x1234, "A=%04X exp 1234", p->a); }
+
+  /* T6: LDX #$FF; INX -> 8-bit wrap to 0, Z set */
+  { uint8_t c[] = {0xA2,0xFF,0xE8};       Interp816 *p = prep(c,sizeof c); run(p,2);
+    printf("T6 LDX #$FF; INX (8-bit wrap)\n");
+    CHECK((p->x & 0xFF)==0x00, "X.lo=%02X exp 00", p->x & 0xFF);
+    CHECK(p->z, "z=%d exp 1", p->z); }
+
+  /* T7: CLC; LDA #$10; ADC #$22 -> 0x32 (binary) */
+  { uint8_t c[] = {0x18,0xA9,0x10,0x69,0x22}; Interp816 *p = prep(c,sizeof c); run(p,3);
+    printf("T7 ADC binary 10+22\n");
+    CHECK((p->a & 0xFF)==0x32, "A.lo=%02X exp 32", p->a & 0xFF); }
+
+  /* T8: CLC; SED; LDA #$19; ADC #$01 -> 0x20 (decimal) */
+  { uint8_t c[] = {0x18,0xF8,0xA9,0x19,0x69,0x01}; Interp816 *p = prep(c,sizeof c); run(p,4);
+    printf("T8 ADC decimal 19+01\n");
+    CHECK((p->a & 0xFF)==0x20, "A.lo=%02X exp 20 (BCD)", p->a & 0xFF); }
+
+  /* T9: LDA #$55; PHA; LDA #$00; PLA -> A=0x55 */
+  { uint8_t c[] = {0xA9,0x55,0x48,0xA9,0x00,0x68}; Interp816 *p = prep(c,sizeof c); run(p,4);
+    printf("T9 PHA / PLA\n");
+    CHECK((p->a & 0xFF)==0x55, "A.lo=%02X exp 55", p->a & 0xFF); }
+
+  /* T10: LDA #$77; TAX -> X.lo=0x77 */
+  { uint8_t c[] = {0xA9,0x77,0xAA};       Interp816 *p = prep(c,sizeof c); run(p,2);
+    printf("T10 TAX\n");
+    CHECK((p->x & 0xFF)==0x77, "X.lo=%02X exp 77", p->x & 0xFF); }
+
+  /* T11: LDA #$AB; XBA -> A=0xAB00 (swap high/low of 16-bit A) */
+  { uint8_t c[] = {0xA9,0xAB,0xEB};       Interp816 *p = prep(c,sizeof c); run(p,2);
+    printf("T11 XBA\n");
+    CHECK(p->a==0xAB00, "A=%04X exp AB00", p->a); }
+
+  /* T12: LDA #$01; BNE +2 (skip LDA #$FF); BRK -> A stays 0x01 (branch taken) */
+  { uint8_t c[] = {0xA9,0x01, 0xD0,0x02, 0xA9,0xFF, 0x00}; Interp816 *p = prep(c,sizeof c); run(p,3);
+    printf("T12 BNE taken\n");
+    CHECK((p->a & 0xFF)==0x01, "A.lo=%02X exp 01 (branch not taken?)", p->a & 0xFF); }
+
+  /* T13: BRA is relative to the byte after its one-byte operand. */
+  { uint8_t c[] = {0x80,0x02}; Interp816 *p = prep(c,sizeof c); run(p,1);
+    printf("T13 BRA relative base\n");
+    CHECK(p->pc==0x8004, "PC=%04X exp 8004", p->pc); }
+
+  /* T14: BRL is relative to the byte after its two-byte operand. */
+  { uint8_t c[] = {0x82,0xFE,0xFF}; Interp816 *p = prep(c,sizeof c); run(p,1);
+    printf("T14 BRL relative base\n");
+    CHECK(p->pc==0x8001, "PC=%04X exp 8001", p->pc); }
+
+  /* Program-bank bit 7 is architectural state, not a mapper mirror hint.
+   * Clearing it changes FastROM timing even when both banks read the same ROM
+   * bytes. Exercise every long control-flow form that installs a new PBR. */
+  { uint8_t c[] = {0x22,0x00,0x90,0xB5};
+    Interp816 *p = prep(c,sizeof c); run(p,1);
+    printf("T15 JSL preserves high program-bank bit\n");
+    CHECK(p->k==0xB5 && p->pc==0x9000,
+          "K:PC=%02X:%04X exp B5:9000", p->k, p->pc); }
+
+  { uint8_t c[] = {0x5C,0x00,0x90,0xBB};
+    Interp816 *p = prep(c,sizeof c); run(p,1);
+    printf("T16 JML preserves high program-bank bit\n");
+    CHECK(p->k==0xBB && p->pc==0x9000,
+          "K:PC=%02X:%04X exp BB:9000", p->k, p->pc); }
+
+  { uint8_t c[] = {0x6B}; Interp816 *p = prep(c,sizeof c);
+    p->sp=0x01FC; MEM[0x01FD]=0xFF; MEM[0x01FE]=0x8F; MEM[0x01FF]=0xB5;
+    run(p,1);
+    printf("T17 RTL restores high program-bank bit\n");
+    CHECK(p->k==0xB5 && p->pc==0x9000,
+          "K:PC=%02X:%04X exp B5:9000", p->k, p->pc); }
+
+  { uint8_t c[] = {0xDC,0x00,0x20}; Interp816 *p = prep(c,sizeof c);
+    MEM[0x2000]=0x00; MEM[0x2001]=0x90; MEM[0x2002]=0xBB; run(p,1);
+    printf("T18 JMP [abs] preserves high program-bank bit\n");
+    CHECK(p->k==0xBB && p->pc==0x9000,
+          "K:PC=%02X:%04X exp BB:9000", p->k, p->pc); }
+
+  { uint8_t c[] = {0xCB,0xA9,0x42}; Interp816 *p = prep(c,sizeof c);
+    run(p,1);
+    int idle_cycles = interp816_runOpcode(p);
+    printf("T19 WAI parks until an interrupt request\n");
+    CHECK(p->waiting, "waiting=%d exp 1", p->waiting);
+    CHECK(p->pc==0x8001, "PC=%04X exp 8001", p->pc);
+    CHECK(idle_cycles==1, "idle cycles=%d exp 1", idle_cycles); }
+
+  { uint8_t c[] = {0xCB,0xA9,0x42}; Interp816 *p = prep(c,sizeof c);
+    run(p,1);
+    p->irqWanted = true;
+    interp816_runOpcode(p);
+    printf("T20 masked IRQ wakes WAI without vectoring\n");
+    CHECK(!p->waiting, "waiting=%d exp 0", p->waiting);
+    CHECK(p->pc==0x8003, "PC=%04X exp 8003", p->pc);
+    CHECK((p->a & 0xff)==0x42, "A.lo=%02X exp 42", p->a & 0xff);
+    CHECK(p->irqWanted, "masked IRQ request was cleared"); }
+
+  { uint8_t c[] = {0xCB}; Interp816 *p = prep(c,sizeof c);
+    p->e = false;
+    p->mf = false;
+    p->xf = false;
+    MEM[0xffea]=0x00; MEM[0xffeb]=0x90;
+    MEM[0x9000]=0xA9; MEM[0x9001]=0x77; MEM[0x9002]=0x00;
+    run(p,1);
+    p->nmiWanted = true;
+    int interrupt_cycles = interp816_runOpcode(p);
+    printf("T21 NMI vectors before executing the handler\n");
+    CHECK(!p->waiting, "waiting=%d exp 0", p->waiting);
+    CHECK(p->k==0 && p->pc==0x9000,
+          "K:PC=%02X:%04X exp 00:9000", p->k, p->pc);
+    CHECK(p->a==0, "A=%04X changed before handler opcode", p->a);
+    CHECK(interrupt_cycles==8, "NMI cycles=%d exp 8", interrupt_cycles);
+    run(p,1);
+    CHECK(p->a==0x0077, "handler A=%04X exp 0077", p->a); }
+
+  { uint8_t c[] = {0x18,0xFB, 0xC2,0x30, 0xA2,0x10,0x00, 0xBD,0xE0,0x20};
+    Interp816 *p = prep(c,sizeof c);
+    run(p,4);
+    MEM[0x20f0]=0x34; MEM[0x20f1]=0x12;
+    int cycles = interp816_runOpcode(p);
+    printf("T22 LDA abs,X read without page cross\n");
+    CHECK(cycles==5, "cycles=%d exp 5", cycles);
+    CHECK(p->a==0x1234, "A=%04X exp 1234", p->a); }
+
+  { uint8_t c[] = {0x18,0xFB, 0xC2,0x30, 0xA2,0x10,0x00, 0xBD,0xF8,0x20};
+    Interp816 *p = prep(c,sizeof c);
+    run(p,4);
+    MEM[0x2108]=0x78; MEM[0x2109]=0x56;
+    int cycles = interp816_runOpcode(p);
+    printf("T23 LDA abs,X read with page cross\n");
+    CHECK(cycles==6, "cycles=%d exp 6", cycles);
+    CHECK(p->a==0x5678, "A=%04X exp 5678", p->a); }
+
+  { uint8_t c[] = {0x18,0xFB, 0xC2,0x30, 0xA0,0x10,0x00, 0xB9,0xF8,0x20};
+    Interp816 *p = prep(c,sizeof c);
+    run(p,4);
+    MEM[0x2108]=0xBC; MEM[0x2109]=0x9A;
+    int cycles = interp816_runOpcode(p);
+    printf("T24 LDA abs,Y read with page cross\n");
+    CHECK(cycles==6, "cycles=%d exp 6", cycles);
+    CHECK(p->a==0x9ABC, "A=%04X exp 9ABC", p->a); }
+
+  printf("\n==== interp816 Phase-0: %d/%d checks passed ====\n", g_check - g_fail, g_check);
+  if (g_fail) { printf("RESULT: FAIL (%d)\n", g_fail); return 1; }
+  printf("RESULT: PASS\n");
+  return 0;
+}

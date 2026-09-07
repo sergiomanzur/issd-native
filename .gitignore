@@ -1,0 +1,69 @@
+﻿# ROMs and cartridge dumps (Strict copyright rule)
+*.sfc
+*.smc
+*.bin
+*.rom
+*.bs
+*.st
+*.fig
+deps/ISSD-web-editor/rom/
+roms/
+firmware/
+
+# Build artifacts
+build/
+build-*/
+bin/
+out/
+target/
+*.obj
+*.o
+*.lib
+*.a
+*.dll
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# CMake artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+
+# Visual Studio / IDE files
+.vs/
+*.vcxproj*
+*.sln
+.idea/
+.vscode/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local runtime logs and state
+*.log
+*.sav
+*.srm
+saves/
+*.wram
+*.ppu
+*.bmp
+*.png
+*.wav
+*.spc
+tier2_*.json
+tier2_*.jsonl
+_*.json
+_*.txt
+aot_deny_boot.txt
+
+# Local configuration and debug captures
+issd_config.local.json
+screenshots/
+captures/
+dumps/
+recomp/.generated.snesrecomp-staging-*/
+deps/**/.git-vendor/

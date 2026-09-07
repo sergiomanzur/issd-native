@@ -1,0 +1,79 @@
+# Compiled output
+build/
+build-cli/
+dist/
+*.exe
+*.obj
+*.pdb
+*.ilk
+*.lib
+*.exp
+
+# ROM files (do not commit copyrighted ROMs)
+*.sfc
+*.smc
+*.fig
+
+# Extracted ROM data (generated from ROM at build time)
+smw_assets.dat
+
+# Save states
+saves/
+*.srm
+
+# NuGet / VS packages
+packages/
+*.suo
+*.user
+.vs/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# OS junk
+Thumbs.db
+.DS_Store
+framedump_oracle/
+framedump_recomp/
+validate*.log
+regen.log
+cfg_audit_results/
+tier2_coverage.json
+writewatch*.log
+wramwatch.log
+snesref_audio.wav
+snesref_trace.jsonl
+_refprune_snap_*.json
+
+# launcher dep build artifacts (rebuilt via tools/build_launcher_deps.ps1)
+lib/_build/
+
+# cpu_diff harness generated/built artifacts
+tests/cpu_diff/gen_ops.c
+
+# ── Cx4: the snes9x reference, DELIBERATELY UNTRACKED ─────────────────────
+# The SHIPPING Cx4 (runner/src/snes/cx4.c) is an instruction-level HG51B S169
+# core ported from ares, which is ISC-licensed — permissive, notice-only — so it
+# IS committed.
+#
+# These *.reference files are the earlier snes9x-derived command-level model,
+# kept locally only as a cross-check while validating the ares port. The Snes9x
+# license is freeware / NON-COMMERCIAL ONLY, so committing them would put that
+# constraint into this repo's public history permanently. They are not compiled.
+# Delete them once the ares core is validated.
+runner/src/snes/*.reference
+
+# Cx4 internal data ROM: Capcom/Hitachi firmware, user-supplied. Never commit.
+# All three names are the same 3072-byte blob (sha256 ae8d4d19...): `cx4.rom` is
+# ares' firmware-directory name, `hg51bs169.data.rom` is its gamepak name, and
+# `cx4.data.rom` is what the common firmware sets ship it as.
+cx4.rom
+cx4.data.rom
+hg51bs169.data.rom
+
+# DSP-1 / DSP-1B firmware: Nintendo/NEC firmware, user-supplied. Never commit.
+dsp1.rom
+dsp1b.rom
+dsp1.bin

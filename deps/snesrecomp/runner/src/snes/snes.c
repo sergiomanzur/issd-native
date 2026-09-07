@@ -1,0 +1,605 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <assert.h>
+#include <time.h>
+#include "snes.h"
+#include "cpu.h"
+#include "apu.h"
+#include "dma.h"
+#include "ppu.h"
+#include "cart.h"
+#include "joypad.h"
+#include "variables.h"
+#include "../common_rtl.h"
+#include "../debug_server.h"
+#include "../audio_trace.h"
+#include "../cpu_trace.h"
+#include "sdd1.h"
+#include "../ppu_dma_trace.h"
+
+int snes_frame_counter;
+static const double apuCyclesPerMaster = (32040 * 32) / (1364 * 262 * 60.0);
+
+uint8_t snes_readReg(Snes* snes, uint16_t adr);
+void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val);
+
+#if SNESRECOMP_TRACE
+static void snes_trace_direct_wram_write(uint32_t off, uint8_t old, uint8_t val) {
+  extern CpuState g_cpu;
+  uint8_t bank = (off >= 0x10000u) ? 0x7f : 0x7e;
+  uint16_t addr = (uint16_t)(off & 0xffffu);
+  cpu_trace_wram_write_check(&g_cpu, bank, addr, (int32_t)off,
+                             (uint16_t)old, (uint16_t)val, 1);
+}
+#endif
+
+Snes* snes_init(uint8_t *ram) {
+  Snes* snes = calloc(1, sizeof(Snes));  /* zero padding: saveload/co-sim hash determinism */
+  snes->ram = ram;
+
+  snes->cpu = cpu_init();
+  snes->apu = apu_init();
+  snes->dma = dma_init(snes);
+  snes->ppu = ppu_init();
+  snes->cart = cart_init(snes);
+  snes->input1_currentState = 0;
+  snes->input2_currentState = 0;
+  return snes;
+}
+
+void snes_free(Snes* snes) {
+  cpu_free(snes->cpu);
+  apu_free(snes->apu);
+  dma_free(snes->dma);
+  ppu_free(snes->ppu);
+  cart_free(snes->cart);
+  free(snes);
+}
+
+/* RTLS v5 and earlier serialized beamMasterLast between vPos and
+ * apuCatchupCycles (+8 bytes). v6+ keeps it host-only (before hPos). */
+static uint32_t s_saveload_version = 7;
+
+void snes_saveload_set_version(uint32_t version) {
+  s_saveload_version = version ? version : 7;
+}
+
+void snes_saveload(Snes *snes, SaveLoadInfo *sli) {
+  cpu_saveload(snes->cpu, sli);
+  apu_saveload(snes->apu, sli);
+  dma_saveload(snes->dma, sli);
+  ppu_saveload(snes->ppu, sli);
+  cart_saveload(snes->cart, sli);
+
+  if (s_saveload_version <= 5) {
+    /* Old layout: [hPos..vPos][pad][beamMasterLast][apuCatchup..divideResult].
+     * Read/write the legacy 48-byte tail and map into the current struct.
+     * Legacy size: 4 (hPos/vPos) + 4 pad + 8 beam + rest(=32) = 48. */
+    enum { kLegacySnesTail = 48 };
+    uint8_t blob[kLegacySnesTail];
+    const size_t new_tail = sizeof(*snes) - offsetof(Snes, hPos);
+    const size_t head = offsetof(Snes, apuCatchupCycles) - offsetof(Snes, hPos);
+    const size_t rest = new_tail - head; /* apuCatchupCycles .. end */
+    assert(new_tail == 40 && head == 8 && rest == 32);
+    memset(blob, 0, sizeof(blob));
+    memcpy(blob, &snes->hPos, 4);
+    memcpy(blob + 16, &snes->apuCatchupCycles, rest);
+    sli->func(sli, blob, kLegacySnesTail);
+    memcpy(&snes->hPos, blob, 4);
+    memcpy(&snes->apuCatchupCycles, blob + 16, rest);
+  } else {
+    sli->func(sli, &snes->hPos, sizeof(*snes) - offsetof(Snes, hPos));
+  }
+  sli->func(sli, snes->ram, 0x20000);
+  sli->func(sli, &snes->ramAdr, 4);
+  if (s_saveload_version >= 7) {
+    sli->func(sli, &snes->joypadStrobe, sizeof(snes->joypadStrobe));
+    sli->func(sli, &snes->joypad1Index, sizeof(snes->joypad1Index));
+    sli->func(sli, &snes->joypad2Index, sizeof(snes->joypad2Index));
+    sli->func(sli, &snes->joypad1Latched, sizeof(snes->joypad1Latched));
+    sli->func(sli, &snes->joypad2Latched, sizeof(snes->joypad2Latched));
+  } else {
+    snes->joypadStrobe = false;
+    snes->joypad1Index = snes->joypad2Index = 0;
+    snes->joypad1Latched = snes->joypad2Latched = 0;
+  }
+
+  snes->cpu->e = 0;
+}
+
+void snes_reset(Snes* snes, bool hard) {
+  cart_reset(snes->cart); // reset cart first, because resetting cpu will read from it (reset vector)
+  cpu_reset(snes->cpu);
+  apu_reset(snes->apu);
+  dma_reset(snes->dma);
+  ppu_reset(snes->ppu);
+  if (hard)
+    memset(snes->ram, 0, 0x20000);
+  snes->ramAdr = 0;
+  snes->hPos = 0;
+  snes->vPos = 0;
+  snes->apuCatchupCycles = 0.0;
+  snes->hIrqEnabled = false;
+  snes->vIrqEnabled = false;
+  snes->nmiEnabled = false;
+  snes->hTimer = 0x1ff;
+  snes->vTimer = 0x1ff;
+  snes->inNmi = false;
+  snes->inIrq = false;
+  snes->inVblank = false;
+  snes->autoJoyRead = false;
+  snes->autoJoyTimer = 0;
+  snes->joypadStrobe = false;
+  snes->joypad1Index = snes->joypad2Index = 0;
+  snes->joypad1Latched = snes->joypad2Latched = 0;
+  snes->ppuLatch = false;
+  snes->multiplyA = 0xff;
+  snes->multiplyResult = 0xfe01;
+  snes->divideA = 0xffff;
+  snes->divideResult = 0x101;
+}
+
+static uint64_t s_catchup_calls = 0;
+static uint64_t s_catchup_cycles_total = 0;
+uint64_t g_apu_timer0_total_ticks = 0;
+#ifdef SNESRECOMP_INTERP_PROFILE
+uint64_t apucyc_prof_calls = 0;
+double apucyc_prof_ms = 0.0;
+#endif
+
+void snes_catchupApu(Snes* snes) {
+  /* Upper cap is a guard against accumulator runaway after a long
+   * stall; SPC runs at ~1 MHz so 10000 cycles is about 10 ms of real
+   * SPC time per catchup, plenty to absorb any spike. */
+  if (snes->apuCatchupCycles > 10000)
+    snes->apuCatchupCycles = 10000;
+
+  /* No artificial minimum. Earlier code floored to 1024 SPC cycles
+   * per call, which was needed to brute-force progress while the
+   * g_apu_autoack stub short-circuited polls. With autoack ripped,
+   * the real SPC IPL handshake must run at hardware-realistic
+   * timing: ~3.5 SNES-CPU cycles per SPC cycle, which works out to
+   * ~73 SPC cycles per HW-reg touch (cpu_pace_cycles bumps 256 main
+   * cycles per touch -> 256 * 2/7 is about 73). Flooring to 1024 made each
+   * SMW upload byte take ~3000 SPC cycles instead of ~219, blowing
+   * past the 5-second per-frame watchdog before the ~10 KB SPC
+   * engine could finish uploading. The audio thread separately
+   * cycles the SPC in bulk via RtlRenderAudio (534 samples is about 17 k
+   * cycles per audio callback), so the SPC always gets enough
+   * time even when the CPU is busy elsewhere. */
+  int catchupCycles = (int) snes->apuCatchupCycles;
+  if (catchupCycles < 0) catchupCycles = 0;
+
+  audio_trace_set_producer(AUDIO_TRACE_PRODUCER_CPU);
+#ifdef SNESRECOMP_INTERP_PROFILE
+  apucyc_prof_calls++;
+  clock_t _t1 = clock();
+#endif
+  for(int i = 0; i < catchupCycles; i++) {
+    apu_cycle(snes->apu);
+  }
+#ifdef SNESRECOMP_INTERP_PROFILE
+  apucyc_prof_ms += 1000.0 * ((double)(clock() - _t1)) / CLOCKS_PER_SEC;
+#endif
+  audio_trace_set_producer(AUDIO_TRACE_PRODUCER_UNKNOWN);
+  snes->apuCatchupCycles -= (double) catchupCycles;
+  if (snes->apuCatchupCycles < 0.0) snes->apuCatchupCycles = 0.0;
+  s_catchup_calls++;
+  s_catchup_cycles_total += (uint64_t)catchupCycles;
+}
+
+void snes_catchup_stats(uint64_t *calls, uint64_t *cycles) {
+  if (calls) *calls = s_catchup_calls;
+  if (cycles) *cycles = s_catchup_cycles_total;
+}
+
+uint8_t snes_readBBus(Snes* snes, uint8_t adr) {
+  if(adr < 0x40) {
+    return ppu_read(g_ppu, adr);
+  }
+  if(adr < 0x80) {
+    // APU port read ($2140-$217F). Synchronize the SPC to this exact guest
+    // timestamp before observing its output-port state.
+    RtlApuLock();
+    rtl_sync_apu_to_cpu_locked();
+    uint8_t v = snes->apu->outPorts[adr & 0x3];
+    audio_trace_on_cpu_port_read((uint8_t)(adr & 0x3), v);
+    RtlApuUnlock();
+    return v;
+  }
+  if(adr == 0x80) {
+    uint8_t ret = snes->ram[snes->ramAdr++];
+    snes->ramAdr &= 0x1ffff;
+    return ret;
+  }
+
+  /* Out-of-range B-bus read. v2 boot path occasionally fires DMA
+   * with a misconfigured channel (consequence of an upstream bad
+   * ROM read returning garbage that configures the DMA setup). On
+   * release builds we silently return 0 instead of crashing so the
+   * boot path can keep progressing — the upstream issue is what
+   * actually needs fixing. */
+  return 0;
+}
+
+void snes_writeBBus(Snes* snes, uint8_t adr, uint8_t val) {
+  if(adr < 0x40) {
+    ppu_write(g_ppu, adr, val);
+    return;
+  }
+  if(adr < 0x80) {
+    RtlApuWrite(0x2100 + adr, val);
+    return;
+  }
+  switch(adr) {
+    case 0x80: {
+      uint32_t wa = snes->ramAdr & 0x1ffffu;
+      uint8_t old = snes->ram[wa];
+      snes->ram[wa] = val;
+#if SNESRECOMP_TRACE
+      snes_trace_direct_wram_write(wa, old, val);
+#endif
+#if SNESRECOMP_REVERSE_DEBUG
+      { extern void debug_on_wram_write_byte(uint32_t, uint8_t, uint8_t);
+        debug_on_wram_write_byte(wa, old, val); }
+#endif
+      snes->ramAdr = (wa + 1u) & 0x1ffffu;
+      break;
+    }
+    case 0x81: {
+      snes->ramAdr = (snes->ramAdr & 0x1ff00) | val;
+      break;
+    }
+    case 0x82: {
+      snes->ramAdr = (snes->ramAdr & 0x100ff) | (val << 8);
+      break;
+    }
+    case 0x83: {
+      snes->ramAdr = (snes->ramAdr & 0x0ffff) | ((val & 1) << 16);
+      break;
+    }
+  }
+}
+
+uint16_t SwapInputBits(uint16_t x) {
+  return joypad_auto_read_word(x);
+}
+
+static void snes_advance_beam(Snes *snes, uint32_t clocks, bool check_irq) {
+  /* One NTSC scanline is 1364 master clocks, 262 scanlines per frame. Keep
+   * the live beam counters moving while LLE code executes so SLHV/OPHCT/OPVCT
+   * polling observes hardware time rather than a frame-frozen PPU.
+   *
+   * The CPU IRQ comparators run for the entire scanline/frame, including
+   * vblank.  Keeping this here (instead of in the visible-line renderer) is
+   * important for games such as Star Fox, which deliberately schedules an
+   * H+V IRQ on scanline 228 and blocks until that IRQ completes an NMI task. */
+  uint32_t h = snes->hPos;
+  uint32_t v = snes->vPos;
+  while (clocks) {
+    uint32_t span = 1364u - h;
+    if (span > clocks) span = clocks;
+
+    /* Automatic joypad polling begins at vblank and keeps HVBJOY.0 asserted
+     * for roughly 4224 master clocks.  The input registers are already backed
+     * by the current controller snapshot; this timer supplies the missing
+     * architectural start/busy/complete handshake. */
+    if (snes->autoJoyRead && v == 225u && h == 0u)
+      snes->autoJoyTimer = 4224;
+    if (snes->autoJoyTimer) {
+      snes->autoJoyTimer = span >= snes->autoJoyTimer
+                         ? 0 : (uint16_t)(snes->autoJoyTimer - span);
+    }
+
+    if (check_irq &&
+        (snes->hIrqEnabled || snes->vIrqEnabled)) {
+      bool line_matches = !snes->vIrqEnabled || v == snes->vTimer;
+      uint32_t target = snes->hIrqEnabled ? (uint32_t)snes->hTimer * 4u : 0u;
+      if (line_matches && target < 1364u && target >= h && target < h + span)
+        snes->inIrq = true;
+    }
+
+    h += span;
+    clocks -= span;
+    if (h >= 1364u) {
+      h = 0;
+      v++;
+      if (v >= 262u) v = 0;
+    }
+  }
+  snes->hPos = (uint16_t)h;
+  snes->vPos = (uint16_t)v;
+  snes->inVblank = v >= 225u;
+}
+
+void snes_advance_master_cycles(Snes *snes, uint32_t clocks) {
+  snes_advance_beam(snes, clocks, true);
+  snes->beamMasterLast += clocks;
+}
+
+void snes_sync_master_clock(Snes *snes, uint64_t master_clock) {
+  if (master_clock < snes->beamMasterLast) {
+    snes->beamMasterLast = master_clock;
+    return;
+  }
+  uint64_t delta=master_clock-snes->beamMasterLast;
+  while(delta) {
+    uint32_t chunk=delta>UINT32_MAX?UINT32_MAX:(uint32_t)delta;
+    snes_advance_master_cycles(snes,chunk);
+    delta-=chunk;
+  }
+}
+
+uint8_t snes_readReg(Snes* snes, uint16_t adr) {
+  switch(adr) {
+    case 0x4210: {
+      uint8_t val = 0x2; // CPU version (4 bit)
+      val |= snes->inNmi << 7;
+      // Real hardware clears the NMI-pending latch on read. Without this
+      // a stale `inNmi=true` would persist across NMI handler exit and
+      // produce a spurious second-read=true if anything re-reads $4210
+      // before the next NMI fires. (SMW happens to discard the loaded
+      // value, but a hardware-correct read-clear costs one store and
+      // is the right contract for game #2.)
+      snes->inNmi = false;
+      return val;
+    }
+    case 0x4211: {
+      uint8_t val = snes->inIrq << 7;
+      snes->inIrq = false;
+      return val;
+    }
+    case 0x4212: {
+      // Static-recomp h/v-counter model: real hardware updates hPos every
+      // dot-clock; recomp has no dot-clock, so each $4212 read advances
+      // hPos by a fixed step. Calibrated so a typical busy-wait crosses
+      // both edges in ~10-20 reads. Bit 6 = hblank (dots ~1024..1364 of
+      // a 1364-dot scanline). See docs/VIRTUAL_HW_CONTRACT.md.
+      /* Whole-program interpreter runs already advance the beam from every
+       * opcode's measured master clocks. Applying the legacy static-recomp
+       * polling tick as well doubles time in $4212 wait loops (SMRPG's boot
+       * fades completed in half the reference frame count). */
+      extern int g_interp_apu_driving;
+      if (!g_interp_apu_driving)
+        snes_advance_beam(snes, 64, false);
+      // Bit 7 = vblank. The real frame loop drives vblank via inNmi, not
+      // inVblank (inVblank is never set true), so on the static-recomp
+      // path bit 7 must be SYNTHESIZED the same way bit 6 is — otherwise a
+      // boot vblank-wait loop that polls $4212 bit 7 BEFORE the first NMI
+      // (while the single host fiber is blocked in SwitchToFiber and real
+      // frame timing is frozen) never sees the edge and spins forever
+      // (Super Metroid I_RESET $00:843C: `LDA $4212 / BPL` x4 settle).
+      // The synthetic advance shares the live beam helper, so IRQ and
+      // auto-joypad edges remain coherent with the reported counters.
+      uint8_t val = (snes->autoJoyTimer > 0);
+      val |= (snes->hPos >= 1024) << 6;
+      val |= (snes->inVblank || snes->vPos >= 225) << 7;
+      return val;
+    }
+    case 0x4213:
+      return snes->ppuLatch << 7; // IO-port
+    case 0x4214:
+      return snes->divideResult & 0xff;
+    case 0x4215:
+      return snes->divideResult >> 8;
+    case 0x4216:
+      return snes->multiplyResult & 0xff;
+    case 0x4217:
+      return snes->multiplyResult >> 8;
+    case 0x4016:  /* JOYSER0 — manual joypad read for controller 1. */
+    case 0x4017:  /* JOYSER1 — manual joypad read for controller 2. */
+      /* $4016 bit 0 latches both pads; reads shift B through R, then 1s. */
+      return joypad_read_serial(snes, adr - 0x4016);
+    case 0x4218:
+      return joypad_auto_read_reg(snes->input1_currentState, adr);
+    case 0x4219:
+      return joypad_auto_read_reg(snes->input1_currentState, adr);
+    case 0x421a:
+      return joypad_auto_read_reg(snes->input2_currentState, adr);
+    case 0x421b:
+      return joypad_auto_read_reg(snes->input2_currentState, adr);
+    case 0x421c:
+    case 0x421e:
+    case 0x421d:
+    case 0x421f:
+      return 0;
+
+    default: {
+      return 0;
+    }
+  }
+}
+
+void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
+  switch(adr) {
+    case 0x4016:
+      joypad_write_strobe(snes, val);
+      break;
+    case 0x4200: {
+      snes->autoJoyRead = val & 0x1;
+      if(!snes->autoJoyRead) snes->autoJoyTimer = 0;
+      snes->hIrqEnabled = val & 0x10;
+      snes->vIrqEnabled = val & 0x20;
+      { static int nmi_log = 0;
+        if (nmi_log < 20) {
+          fprintf(stderr, "[CPU_W] $4200=$%02X (NMI=%d IRQ_h=%d IRQ_v=%d AJR=%d)\n",
+                  val, (val >> 7) & 1, (val >> 4) & 1, (val >> 5) & 1, val & 1);
+          nmi_log++;
+        }
+      }
+      snes->nmiEnabled = val & 0x80;
+      if(!snes->hIrqEnabled && !snes->vIrqEnabled) {
+        snes->inIrq = false;
+      }
+      // TODO: enabling nmi during vblank with inNmi still set generates nmi
+      //   enabling virq (and not h) on the vPos that vTimer is at generates irq (?)
+      break;
+    }
+    case 0x4201: {
+      if(!(val & 0x80) && snes->ppuLatch) {
+        // latch the ppu
+        ppu_read(g_ppu, 0x37);
+      }
+      snes->ppuLatch = val & 0x80;
+      break;
+    }
+    case 0x4202: {
+      snes->multiplyA = val;
+      break;  
+    }
+    case 0x4203: {
+      snes->multiplyResult = snes->multiplyA * val;
+      break;
+    }
+    case 0x4204: {
+      snes->divideA = (snes->divideA & 0xff00) | val;
+      break;
+    }
+    case 0x4205: {
+      snes->divideA = (snes->divideA & 0x00ff) | (val << 8);
+      break;
+    }
+    case 0x4206: {
+      if(val == 0) {
+        snes->divideResult = 0xffff;
+        snes->multiplyResult = snes->divideA;
+      } else {
+        snes->divideResult = snes->divideA / val;
+        snes->multiplyResult = snes->divideA % val;
+      }
+      break;
+    }
+    case 0x4207: {
+      snes->hTimer = (snes->hTimer & 0x100) | val;
+      break;
+    }
+    case 0x4208: {
+      snes->hTimer = (snes->hTimer & 0x0ff) | ((val & 1) << 8);
+      break;
+    }
+    case 0x4209: {
+      snes->vTimer = (snes->vTimer & 0x100) | val;
+      break;
+    }
+    case 0x420a: {
+      snes->vTimer = (snes->vTimer & 0x0ff) | ((val & 1) << 8);
+      break;
+    }
+    case 0x420b: {
+      /* Log DMA triggers */
+      { static int dma420b_log = 0;
+        if (val != 0 && dma420b_log < 30) {
+          for (int ch = 0; ch < 8; ch++) {
+            if (val & (1 << ch)) {
+              DmaChannel *c = &snes->dma->channel[ch];
+              fprintf(stderr, "[DMA_TRIG] ch%d bAdr=$%02X src=%02X:%04X size=$%04X\n",
+                      ch, c->bAdr, c->aBank, c->aAdr, c->size);
+            }
+          }
+          dma420b_log++;
+        }
+      }
+      for (int ch = 0; ch < 8; ch++) {
+        if (val & (1 << ch)) {
+          DmaChannel *c = &snes->dma->channel[ch];
+          ppudma_record_dma(ch, c->fromB, c->aBank, c->aAdr, c->bAdr, c->size);
+        }
+      }
+      dma_startDma(snes->dma, val, false);
+      while (dma_cycle(snes->dma)) {}
+      break;
+    }
+    case 0x420c: {
+      /* LLE (and AOT via recomp_write_internal_reg) both land here. Presentation
+       * draws (SimpleHdma) re-arm from this latch — without it, LLE games keep
+       * last_hdmaen at 0 and wipe channel hdmaActive before every present. */
+      g_snesrecomp_last_hdmaen = val;
+      dma_startDma(snes->dma, val, true);
+      break;
+    }
+    default: {
+      break;
+    }
+  }
+}
+
+uint8_t snes_read(Snes* snes, uint32_t adr) {
+  uint8_t bank = adr >> 16;
+  adr &= 0xffff;
+  if(bank == 0x7e || bank == 0x7f) {
+    return snes->ram[((bank & 1) << 16) | adr]; // ram
+  }
+  if(bank < 0x40 || (bank >= 0x80 && bank < 0xc0)) {
+    if(adr < 0x2000) {
+      return snes->ram[adr]; // ram mirror
+    }
+    if(adr >= 0x2100 && adr < 0x2200) {
+      return snes_readBBus(snes, adr & 0xff); // B-bus
+    }
+    if (adr == 0x4016 || adr == 0x4017)
+      return snes_readReg(snes, adr);
+    if(adr >= 0x4200 && adr < 0x4220 || adr >= 0x4218 && adr < 0x4220) {
+      return snes_readReg(snes, adr); // internal registers
+    }
+    if(adr >= 0x4300 && adr < 0x4380) {
+      return dma_read(snes->dma, adr); // dma registers
+    }
+  }
+  // read from cart
+  return cart_read(snes->cart, bank, adr);
+}
+
+void snes_write(Snes* snes, uint32_t adr, uint8_t val) {
+  uint8_t bank = adr >> 16;
+  adr &= 0xffff;
+  if(bank == 0x7e || bank == 0x7f) {
+    uint32_t addr = ((bank & 1) << 16) | adr;
+    uint8_t old = snes->ram[addr];
+    snes->ram[addr] = val; // ram
+#if SNESRECOMP_TRACE
+    snes_trace_direct_wram_write(addr, old, val);
+#endif
+#if SNESRECOMP_REVERSE_DEBUG
+    { extern void debug_on_wram_write_byte(uint32_t, uint8_t, uint8_t);
+      debug_on_wram_write_byte(addr, old, val); }
+#endif
+  }
+  if(bank < 0x40 || (bank >= 0x80 && bank < 0xc0)) {
+    if(adr < 0x2000) {
+      uint8_t old = snes->ram[adr];
+      snes->ram[adr] = val; // ram mirror
+#if SNESRECOMP_TRACE
+      snes_trace_direct_wram_write((uint32_t)adr, old, val);
+#endif
+#if SNESRECOMP_REVERSE_DEBUG
+      { extern void debug_on_wram_write_byte(uint32_t, uint8_t, uint8_t);
+        debug_on_wram_write_byte((uint32_t)adr, old, val); }
+#endif
+    }
+    if(adr >= 0x2100 && adr < 0x2200) {
+      snes_writeBBus(snes, adr & 0xff, val); // B-bus
+    }
+    if(adr >= 0x4200 && adr < 0x4220) {
+      snes_writeReg(snes, adr, val); // internal registers
+    }
+    if(adr == 0x4016) {
+      snes_writeReg(snes, adr, val); // manual joypad strobe
+    }
+    if(adr >= 0x4300 && adr < 0x4380) {
+      dma_write(snes->dma, adr, val); // dma registers
+      /* S-DD1 spies on DMA channel register writes */
+      if (snes->cart && snes->cart->type == CART_SDD1 && snes->cart->sdd1)
+        sdd1_dma_channel_write(snes->cart->sdd1, adr, val);
+    }
+    if(adr >= 0x2100 && adr < 0x4400) {
+      debug_server_on_reg_write(adr, val);
+    }
+  }
+  // write to cart
+  cart_write(snes->cart, bank, adr, val);
+}

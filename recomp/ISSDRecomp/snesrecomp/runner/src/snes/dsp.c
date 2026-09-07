@@ -1,0 +1,686 @@
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "dsp.h"
+#include "dsp_shadow.h"
+#include "apu.h"
+#include "../audio_trace.h"
+
+static const int rateValues[32] = {
+  0, 2048, 1536, 1280, 1024, 768, 640, 512,
+  384, 320, 256, 192, 160, 128, 96, 80,
+  64, 48, 40, 32, 24, 20, 16, 12,
+  10, 8, 6, 5, 4, 3, 2, 1
+};
+
+/* Non-static: the dev faithful reference (dsp_shadow) reuses this canonical
+ * Gaussian table (verified byte-identical to blargg's snes9x/bsnes gauss[512])
+ * with blargg's exact integer algorithm, to isolate the canon-vs-reference
+ * arithmetic difference (>>10+>>1 vs >>11). Declared in dsp.h. */
+const uint16_t gaussValues[512] = {
+  0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000, 0x000,
+  0x001, 0x001, 0x001, 0x001, 0x001, 0x001, 0x001, 0x001, 0x001, 0x001, 0x001, 0x002, 0x002, 0x002, 0x002, 0x002,
+  0x002, 0x002, 0x003, 0x003, 0x003, 0x003, 0x003, 0x004, 0x004, 0x004, 0x004, 0x004, 0x005, 0x005, 0x005, 0x005,
+  0x006, 0x006, 0x006, 0x006, 0x007, 0x007, 0x007, 0x008, 0x008, 0x008, 0x009, 0x009, 0x009, 0x00A, 0x00A, 0x00A,
+  0x00B, 0x00B, 0x00B, 0x00C, 0x00C, 0x00D, 0x00D, 0x00E, 0x00E, 0x00F, 0x00F, 0x00F, 0x010, 0x010, 0x011, 0x011,
+  0x012, 0x013, 0x013, 0x014, 0x014, 0x015, 0x015, 0x016, 0x017, 0x017, 0x018, 0x018, 0x019, 0x01A, 0x01B, 0x01B,
+  0x01C, 0x01D, 0x01D, 0x01E, 0x01F, 0x020, 0x020, 0x021, 0x022, 0x023, 0x024, 0x024, 0x025, 0x026, 0x027, 0x028,
+  0x029, 0x02A, 0x02B, 0x02C, 0x02D, 0x02E, 0x02F, 0x030, 0x031, 0x032, 0x033, 0x034, 0x035, 0x036, 0x037, 0x038,
+  0x03A, 0x03B, 0x03C, 0x03D, 0x03E, 0x040, 0x041, 0x042, 0x043, 0x045, 0x046, 0x047, 0x049, 0x04A, 0x04C, 0x04D,
+  0x04E, 0x050, 0x051, 0x053, 0x054, 0x056, 0x057, 0x059, 0x05A, 0x05C, 0x05E, 0x05F, 0x061, 0x063, 0x064, 0x066,
+  0x068, 0x06A, 0x06B, 0x06D, 0x06F, 0x071, 0x073, 0x075, 0x076, 0x078, 0x07A, 0x07C, 0x07E, 0x080, 0x082, 0x084,
+  0x086, 0x089, 0x08B, 0x08D, 0x08F, 0x091, 0x093, 0x096, 0x098, 0x09A, 0x09C, 0x09F, 0x0A1, 0x0A3, 0x0A6, 0x0A8,
+  0x0AB, 0x0AD, 0x0AF, 0x0B2, 0x0B4, 0x0B7, 0x0BA, 0x0BC, 0x0BF, 0x0C1, 0x0C4, 0x0C7, 0x0C9, 0x0CC, 0x0CF, 0x0D2,
+  0x0D4, 0x0D7, 0x0DA, 0x0DD, 0x0E0, 0x0E3, 0x0E6, 0x0E9, 0x0EC, 0x0EF, 0x0F2, 0x0F5, 0x0F8, 0x0FB, 0x0FE, 0x101,
+  0x104, 0x107, 0x10B, 0x10E, 0x111, 0x114, 0x118, 0x11B, 0x11E, 0x122, 0x125, 0x129, 0x12C, 0x130, 0x133, 0x137,
+  0x13A, 0x13E, 0x141, 0x145, 0x148, 0x14C, 0x150, 0x153, 0x157, 0x15B, 0x15F, 0x162, 0x166, 0x16A, 0x16E, 0x172,
+  0x176, 0x17A, 0x17D, 0x181, 0x185, 0x189, 0x18D, 0x191, 0x195, 0x19A, 0x19E, 0x1A2, 0x1A6, 0x1AA, 0x1AE, 0x1B2,
+  0x1B7, 0x1BB, 0x1BF, 0x1C3, 0x1C8, 0x1CC, 0x1D0, 0x1D5, 0x1D9, 0x1DD, 0x1E2, 0x1E6, 0x1EB, 0x1EF, 0x1F3, 0x1F8,
+  0x1FC, 0x201, 0x205, 0x20A, 0x20F, 0x213, 0x218, 0x21C, 0x221, 0x226, 0x22A, 0x22F, 0x233, 0x238, 0x23D, 0x241,
+  0x246, 0x24B, 0x250, 0x254, 0x259, 0x25E, 0x263, 0x267, 0x26C, 0x271, 0x276, 0x27B, 0x280, 0x284, 0x289, 0x28E,
+  0x293, 0x298, 0x29D, 0x2A2, 0x2A6, 0x2AB, 0x2B0, 0x2B5, 0x2BA, 0x2BF, 0x2C4, 0x2C9, 0x2CE, 0x2D3, 0x2D8, 0x2DC,
+  0x2E1, 0x2E6, 0x2EB, 0x2F0, 0x2F5, 0x2FA, 0x2FF, 0x304, 0x309, 0x30E, 0x313, 0x318, 0x31D, 0x322, 0x326, 0x32B,
+  0x330, 0x335, 0x33A, 0x33F, 0x344, 0x349, 0x34E, 0x353, 0x357, 0x35C, 0x361, 0x366, 0x36B, 0x370, 0x374, 0x379,
+  0x37E, 0x383, 0x388, 0x38C, 0x391, 0x396, 0x39B, 0x39F, 0x3A4, 0x3A9, 0x3AD, 0x3B2, 0x3B7, 0x3BB, 0x3C0, 0x3C5,
+  0x3C9, 0x3CE, 0x3D2, 0x3D7, 0x3DC, 0x3E0, 0x3E5, 0x3E9, 0x3ED, 0x3F2, 0x3F6, 0x3FB, 0x3FF, 0x403, 0x408, 0x40C,
+  0x410, 0x415, 0x419, 0x41D, 0x421, 0x425, 0x42A, 0x42E, 0x432, 0x436, 0x43A, 0x43E, 0x442, 0x446, 0x44A, 0x44E,
+  0x452, 0x455, 0x459, 0x45D, 0x461, 0x465, 0x468, 0x46C, 0x470, 0x473, 0x477, 0x47A, 0x47E, 0x481, 0x485, 0x488,
+  0x48C, 0x48F, 0x492, 0x496, 0x499, 0x49C, 0x49F, 0x4A2, 0x4A6, 0x4A9, 0x4AC, 0x4AF, 0x4B2, 0x4B5, 0x4B7, 0x4BA,
+  0x4BD, 0x4C0, 0x4C3, 0x4C5, 0x4C8, 0x4CB, 0x4CD, 0x4D0, 0x4D2, 0x4D5, 0x4D7, 0x4D9, 0x4DC, 0x4DE, 0x4E0, 0x4E3,
+  0x4E5, 0x4E7, 0x4E9, 0x4EB, 0x4ED, 0x4EF, 0x4F1, 0x4F3, 0x4F5, 0x4F6, 0x4F8, 0x4FA, 0x4FB, 0x4FD, 0x4FF, 0x500,
+  0x502, 0x503, 0x504, 0x506, 0x507, 0x508, 0x50A, 0x50B, 0x50C, 0x50D, 0x50E, 0x50F, 0x510, 0x511, 0x511, 0x512,
+  0x513, 0x514, 0x514, 0x515, 0x516, 0x516, 0x517, 0x517, 0x517, 0x518, 0x518, 0x518, 0x518, 0x518, 0x519, 0x519
+};
+
+static void dsp_cycleChannel(Dsp* dsp, int ch);
+static void dsp_handleEcho(Dsp* dsp, int* outputL, int* outputR);
+static void dsp_handleGain(Dsp* dsp, int ch, bool liveGain);
+static void dsp_decodeBrr(Dsp* dsp, int ch);
+/* dsp_getSample is declared non-static in dsp.h (dev faithful reference uses it). */
+static void dsp_handleNoise(Dsp* dsp);
+
+Dsp* dsp_init(uint8_t *ram) {
+  Dsp* dsp = calloc(1, sizeof(Dsp));  /* zero padding: saveload/co-sim hash determinism */
+  dsp->apu_ram = ram;
+  dsp->shadow = dsp_shadow_create();  // opt-in; NULL/disabled unless env set
+  return dsp;
+}
+
+void dsp_free(Dsp* dsp) {
+  dsp_shadow_free((DspShadow*)dsp->shadow);
+  free(dsp);
+}
+
+void dsp_reset(Dsp* dsp) {
+  memset(dsp->ram, 0, sizeof(dsp->ram));
+  dsp->ram[0x7c] = 0xff; // set ENDx
+  for(int i = 0; i < 8; i++) {
+    dsp->channel[i].pitch = 0;
+    dsp->channel[i].pitchCounter = 0;
+    dsp->channel[i].pitchModulation = false;
+    memset(dsp->channel[i].decodeBuffer, 0, sizeof(dsp->channel[i].decodeBuffer));
+    dsp->channel[i].srcn = 0;
+    dsp->channel[i].decodeOffset = 0;
+    dsp->channel[i].previousFlags = 0;
+    dsp->channel[i].old = 0;
+    dsp->channel[i].older = 0;
+    dsp->channel[i].useNoise = false;
+    memset(dsp->channel[i].adsrRates, 0, sizeof(dsp->channel[i].adsrRates));
+    dsp->channel[i].rateCounter = 0;
+    dsp->channel[i].adsrState = 0;
+    dsp->channel[i].sustainLevel = 0;
+    dsp->channel[i].useGain = false;
+    dsp->channel[i].gainMode = 0;
+    dsp->channel[i].directGain = false;
+    dsp->channel[i].gainValue = 0;
+    dsp->channel[i].gain = 0;
+    dsp->channel[i].keyOn = false;
+    dsp->channel[i].keyOff = false;
+    dsp->channel[i].sampleOut = 0;
+    dsp->channel[i].volumeL = 0;
+    dsp->channel[i].volumeR = 0;
+    dsp->channel[i].echoEnable = false;
+  }
+  dsp->dirPage = 0;
+  dsp->evenCycle = false;
+  dsp->mute = true;
+  dsp->reset = true;
+  dsp->masterVolumeL = 0;
+  dsp->masterVolumeR = 0;
+  dsp->noiseSample = -0x4000;
+  dsp->noiseRate = 0;
+  dsp->noiseCounter = 0;
+  dsp->echoWrites = false;
+  dsp->echoVolumeL = 0;
+  dsp->echoVolumeR = 0;
+  dsp->feedbackVolume = 0;
+  dsp->echoBufferAdr = 0;
+  dsp->echoDelay = 1;
+  dsp->echoRemain = 1;
+  dsp->echoBufferIndex = 0;
+  dsp->firBufferIndex = 0;
+  memset(dsp->firValues, 0, sizeof(dsp->firValues));
+  memset(dsp->firBufferL, 0, sizeof(dsp->firBufferL));
+  memset(dsp->firBufferR, 0, sizeof(dsp->firBufferR));
+  memset(dsp->sampleBuffer, 0, sizeof(dsp->sampleBuffer));
+  dsp->sampleWrite = 0;
+  dsp->sampleRead = 0;
+}
+
+void dsp_saveload(Dsp *dsp, SaveLoadInfo *sli) {
+  sli->func(sli, &dsp->ram, sizeof(Dsp) - offsetof(Dsp, ram));
+}
+
+void dsp_cycle(Dsp* dsp) {
+  int totalL = 0;
+  int totalR = 0;
+  for(int i = 0; i < 8; i++) {
+    dsp_cycleChannel(dsp, i);
+    totalL += (dsp->channel[i].sampleOut * dsp->channel[i].volumeL) >> 6;
+    totalR += (dsp->channel[i].sampleOut * dsp->channel[i].volumeR) >> 6;
+    totalL = totalL < -0x8000 ? -0x8000 : (totalL > 0x7fff ? 0x7fff : totalL); // clamp 16-bit
+    totalR = totalR < -0x8000 ? -0x8000 : (totalR > 0x7fff ? 0x7fff : totalR); // clamp 16-bit
+  }
+  totalL = (totalL * dsp->masterVolumeL) >> 7;
+  totalR = (totalR * dsp->masterVolumeR) >> 7;
+  totalL = totalL < -0x8000 ? -0x8000 : (totalL > 0x7fff ? 0x7fff : totalL); // clamp 16-bit
+  totalR = totalR < -0x8000 ? -0x8000 : (totalR > 0x7fff ? 0x7fff : totalR); // clamp 16-bit
+  // Verified-enhancement shadow (opt-in, default off): re-render the dry voice
+  // mix with better interpolation and substitute it ONLY once it has proven it
+  // matches this canon dry mix. No-op (totalL/R unchanged) when disabled or
+  // unproven, so default output is byte-identical. Echo below applies to the
+  // chosen dry mix either way.
+  if (dsp->shadow) {
+    int sL = totalL, sR = totalR;
+    dsp_shadow_process((DspShadow*)dsp->shadow, dsp, totalL, totalR, &sL, &sR);
+    totalL = sL;
+    totalR = sR;
+  }
+  dsp_handleEcho(dsp, &totalL, &totalR);
+  if(dsp->mute) {
+    totalL = 0;
+    totalR = 0;
+  }
+  dsp_handleNoise(dsp);
+  // Write into the output ring. Drop ONLY on a true ring overflow
+  // (~256 ms unconsumed = the audio thread has stalled), which never
+  // happens under normal pacing. The old code instead dropped on every
+  // catch-up burst past 534 samples, which is the music-rate tick.
+  uint32_t fill = dsp->sampleWrite - dsp->sampleRead;
+  int dropped = fill >= DSP_SAMPLE_RING;
+  if (!dropped) {
+    uint32_t w = dsp->sampleWrite & (DSP_SAMPLE_RING - 1);
+    dsp->sampleBuffer[w * 2] = totalL;
+    dsp->sampleBuffer[w * 2 + 1] = totalR;
+    dsp->sampleWrite++;
+  }
+  audio_trace_on_sample((int16_t)totalL, (int16_t)totalR, dropped,
+                        dropped ? fill : fill + 1);
+  dsp->evenCycle = !dsp->evenCycle;
+}
+
+static void dsp_handleEcho(Dsp* dsp, int* outputL, int* outputR) {
+  // get value out of ram
+  uint16_t adr = dsp->echoBufferAdr + dsp->echoBufferIndex * 4;
+  dsp->firBufferL[dsp->firBufferIndex] = (
+    dsp->apu_ram[adr] + (dsp->apu_ram[(adr + 1) & 0xffff] << 8)
+  );
+  dsp->firBufferL[dsp->firBufferIndex] >>= 1;
+  dsp->firBufferR[dsp->firBufferIndex] = (
+    dsp->apu_ram[(adr + 2) & 0xffff] + (dsp->apu_ram[(adr + 3) & 0xffff] << 8)
+  );
+  dsp->firBufferR[dsp->firBufferIndex] >>= 1;
+  // calculate FIR-sum
+  int sumL = 0, sumR = 0;
+  for(int i = 0; i < 7; i++) {
+    sumL += (dsp->firBufferL[(dsp->firBufferIndex + i + 1) & 0x7] * dsp->firValues[i]) >> 6;
+    sumR += (dsp->firBufferR[(dsp->firBufferIndex + i + 1) & 0x7] * dsp->firValues[i]) >> 6;
+  }
+  // Hardware clips the first seven taps, casts tap 7 independently to signed
+  // 16-bit, then clamps and clears the result LSB.
+  sumL = (int16_t)sumL;
+  sumR = (int16_t)sumR;
+  sumL += (int16_t)((dsp->firBufferL[dsp->firBufferIndex] * dsp->firValues[7]) >> 6);
+  sumR += (int16_t)((dsp->firBufferR[dsp->firBufferIndex] * dsp->firValues[7]) >> 6);
+  sumL = sumL < -0x8000 ? -0x8000 : (sumL > 0x7fff ? 0x7fff : sumL); // clamp 16-bit
+  sumR = sumR < -0x8000 ? -0x8000 : (sumR > 0x7fff ? 0x7fff : sumR); // clamp 16-bit
+  sumL &= ~1;
+  sumR &= ~1;
+#if defined(SNESRECOMP_TRACE)
+  dsp_shadow_verify_echo(dsp->firBufferL, dsp->firBufferR, dsp->firValues,
+                         dsp->firBufferIndex, sumL, sumR);
+#endif
+  // modify output with sum
+  int outL = *outputL + ((sumL * dsp->echoVolumeL) >> 7);
+  int outR = *outputR + ((sumR * dsp->echoVolumeR) >> 7);
+  *outputL = outL < -0x8000 ? -0x8000 : (outL > 0x7fff ? 0x7fff : outL); // clamp 16-bit
+  *outputR = outR < -0x8000 ? -0x8000 : (outR > 0x7fff ? 0x7fff : outR); // clamp 16-bit
+  // get echo input
+  int inL = 0, inR = 0;
+  for(int i = 0; i < 8; i++) {
+    if(dsp->channel[i].echoEnable) {
+      inL += (dsp->channel[i].sampleOut * dsp->channel[i].volumeL) >> 6;
+      inR += (dsp->channel[i].sampleOut * dsp->channel[i].volumeR) >> 6;
+      inL = inL < -0x8000 ? -0x8000 : (inL > 0x7fff ? 0x7fff : inL); // clamp 16-bit
+      inR = inR < -0x8000 ? -0x8000 : (inR > 0x7fff ? 0x7fff : inR); // clamp 16-bit
+    }
+  }
+  // write this to ram
+  inL += (sumL * dsp->feedbackVolume) >> 7;
+  inR += (sumR * dsp->feedbackVolume) >> 7;
+  inL = inL < -0x8000 ? -0x8000 : (inL > 0x7fff ? 0x7fff : inL); // clamp 16-bit
+  inR = inR < -0x8000 ? -0x8000 : (inR > 0x7fff ? 0x7fff : inR); // clamp 16-bit
+  inL &= 0xfffe;
+  inR &= 0xfffe;
+  if(dsp->echoWrites) {
+    dsp->apu_ram[adr] = inL & 0xff;
+    dsp->apu_ram[(adr + 1) & 0xffff] = inL >> 8;
+    dsp->apu_ram[(adr + 2) & 0xffff] = inR & 0xff;
+    dsp->apu_ram[(adr + 3) & 0xffff] = inR >> 8;
+  }
+  // handle indexes
+  dsp->firBufferIndex++;
+  dsp->firBufferIndex &= 7;
+  dsp->echoBufferIndex++;
+  dsp->echoRemain--;
+  if(dsp->echoRemain == 0) {
+    dsp->echoRemain = dsp->echoDelay;
+    dsp->echoBufferIndex = 0;
+  }
+}
+
+static void dsp_cycleChannel(Dsp* dsp, int ch) {
+  // handle pitch counter
+  uint16_t pitch = dsp->channel[ch].pitch;
+  if(ch > 0 && dsp->channel[ch].pitchModulation) {
+    int factor = (dsp->channel[ch - 1].sampleOut >> 4) + 0x400;
+    pitch = (pitch * factor) >> 10;
+    if(pitch > 0x3fff) pitch = 0x3fff;
+  }
+  int newCounter = dsp->channel[ch].pitchCounter + pitch;
+  if(newCounter > 0xffff) {
+    // next sample
+    dsp_decodeBrr(dsp, ch);
+  }
+  dsp->channel[ch].pitchCounter = newCounter;
+  int16_t sample = 0;
+  if(dsp->channel[ch].useNoise) {
+    sample = dsp->noiseSample;
+  } else {
+    sample = dsp_getSample(dsp, ch, dsp->channel[ch].pitchCounter >> 12, (dsp->channel[ch].pitchCounter >> 4) & 0xff);
+  }
+  // Key-on/off is LATCHED and polled every other sample, KOF taking
+  // priority — hardware behavior (and what the snes9x oracle does).
+  // The inherited port code (`MY_CHANGES`) instead applied KON/KOF
+  // immediately inside dsp_write, a hardware deviation kept here since
+  // the initial import with no recorded rationale; issue #4 made it a
+  // suspect for note-level divergence, so it was removed in favor of
+  // this latched path. A pending keyOn survives while keyOff is held
+  // (engine clears $5C later -> voice starts at the next poll), exactly
+  // as on hardware.
+  if(dsp->evenCycle) {
+    // handle keyon/off (every other cycle)
+    if(dsp->channel[ch].keyOff) {
+      // go to release
+      dsp->channel[ch].adsrState = 4;
+    } else if(dsp->channel[ch].keyOn) {
+      dsp->channel[ch].keyOn = false;
+      // restart current sample
+      dsp->channel[ch].previousFlags = 0;
+      uint16_t samplePointer = dsp->dirPage + 4 * dsp->channel[ch].srcn;
+      dsp->channel[ch].decodeOffset = dsp->apu_ram[samplePointer];
+      dsp->channel[ch].decodeOffset |= dsp->apu_ram[(samplePointer + 1) & 0xffff] << 8;
+      memset(dsp->channel[ch].decodeBuffer, 0, sizeof(dsp->channel[ch].decodeBuffer));
+      dsp->channel[ch].gain = 0;
+      // Key-on always enters the ATTACK stage; whether the envelope VALUE
+      // follows ADSR or the GAIN program is decided live per tick (the
+      // stage machine is source-independent — see dsp_handleGain).
+      dsp->channel[ch].adsrState = 0;
+    }
+  }
+  // handle reset
+  if(dsp->reset) {
+    dsp->channel[ch].adsrState = 4;
+    dsp->channel[ch].gain = 0;
+  }
+  // Envelope. The SOURCE (ADSR vs GAIN) is re-read from the live register
+  // state on EVERY tick — hardware behavior (bsnes/blargg run_envelope).
+  // The Capcom driver's standard note-off is a mid-note source switch:
+  // clear ADSR1.7 with GAIN preloaded to an exponential decrease, letting
+  // the note fade on the GAIN program. The previous code latched the
+  // source into adsrState at key-on only, so such voices stayed in
+  // ADSR-sustain (often rate 0 = frozen envelope) and sustained FOREVER —
+  // MMX issue #4's "stuck note". The adsrState value now tracks only the
+  // ADSR STAGE (0 attack / 1 decay / 2 sustain / 4 release); stage
+  // transitions keep running under GAIN so a switch back to ADSR resumes
+  // in the right stage. (Legacy state 3 from old savestates is treated
+  // as sustain; its voices necessarily have useGain set.)
+  bool releasing = dsp->channel[ch].adsrState == 4;
+  bool liveGain = !releasing && dsp->channel[ch].useGain;
+  bool doingDirectGain = liveGain && dsp->channel[ch].directGain;
+  uint16_t rate;
+  if(releasing) {
+    rate = 0;
+  } else if(liveGain) {
+    rate = doingDirectGain ? 0 : dsp->channel[ch].adsrRates[3];
+  } else {
+    int stage = dsp->channel[ch].adsrState;
+    if(stage > 2) stage = 2;
+    rate = dsp->channel[ch].adsrRates[stage];
+  }
+  if(!releasing && !doingDirectGain && rate != 0) {
+    dsp->channel[ch].rateCounter++;
+  }
+  if(releasing || (!doingDirectGain && dsp->channel[ch].rateCounter >= rate && rate != 0)) {
+    if(!releasing) dsp->channel[ch].rateCounter = 0;
+    dsp_handleGain(dsp, ch, liveGain);
+  }
+  if(doingDirectGain) dsp->channel[ch].gain = dsp->channel[ch].gainValue;
+  // set outputs
+  dsp->ram[(ch << 4) | 8] = dsp->channel[ch].gain >> 4;
+  sample = (sample * dsp->channel[ch].gain) >> 11;
+  dsp->ram[(ch << 4) | 9] = sample >> 7;
+  dsp->channel[ch].sampleOut = sample;
+}
+
+static void dsp_handleGain(Dsp* dsp, int ch, bool liveGain) {
+  if(dsp->channel[ch].adsrState == 4) { // release
+    dsp->channel[ch].gain -= 8;
+    // decreasing below 0 will underflow to above 0x7ff
+    if(dsp->channel[ch].gain > 0x7ff) dsp->channel[ch].gain = 0;
+    return;
+  }
+  if(liveGain) {
+    // GAIN custom program (ADSR1.7 clear, GAIN.7 set) — read live each tick.
+    switch(dsp->channel[ch].gainMode) {
+      case 0: { // linear decrease
+        dsp->channel[ch].gain -= 32;
+        // decreasing below 0 will underflow to above 0x7ff
+        if(dsp->channel[ch].gain > 0x7ff) dsp->channel[ch].gain = 0;
+        break;
+      }
+      case 1: { // exponential decrease
+        dsp->channel[ch].gain -= ((dsp->channel[ch].gain - 1) >> 8) + 1;
+        break;
+      }
+      case 2: { // linear increase
+        dsp->channel[ch].gain += 32;
+        if(dsp->channel[ch].gain > 0x7ff) dsp->channel[ch].gain = 0x7ff;
+        break;
+      }
+      case 3: { // bent increase
+        dsp->channel[ch].gain += dsp->channel[ch].gain < 0x600 ? 32 : 8;
+        if(dsp->channel[ch].gain > 0x7ff) dsp->channel[ch].gain = 0x7ff;
+        break;
+      }
+    }
+  } else {
+    switch(dsp->channel[ch].adsrState) {
+      case 0: { // attack
+        uint16_t rate = dsp->channel[ch].adsrRates[0];
+        dsp->channel[ch].gain += rate == 1 ? 1024 : 32;
+        if(dsp->channel[ch].gain > 0x7ff) dsp->channel[ch].gain = 0x7ff;
+        break;
+      }
+      case 1: { // decay
+        dsp->channel[ch].gain -= ((dsp->channel[ch].gain - 1) >> 8) + 1;
+        break;
+      }
+      default: { // sustain (incl. legacy state 3 from old savestates)
+        dsp->channel[ch].gain -= ((dsp->channel[ch].gain - 1) >> 8) + 1;
+        break;
+      }
+    }
+  }
+  // ADSR STAGE transitions run under BOTH sources (hardware: the stage
+  // machine keeps tracking the envelope level even while GAIN drives it,
+  // so flipping back to ADSR mid-note resumes in the right stage).
+  if(dsp->channel[ch].adsrState == 0 && dsp->channel[ch].gain >= 0x7e0) {
+    dsp->channel[ch].adsrState = 1;
+    if(dsp->channel[ch].gain > 0x7ff) dsp->channel[ch].gain = 0x7ff;
+  } else if(dsp->channel[ch].adsrState == 1 &&
+            dsp->channel[ch].gain < dsp->channel[ch].sustainLevel) {
+    dsp->channel[ch].adsrState = 2;
+  }
+}
+
+int16_t dsp_getSample(Dsp* dsp, int ch, int sampleNum, int offset) {
+  int16_t news = dsp->channel[ch].decodeBuffer[sampleNum + 3];
+  int16_t olds = dsp->channel[ch].decodeBuffer[sampleNum + 2];
+  int16_t olders = dsp->channel[ch].decodeBuffer[sampleNum + 1];
+  int16_t oldests = dsp->channel[ch].decodeBuffer[sampleNum];
+  int out = (gaussValues[0xff - offset] * oldests) >> 10;
+  out += (gaussValues[0x1ff - offset] * olders) >> 10;
+  out += (gaussValues[0x100 + offset] * olds) >> 10;
+  out = ((int16_t) (out & 0xffff)); // clip 16-bit
+  out += (gaussValues[offset] * news) >> 10;
+  out = out < -0x8000 ? -0x8000 : (out > 0x7fff ? 0x7fff : out); // clamp 16-bit
+  return out >> 1;
+}
+
+static void dsp_decodeBrr(Dsp* dsp, int ch) {
+  // copy last 3 samples (16-18) to first 3 for interpolation
+  dsp->channel[ch].decodeBuffer[0] = dsp->channel[ch].decodeBuffer[16];
+  dsp->channel[ch].decodeBuffer[1] = dsp->channel[ch].decodeBuffer[17];
+  dsp->channel[ch].decodeBuffer[2] = dsp->channel[ch].decodeBuffer[18];
+  // handle flags from previous block
+  if(dsp->channel[ch].previousFlags == 1 || dsp->channel[ch].previousFlags == 3) {
+    // loop sample
+    uint16_t samplePointer = dsp->dirPage + 4 * dsp->channel[ch].srcn;
+    dsp->channel[ch].decodeOffset = dsp->apu_ram[(samplePointer + 2) & 0xffff];
+    dsp->channel[ch].decodeOffset |= (dsp->apu_ram[(samplePointer + 3) & 0xffff]) << 8;
+    if(dsp->channel[ch].previousFlags == 1) {
+      // also release and clear gain
+      dsp->channel[ch].adsrState = 4;
+      dsp->channel[ch].gain = 0;
+    }
+    dsp->ram[0x7c] |= 1 << ch; // set ENDx
+  }
+#if defined(SNESRECOMP_TRACE)
+  /* Dev faithful-reference: capture this BRR block's start + the two seed
+   * samples before canon decodes, so the reference can re-decode the same block
+   * (dsp_shadow_verify_brr below). */
+  uint16_t _brr_blk = dsp->channel[ch].decodeOffset;
+  int _brr_old = dsp->channel[ch].old, _brr_older = dsp->channel[ch].older;
+#endif
+  uint8_t header = dsp->apu_ram[dsp->channel[ch].decodeOffset++];
+  int shift = header >> 4;
+  int filter = (header & 0xc) >> 2;
+  dsp->channel[ch].previousFlags = header & 0x3;
+  uint8_t curByte = 0;
+  int old = dsp->channel[ch].old;
+  int older = dsp->channel[ch].older;
+  for(int i = 0; i < 16; i++) {
+    int s = 0;
+    if(i & 1) {
+      s = curByte & 0xf;
+    } else {
+      curByte = dsp->apu_ram[dsp->channel[ch].decodeOffset++];
+      s = curByte >> 4;
+    }
+    if(s > 7) s -= 16;
+    if(shift <= 0xc) {
+      s = (s << shift) >> 1;
+    } else {
+      /* Invalid/high BRR shifts (13-15) preserve only the sign contribution.
+       * This is the hardware/blargg operation in canon's half-scale domain:
+       * negative nybbles become -2048 and nonnegative nybbles become 0 before
+       * filtering. The old expression produced -4096, doubling these samples. */
+      s &= ~0x7ff;
+    }
+    switch(filter) {
+      case 1: s += old + (-old >> 4); break;
+      case 2: s += 2 * old + ((3 * -old) >> 5) - older + (older >> 4); break;
+      case 3: s += 2 * old + ((13 * -old) >> 6) - older + ((3 * older) >> 4); break;
+    }
+    s = s < -0x8000 ? -0x8000 : (s > 0x7fff ? 0x7fff : s); // clamp 16-bit
+    s = ((int16_t) ((s & 0x7fff) << 1)) >> 1; // clip 15-bit
+    older = old;
+    old = s;
+    dsp->channel[ch].decodeBuffer[i + 3] = s;
+  }
+  dsp->channel[ch].older = older;
+  dsp->channel[ch].old = old;
+#if defined(SNESRECOMP_TRACE)
+  dsp_shadow_verify_brr(dsp->apu_ram, _brr_blk, _brr_old, _brr_older,
+                        &dsp->channel[ch].decodeBuffer[3]);
+#endif
+}
+
+static void dsp_handleNoise(Dsp* dsp) {
+  if(dsp->noiseRate != 0) {
+    dsp->noiseCounter++;
+  }
+  if(dsp->noiseCounter >= dsp->noiseRate && dsp->noiseRate != 0) {
+    int bit = (dsp->noiseSample & 1) ^ ((dsp->noiseSample >> 1) & 1);
+    dsp->noiseSample = ((dsp->noiseSample >> 1) & 0x3fff) | (bit << 14);
+    dsp->noiseSample = ((int16_t) ((dsp->noiseSample & 0x7fff) << 1)) >> 1;
+    dsp->noiseCounter = 0;
+  }
+}
+
+uint8_t dsp_read(Dsp* dsp, uint8_t adr) {
+  return dsp->ram[adr];
+}
+
+void dsp_write(Dsp* dsp, uint8_t adr, uint8_t val) {
+  audio_trace_on_reg_write(adr, val);
+  int ch = adr >> 4;
+  switch(adr) {
+    case 0x00: case 0x10: case 0x20: case 0x30: case 0x40: case 0x50: case 0x60: case 0x70: {
+      dsp->channel[ch].volumeL = val;
+      break;
+    }
+    case 0x01: case 0x11: case 0x21: case 0x31: case 0x41: case 0x51: case 0x61: case 0x71: {
+      dsp->channel[ch].volumeR = val;
+      break;
+    }
+    case 0x02: case 0x12: case 0x22: case 0x32: case 0x42: case 0x52: case 0x62: case 0x72: {
+      dsp->channel[ch].pitch = (dsp->channel[ch].pitch & 0x3f00) | val;
+      break;
+    }
+    case 0x03: case 0x13: case 0x23: case 0x33: case 0x43: case 0x53: case 0x63: case 0x73: {
+      dsp->channel[ch].pitch = ((dsp->channel[ch].pitch & 0x00ff) | (val << 8)) & 0x3fff;
+      break;
+    }
+    case 0x04: case 0x14: case 0x24: case 0x34: case 0x44: case 0x54: case 0x64: case 0x74: {
+      dsp->channel[ch].srcn = val;
+      break;
+    }
+    case 0x05: case 0x15: case 0x25: case 0x35: case 0x45: case 0x55: case 0x65: case 0x75: {
+      dsp->channel[ch].adsrRates[0] = rateValues[(val & 0xf) * 2 + 1];
+      dsp->channel[ch].adsrRates[1] = rateValues[((val & 0x70) >> 4) * 2 + 16];
+      dsp->channel[ch].useGain = (val & 0x80) == 0;
+      break;
+    }
+    case 0x06: case 0x16: case 0x26: case 0x36: case 0x46: case 0x56: case 0x66: case 0x76: {
+      dsp->channel[ch].adsrRates[2] = rateValues[val & 0x1f];
+      dsp->channel[ch].sustainLevel = (((val & 0xe0) >> 5) + 1) * 0x100;
+      break;
+    }
+    case 0x07: case 0x17: case 0x27: case 0x37: case 0x47: case 0x57: case 0x67: case 0x77: {
+      dsp->channel[ch].directGain = (val & 0x80) == 0;
+      if(val & 0x80) {
+        dsp->channel[ch].gainMode = (val & 0x60) >> 5;
+        dsp->channel[ch].adsrRates[3] = rateValues[val & 0x1f];
+      } else {
+        dsp->channel[ch].gainValue = (val & 0x7f) * 16;
+      }
+      break;
+    }
+    case 0x0c: {
+      dsp->masterVolumeL = val;
+      break;
+    }
+    case 0x1c: {
+      dsp->masterVolumeR = val;
+      break;
+    }
+    case 0x2c: {
+      dsp->echoVolumeL = val;
+      break;
+    }
+    case 0x3c: {
+      dsp->echoVolumeR = val;
+      break;
+    }
+    case 0x4c: {
+      // Latch only; the per-channel poll in dsp_cycleChannel applies
+      // KON every other sample with KOF priority (hardware behavior).
+      for(int ch = 0; ch < 8; ch++) {
+        dsp->channel[ch].keyOn = val & (1 << ch);
+      }
+      break;
+    }
+    case 0x5c: {
+      for(int ch = 0; ch < 8; ch++) {
+        dsp->channel[ch].keyOff = val & (1 << ch);
+      }
+      break;
+    }
+    case 0x6c: {
+      dsp->reset = val & 0x80;
+      dsp->mute = val & 0x40;
+      dsp->echoWrites = (val & 0x20) == 0;
+      dsp->noiseRate = rateValues[val & 0x1f];
+      break;
+    }
+    case 0x7c: {
+      val = 0; // any write clears ENDx
+      break;
+    }
+    case 0x0d: {
+      dsp->feedbackVolume = val;
+      break;
+    }
+    case 0x2d: {
+      for(int i = 0; i < 8; i++) {
+        dsp->channel[i].pitchModulation = val & (1 << i);
+      }
+      break;
+    }
+    case 0x3d: {
+      for(int i = 0; i < 8; i++) {
+        dsp->channel[i].useNoise = val & (1 << i);
+      }
+      break;
+    }
+    case 0x4d: {
+      for(int i = 0; i < 8; i++) {
+        dsp->channel[i].echoEnable = val & (1 << i);
+      }
+      break;
+    }
+    case 0x5d: {
+      dsp->dirPage = val << 8;
+      break;
+    }
+    case 0x6d: {
+      dsp->echoBufferAdr = val << 8;
+      break;
+    }
+    case 0x7d: {
+      dsp->echoDelay = (val & 0xf) * 512; // 2048-byte steps, stereo sample is 4 bytes
+      if(dsp->echoDelay == 0) dsp->echoDelay = 1;
+      break;
+    }
+    case 0x0f: case 0x1f: case 0x2f: case 0x3f: case 0x4f: case 0x5f: case 0x6f: case 0x7f: {
+      dsp->firValues[ch] = val;
+      break;
+    }
+  }
+  dsp->ram[adr] = val;
+}
+
+uint32_t dsp_available(const Dsp* dsp) {
+  return dsp->sampleWrite - dsp->sampleRead;
+}
+
+void dsp_peek(const Dsp* dsp, uint32_t offset, int16_t* l, int16_t* r) {
+  uint32_t idx = (dsp->sampleRead + offset) & (DSP_SAMPLE_RING - 1);
+  *l = dsp->sampleBuffer[idx * 2];
+  *r = dsp->sampleBuffer[idx * 2 + 1];
+}
+
+void dsp_advance(Dsp* dsp, uint32_t natives) {
+  uint32_t available = dsp->sampleWrite - dsp->sampleRead;
+  if (natives > available) natives = available;
+  if (natives == 0) return;
+  uint32_t base = dsp->sampleRead;
+  dsp->sampleRead += natives;
+  audio_trace_on_consume(base, natives, dsp->sampleWrite - dsp->sampleRead);
+}
+
+uint32_t dsp_getSamples(Dsp* dsp, int16_t* sampleData, int frames) {
+  // Exact-consume 1:1 copy at the native rate. Retires precisely as many
+  // natives as it emits frames, so a caller's request size can never put the
+  // ring out of balance (see the contract note in dsp.h).
+  if (frames <= 0) return 0;
+  uint32_t available = dsp->sampleWrite - dsp->sampleRead;
+  uint32_t n = (uint32_t)frames < available ? (uint32_t)frames : available;
+  uint32_t base = dsp->sampleRead;
+  for (uint32_t i = 0; i < n; i++) {
+    uint32_t idx = (base + i) & (DSP_SAMPLE_RING - 1);
+    sampleData[i * 2] = dsp->sampleBuffer[idx * 2];
+    sampleData[i * 2 + 1] = dsp->sampleBuffer[idx * 2 + 1];
+  }
+  if (n != 0) {
+    dsp->sampleRead += n;
+    audio_trace_on_consume(base, n, dsp->sampleWrite - dsp->sampleRead);
+  }
+  return n;
+}
+
+uint32_t dsp_trimSamples(Dsp* dsp, uint32_t samples_to_keep) {
+  uint32_t available = dsp->sampleWrite - dsp->sampleRead;
+  if (samples_to_keep > available)
+    samples_to_keep = available;
+  uint32_t discarded = available - samples_to_keep;
+  dsp->sampleRead += discarded;
+  return discarded;
+}

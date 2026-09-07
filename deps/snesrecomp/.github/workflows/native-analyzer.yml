@@ -1,0 +1,70 @@
+name: Native analyzer
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86-64
+            os: ubuntu-latest
+            artifact: linux-x86_64
+            executable: snesrecomp-analyze
+          - name: Windows x86-64
+            os: windows-latest
+            artifact: windows-x86_64
+            executable: snesrecomp-analyze.exe
+          - name: macOS arm64
+            os: macos-latest
+            artifact: macos-arm64
+            executable: snesrecomp-analyze
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Select pinned Rust toolchain
+        working-directory: recompiler-rs
+        run: rustup show active-toolchain
+      - name: Check Rust formatting and lints
+        if: runner.os == 'Linux'
+        working-directory: recompiler-rs
+        run: |
+          cargo fmt -- --check
+          cargo clippy --locked --release --all-targets -- -D warnings
+      - name: Build and test native analyzer
+        run: python tools/build_native_analyzer.py --test
+      - name: Run Python compatibility tests
+        if: runner.os == 'Linux'
+        run: |
+          python tests/run_tests.py
+          python tests/v2/run_tests.py
+      - name: Run C runtime tests
+        if: runner.os == 'Linux'
+        run: bash tests/run_c_tests.sh
+      - name: Package binary
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "recompiler-rs/target/release/${{ matrix.executable }}" dist/
+          Copy-Item LICENSE dist/
+          Copy-Item THIRD_PARTY_ATTRIBUTION.md dist/
+          $hash = (Get-FileHash "dist/${{ matrix.executable }}" -Algorithm SHA256).Hash.ToLower()
+          "$hash  ${{ matrix.executable }}" | Set-Content -Encoding ascii dist/SHA256SUMS
+          Compress-Archive -Path dist/* -DestinationPath "snesrecomp-analyzer-${{ matrix.artifact }}.zip"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: snesrecomp-analyzer-${{ matrix.artifact }}
+          path: snesrecomp-analyzer-${{ matrix.artifact }}.zip
+          if-no-files-found: error

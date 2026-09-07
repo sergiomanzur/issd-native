@@ -1,0 +1,15 @@
+/build/
+/build-*/
+/cmake-build-*/
+/.cache/
+*.o
+*.a
+*.obj
+*.lib
+*.exe
+*.dll
+*.so
+*.dylib
+.DS_Store
+compile_commands.json
+CMakeUserPresets.json

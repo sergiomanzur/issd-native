@@ -1,0 +1,5 @@
+name=International Superstar Soccer Deluxe (USA)
+rom_file=International Superstar Soccer Deluxe (USA).sfc
+rom_sha256=d2fe66c1ce66c65ce14e478c94be2e616f9e2cad374b5783a6a64d3c1a99cfa9
+normalized_size=2097152
+mapping=lorom

@@ -1,0 +1,25 @@
+# snesref ships only its own source (frontend.cpp, libretro.h, build.bat).
+# Everything below is supplied locally by the developer and is deliberately
+# NOT committed — chiefly to keep separately-licensed binaries out of this
+# repo (libretro cores carry their own, sometimes non-commercial, licenses;
+# SDL2 binaries ship under zlib). Provide these yourself to build/run.
+
+# SDL2 dev package + runtime DLL (zlib license, fetch from libsdl.org)
+SDL2-*/
+SDL2*.dll
+SDL2*.zip
+
+# libretro SNES core binaries — supply at runtime as argv[1].
+# (e.g. snes9x_libretro.dll — snes9x license is non-commercial; do NOT vendor)
+cores/
+*_libretro.dll
+*_libretro.dll.zip
+
+# build + run artifacts
+snesref.exe
+*.obj
+*.exe
+*_state*.bin
+*_trace.jsonl
+*_out.txt
+*_err.txt
