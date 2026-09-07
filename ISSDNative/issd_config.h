@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#define ISSD_CONFIG_ROM_PATH_MAX 1024
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -75,6 +77,9 @@ typedef struct {
     int key_p1_r;      /* Strategy */
     int key_p1_start;  /* Pause */
     int key_p1_select; /* Select */
+
+    /* ROM */
+    char rom_path[ISSD_CONFIG_ROM_PATH_MAX];
 } IssdConfig;
 
 extern IssdConfig g_issd_config;
@@ -82,6 +87,8 @@ extern IssdConfig g_issd_config;
 void issd_config_init_defaults(IssdConfig *cfg);
 bool issd_config_load(IssdConfig *cfg, const char *filepath);
 bool issd_config_save(const IssdConfig *cfg, const char *filepath);
+void issd_config_set_default_path(const char *filepath);
+const char *issd_config_get_default_path(void);
 
 #ifdef __cplusplus
 }

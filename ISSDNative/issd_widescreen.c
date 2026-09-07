@@ -43,13 +43,13 @@ static bool world_tile(const uint8_t *ram, unsigned layer,
   return true;
 }
 
-static void fill_pitch(Ppu *ppu, const uint8_t *ram, int extra) {
+static void fill_pitch(Ppu *ppu, const uint8_t *ram, int left, int right) {
   for (unsigned layer = 0; layer < 2; layer++) {
     /* PPU scroll registers retain ten bits. Recover the current world page
      * from WRAM, retaining the actual scanout offset (vertical is minus one). */
     int sx = (word(ram,0x13a0+layer*32)&~1023) | ppu->hScroll[layer];
     int sy = (word(ram,0x13b0+layer*32)&~1023) | ppu->vScroll[layer];
-    int first_x = (sx - extra) & ~7, last_x = (sx + 255 + extra) & ~7;
+    int first_x = (sx - left) & ~7, last_x = (sx + 255 + right) & ~7;
     for (int y = sy & ~7; y <= ((sy + 223) & ~7); y += 8) {
       for (int x = first_x; x <= last_x; x += 8) {
         /* Shared partial edge tiles already belong to the original view. */
@@ -72,11 +72,18 @@ static bool rom_byte(const uint8_t *rom, size_t size, unsigned a, uint8_t *out) 
   return true;
 }
 
+typedef struct {
+  unsigned object;
+  bool missing_native_copy;
+} ObjectEntry;
+
 /* Supplemental OAM comes from the same sorted draw list ($8095E0), not from
- * interpolated/history sprites. Include only pieces the original horizontal
- * clipping rejected; existing native sprites and their priority stay intact. */
+ * interpolated/history sprites. If the native list already contains the object,
+ * include only pieces the original horizontal clipping rejected. If the native
+ * list omitted the whole object, every piece intersecting the widened viewport
+ * needs a supplemental copy because there is no native OAM to preserve. */
 static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
-                         size_t rom_size, int extra) {
+                         size_t rom_size, int left_extra, int right_extra) {
   static const uint8_t sizes[8][2] = {
     {8,16},{8,32},{8,64},{16,32},{16,64},{32,64},{16,32},{16,32}
   };
@@ -90,17 +97,24 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
       ((ppu->highOam[slot/4] >> ((slot%4)*2)) & 1) * 256;
     if (raw >= 512-64) left[slot/8] |= 1 << (slot%8);
   }
-  unsigned objects[128], count = 0;
+  ObjectEntry objects[128];
+  unsigned count = 0;
   while (count < 48 && word(ram, 0x1d40 + count*2)) {
-    objects[count] = word(ram,0x1d40+count*2); count++;
+    objects[count].object = word(ram,0x1d40+count*2);
+    objects[count].missing_native_copy = false;
+    count++;
   }
   /* $83CFE5 and $809B04 omit whole players at x<-32/x>=288. Their
    * simulation and current pose continue; recover them without changing the
    * shared offscreen flag, which gameplay routines also read. */
   for (unsigned object=0x400;object<0x1b00;object+=0x100) {
     bool exists=false;
-    for (unsigned i=0;i<count;i++) exists |= objects[i]==object;
-    if (!exists) objects[count++]=object;
+    for (unsigned i=0;i<count;i++) exists |= objects[i].object==object;
+    if (!exists && count < 128) {
+      objects[count].object=object;
+      objects[count].missing_native_copy=true;
+      count++;
+    }
   }
   /* Referee/assistants and field effects use the auxiliary draw records
    * enumerated by $809B28/$809B4A. Their zero pose is the inactive marker. */
@@ -110,20 +124,26 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
       unsigned object=base+offset;
       if (!word(ram,object)) continue;
       bool exists=false;
-      for (unsigned i=0;i<count;i++) exists |= objects[i]==object;
-      if (!exists) objects[count++]=object;
+      for (unsigned i=0;i<count;i++) exists |= objects[i].object==object;
+      if (!exists && count < 128) {
+        objects[count].object=object;
+        objects[count].missing_native_copy=true;
+        count++;
+      }
     }
   }
   for (unsigned i=1;i<count;i++) {
-    unsigned object=objects[i],j=i;
-    while (j && (int16_t)word(ram,objects[j-1]+0x12) > (int16_t)word(ram,object+0x12)) {
+    ObjectEntry entry=objects[i];
+    unsigned object=entry.object,j=i;
+    while (j && (int16_t)word(ram,objects[j-1].object+0x12) > (int16_t)word(ram,object+0x12)) {
       objects[j]=objects[j-1]; j--;
     }
-    objects[j]=object;
+    objects[j]=entry;
   }
   /* Nearer objects appear later in the game's list and have OAM priority. */
   while (count) {
-    unsigned object = objects[--count];
+    ObjectEntry entry = objects[--count];
+    unsigned object = entry.object;
     if (object < 0x400 || object > 0x1c40) continue;
     unsigned pose = word(ram, object);
     if (!pose) continue;
@@ -157,8 +177,10 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
       int y=(int16_t)word(ram,object+12)+(int16_t)word(ram,object+16)-(large?8:4)+dy;
       int native_left = !packed && large ? -32 : -16;
       int size=sizes[ppu->obsel>>5][large];
-      if ((x >= native_left && x < 256) || x + size <= -extra ||
-          x >= 256+extra || y+size <= 0 || y >= 224) continue;
+      bool native_part_visible = x >= native_left && x < 256;
+      if ((!entry.missing_native_copy && native_part_visible) ||
+          x + size <= -left_extra || x >= 256+right_extra ||
+          y+size <= 0 || y >= 224) continue;
       /* These are hardware parked entries, never an arbitrary visible slot. */
       while (free_slot<128 && ppu->oam[free_slot*2]!=0xf0f0) free_slot++;
       if (free_slot == 128) goto done;
@@ -207,8 +229,8 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   }
   PpuSetExtraSideSpace(ppu,left>0?left:0,right>0?right:0,0);
   PpuSetWidescreenLayerClamp(ppu,4); /* BG3 carries score, clock, map and names. */
-  fill_pitch(ppu,ram,extra);
-  fill_objects(ppu,ram,rom,rom_size,extra);
+  fill_pitch(ppu,ram,left>0?left:0,right>0?right:0);
+  fill_objects(ppu,ram,rom,rom_size,left>0?left:0,right>0?right:0);
   return true;
 }
 

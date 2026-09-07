@@ -347,7 +347,7 @@ bool issd_menu_confirm(void) {
             issd_menu_navigate_right();
             break;
         case 13: /* Save & Quit */
-            issd_config_save(&g_issd_config, "issd_config.json");
+            issd_config_save(&g_issd_config, NULL);
             exit(0);
             break;
         default:

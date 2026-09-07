@@ -74,7 +74,22 @@ int main(void) {
   assert(ram[0xd1e]==1);
   issd_widescreen_end(&ppu);
 
+  fixture();
+  /* Whole-object supplements must draw all intersecting pieces, even if an
+   * omitted player's leftmost piece starts inside the native 4:3 columns. The
+   * original draw list has no native copy to preserve in this case, so skipping
+   * x<256 pieces makes players pop in at the 4:3 boundary. */
+  word(0xd00,0x4040);word(0xd08,292);word(0xd0c,80);word(0xd1e,1);
+  word(0x4040,1);word(0x6040,(uint16_t)-40);word(0x8040,0);word(0xa040,0x24);
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71);
+  found=0;
+  for(int i=0;i<128;i++) if ((ppu.oam[2*i]>>8)==76 && (ppu.oam[2*i]&255)==248) found++;
+  assert(found==1);
+  assert(ram[0xd1e]==1);
+  issd_widescreen_end(&ppu);
+
   /* The same omitted whole object moves smoothly through the left margin. */
+  word(0x6040,0);
   word(0xd08,(uint16_t)-48);
   issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71);
   found=0;

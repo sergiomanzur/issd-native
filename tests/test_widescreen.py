@@ -51,9 +51,10 @@ def run(root, exe, rom, frames):
             ]:
                 colors = picture.crop(rectangle).getcolors(maxcolors=65536)
                 assert colors and len(colors) > 8, f"{name}: {side} pitch not expanded"
-            if name == "21_9" and frames == 1200:
+            if name in ("16_9", "21_9") and frames == 1200:
                 # Recorded regression: player D00 sits at x327 with a valid
-                # pose and native offscreen flag. Its blue jersey must appear.
+                # pose and native offscreen flag. Its blue jersey must appear
+                # in 16:9 too; otherwise players pop at the 4:3 boundary.
                 assert int.from_bytes(ram[0xd08:0xd0a], "little") == 327
                 assert ram[0xd1e] == 1
                 crop = picture.crop((margin+300, 0, width, 80))

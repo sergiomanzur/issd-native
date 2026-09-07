@@ -51,6 +51,7 @@ void RtlApuUnlock(void) {
 
 #ifdef _WIN32
 #include <windows.h>
+#include <commdlg.h>
 static LONG WINAPI CrashFilter(EXCEPTION_POINTERS *ep) {
     fprintf(stderr, "[CRASH] Exception Code: 0x%08lX at Address: %p\n",
             ep->ExceptionRecord->ExceptionCode,
@@ -236,6 +237,73 @@ static uint8_t *LoadRomFile(const char *path, size_t *out_size) {
     fclose(f);
     *out_size = (size_t)size;
     return data;
+}
+
+static bool FileExists(const char *path) {
+    if (!path || !path[0]) return false;
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    fclose(f);
+    return true;
+}
+
+static void BuildDefaultConfigPath(char *out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = '\0';
+#ifdef _WIN32
+    const char *appdata = getenv("APPDATA");
+    if (appdata && appdata[0]) {
+        char dir[1024];
+        snprintf(dir, sizeof(dir), "%s\\ISSDNative", appdata);
+        CreateDirectoryA(dir, NULL);
+        snprintf(out, out_size, "%s\\issd_native.cfg", dir);
+        return;
+    }
+#endif
+    snprintf(out, out_size, "issd_native.cfg");
+}
+
+static const char *ResolveConfigPath(char *out, size_t out_size, const char *cli_path) {
+    if (cli_path && cli_path[0]) {
+        snprintf(out, out_size, "%s", cli_path);
+        return out;
+    }
+    if (FileExists("issd_native.cfg")) {
+        snprintf(out, out_size, "%s", "issd_native.cfg");
+        return out;
+    }
+    if (FileExists("issd_config.json")) {
+        snprintf(out, out_size, "%s", "issd_config.json");
+        return out;
+    }
+    BuildDefaultConfigPath(out, out_size);
+    return out;
+}
+
+static bool PromptForRomFile(char *out, size_t out_size) {
+    if (!out || out_size == 0) return false;
+    out[0] = '\0';
+#ifdef _WIN32
+    char path[ISSD_CONFIG_ROM_PATH_MAX] = "";
+    OPENFILENAMEA ofn;
+    memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.lpstrFile = path;
+    ofn.nMaxFile = (DWORD)sizeof(path);
+    ofn.lpstrTitle = "Select your International Superstar Soccer Deluxe SNES ROM";
+    ofn.lpstrFilter =
+        "SNES ROMs (*.sfc;*.smc)\0*.sfc;*.smc\0"
+        "All files (*.*)\0*.*\0";
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+    if (GetOpenFileNameA(&ofn)) {
+        snprintf(out, out_size, "%s", path);
+        return true;
+    }
+    return false;
+#else
+    (void)out_size;
+    return false;
+#endif
 }
 
 static SDL_GameController *g_controller = NULL;
@@ -660,14 +728,8 @@ int main(int argc, char **argv) {
 #ifdef _WIN32
     SetUnhandledExceptionFilter(CrashFilter);
 #endif
-    /* Initialize subsystems */
-    issd_config_load(&g_issd_config, "issd_config.json");
-    issd_save_init();
-    issd_mod_init();
-    issd_mod_scan_and_load("mods");
-    issd_menu_init();
-
-    const char *rom_path = DEFAULT_ROM_PATH;
+    const char *cli_config_path = NULL;
+    const char *cli_rom_path = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--headless") == 0) {
             g_headless = true;
@@ -684,10 +746,44 @@ int main(int argc, char **argv) {
             g_dump_state_path = argv[++i];
         } else if (strcmp(argv[i], "--auto-start") == 0 && i + 1 < argc) {
             g_auto_start_frame = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
+            cli_config_path = argv[++i];
         } else if (argv[i][0] != '-') {
-            rom_path = argv[i];
+            cli_rom_path = argv[i];
         }
     }
+
+    char config_path[1024];
+    ResolveConfigPath(config_path, sizeof(config_path), cli_config_path);
+    issd_config_set_default_path(config_path);
+    issd_config_load(&g_issd_config, NULL);
+
+    issd_save_init();
+    issd_mod_init();
+    issd_mod_scan_and_load("mods");
+    issd_menu_init();
+
+    char rom_path_buffer[ISSD_CONFIG_ROM_PATH_MAX];
+    rom_path_buffer[0] = '\0';
+    bool picked_rom = false;
+    if (cli_rom_path && cli_rom_path[0]) {
+        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", cli_rom_path);
+    } else if (g_issd_config.rom_path[0] && FileExists(g_issd_config.rom_path)) {
+        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
+    } else if (FileExists(DEFAULT_ROM_PATH)) {
+        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", DEFAULT_ROM_PATH);
+    } else if (!g_headless && PromptForRomFile(rom_path_buffer, sizeof(rom_path_buffer))) {
+        picked_rom = true;
+    } else if (g_issd_config.rom_path[0]) {
+        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
+    } else {
+        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", DEFAULT_ROM_PATH);
+    }
+    if (rom_path_buffer[0]) {
+        snprintf(g_issd_config.rom_path, sizeof(g_issd_config.rom_path), "%s", rom_path_buffer);
+        if (picked_rom) issd_config_save(&g_issd_config, NULL);
+    }
+    const char *rom_path = rom_path_buffer;
 
     printf("====================================================\n");
     printf("  ISSD Native — International Superstar Soccer Deluxe\n");
@@ -700,6 +796,13 @@ int main(int argc, char **argv) {
     uint8_t *rom_data = LoadRomFile(rom_path, &rom_size);
     if (!rom_data) {
         fprintf(stderr, "[ERROR] Failed to read ROM file '%s'\n", rom_path);
+#ifdef _WIN32
+        if (!g_headless) {
+            MessageBoxA(NULL,
+                        "Failed to read the selected SNES ROM. Please choose a valid ISS Deluxe cartridge dump on the next run.",
+                        "ISSD Native", MB_ICONERROR | MB_OK);
+        }
+#endif
         return 1;
     }
     printf("[Init] ROM read successfully (%zu bytes)\n", rom_size);
@@ -1087,6 +1190,7 @@ int main(int argc, char **argv) {
         RecompStackBalDumpStderr(20);
     }
     printf("[Shutdown] Executed %u frames total. Shutting down...\n", frame_count);
+    issd_config_save(&g_issd_config, NULL);
 
     if (!g_headless) {
         if (audio_dev) SDL_CloseAudioDevice(audio_dev);

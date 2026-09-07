@@ -60,7 +60,7 @@ endif()
 snesrecomp_target_sdl(ISSDNative)
 
 if(WIN32)
-    target_link_libraries(ISSDNative PRIVATE winmm ws2_32)
+    target_link_libraries(ISSDNative PRIVATE winmm ws2_32 comdlg32)
     # Copy SDL2.dll next to the target executable
     add_custom_command(TARGET ISSDNative POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
