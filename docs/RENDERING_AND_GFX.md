@@ -122,3 +122,42 @@ Extracted from [`AssetPointersAndFiles.asm`](file:///c:/Users/sergi/Homestead/co
 - `$89E40A` - `$89E44E`: Player morale smiley face icons (Purple, Yellow, Orange, Pink, Blue)
 - `$89E49E` - `$89E4E0`: Main menu stadium backgrounds (Blue & Red variants)
 - `$89F588` - `$89F652`: Intro cutscene players, spotlight, television static effect
+
+---
+
+## 6. Title Screen HDMA Split & Mode 3 (8bpp) Subsystem
+
+The main Title Screen ("PRESS START" screen, frame 3128+) uses a sophisticated hardware split driven by SNES **HDMA** (Horizontal DMA) channels 5, 6, and 7 enabled via `$420C = 0xE0`:
+
+```
+Scanlines 0..111:   Mode 1 (4bpp BG1/BG2, TM=$02)
+                     - "INTERNATIONAL SUPERSTAR SOCCER" logo (OBJ)
+                     - Deluxe golden ball (BG1) & red brush stroke (BG2)
+------------------------------------------------------------------------- Scanline 112 HDMA Split
+Scanlines 112..223: Mode 3 (8bpp BG1 256-color direct color, TM=$13)
+                     - 5 Real-life player action portraits (BG1 8bpp)
+                     - Red brush stroke continued (BG2 4bpp)
+                     - Blinking "PRESS START" and Konami copyright (OBJ)
+```
+
+### HDMA Channels & Tables
+- **Channel 6 (`$4360`, bAdr=`$05` -> `BGMODE`):**
+  - Table at `$81:8439`:
+    - Count 112 (lines 0..111): `0x01` (Mode 1: 4bpp BG1, 4bpp BG2, 2bpp BG3).
+    - Count 112 (lines 112..223): `0x03` (Mode 3: 8bpp BG1 256 colors, 4bpp BG2).
+- **Channel 5 (`$4350`, bAdr=`$2C` -> `TM` Main Screen Designation):**
+  - Table at `$81:8454`:
+    - Count 112 (lines 0..111): `0x02` (Only BG2 enabled; BG1 backdrop suppressed).
+    - Count 112 (lines 112..223): `0x13` (BG1, BG2, and OBJ enabled).
+- **Channel 7 (`$4370`, bAdr=`$26` -> `WH0/WH1` Window 1 Position):**
+  - Table at `$7E:EF10`: Shapes the angled photo frames and borders for the player cutouts.
+
+### Mode 3 8bpp Tile Addressing
+In Mode 3, BG1 characters are 8bpp (64 bytes = 32 words per tile) rather than 4bpp (16 words per tile).
+The BG1 tilemap at VRAM `$0000` references character indices `$101`..`$1E7`.
+Because Mode 3 addresses tiles at `tileAdr + character * 32`, character `$100` maps exactly to:
+$$\text{Word Address} = 0\text{x}2000 + 0\text{x}100 \times 32 = 0\text{x}2000 + 0\text{x}2000 = 0\text{x}4000$$
+which matches the decompression destination of `DATA_82996D` (`$A5CB7F` decompressed and interleaved by `bank_00_B816` into VRAM `$4000`..`$5E00`).
+
+In `ISSDNative/main.c`, `IssdDrawPpuFrame()` ticks `SimpleHdma_DoLine(&hdma[ch])` across scanlines 1..224, ensuring the Mode 3 transition and Windowing are applied on scanline 112.
+

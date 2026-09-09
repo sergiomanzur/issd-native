@@ -1169,9 +1169,8 @@ bool RtlApuWriteWaitEcho(CpuState *cpu, uint16 adr, uint16 val, bool wide) {
     apu_writePortNow(g_snes->apu, (port + 1) & 3, (uint8_t)(val >> 8));
   apu_writePortNow(g_snes->apu, port, (uint8_t)val);
 
-  static int s_consecutive_timeouts = 0;
   bool echoed = false;
-  uint32_t remaining = (s_consecutive_timeouts >= 2) ? 32 : 1024;
+  uint32_t remaining = 262144;
   while (remaining-- != 0) {
     uint16_t observed = g_snes->apu->outPorts[port];
     if (wide)
@@ -1179,13 +1178,16 @@ bool RtlApuWriteWaitEcho(CpuState *cpu, uint16 adr, uint16 val, bool wide) {
     if (observed == (wide ? val : (uint8_t)val)) {
       echoed = true;
       cpu->open_bus = wide ? (uint8_t)(observed >> 8) : (uint8_t)observed;
-      s_consecutive_timeouts = 0;
+      /* Allow SPC to retire post-echo acknowledge (e.g. MOV $F1, #$11 clearing port latches)
+       * before the guest CPU proceeds and writes the next command. */
+      for (int settle = 0; settle < 64; settle++) {
+        apu_cycle(g_snes->apu);
+      }
       break;
     }
     apu_cycle(g_snes->apu);
   }
   if (!echoed) {
-    s_consecutive_timeouts++;
     static uint32_t s_warn_count = 0;
     if (s_warn_count++ < 10) {
       fprintf(stderr,

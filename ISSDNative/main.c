@@ -179,7 +179,17 @@ static void IssdDrawPpuFrame(void) {
     issd_widescreen_begin(g_snes->ppu, g_ram, g_rom_data, g_rom_size,
                          g_ws_active ? g_ws_extra : 0);
 
-    for (int line = 0; line < SNES_HEIGHT; line++) {
+    SimpleHdma hdma[8];
+    for (int ch = 0; ch < 8; ch++) {
+        SimpleHdma_Init(&hdma[ch], &g_snes->dma->channel[ch]);
+    }
+
+    for (int line = 0; line <= SNES_HEIGHT; line++) {
+        if (line > 0) {
+            for (int ch = 0; ch < 8; ch++) {
+                SimpleHdma_DoLine(&hdma[ch]);
+            }
+        }
         ppu_runLine(g_snes->ppu, line);
     }
     ppu_handleVblank(g_snes->ppu);
