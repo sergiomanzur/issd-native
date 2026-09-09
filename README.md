@@ -22,8 +22,8 @@ The project translates the original 65816 machine code and SNES hardware interac
 | Metric | Status / Measurement | Description |
 | :--- | :--- | :--- |
 | **Playability & Stability** | **100% Verified** | Complete match simulation, menus, scenarios, and attract loops verified over 15,000+ continuous frames with 0 watchdog pauses. |
-| **Analyzed Unique Routines** | **4,457 routines** | All 65816 function entry points identified, cataloged, and decompiled. |
-| **Compiled AOT Function Variants** | **16,951 variants** | Full control-flow graph coverage across all 65816 M/X flag configurations (M0X0, M0X1, M1X0, M1X1). |
+| **Analyzed Unique Routines** | **5,035 / 5,035 (100.0%)** | All 65816 subroutines and entry points identified, cataloged, and accounted for in the call tree (verified via [`tools/audit_uncalled_routines.py`](tools/audit_uncalled_routines.py)). |
+| **Compiled AOT Function Variants** | **17,393 variants** | Full control-flow graph coverage across all 65816 M/X flag configurations (M0X0, M0X1, M1X0, M1X1) with 0 unresolved stubs. |
 | **Statically Dispatched Jump Tables** | **153 / 153 (100.0%)** | All `JMP (abs,X)` indirect dispatch sites across Banks $83–$A4 mapped to direct C static switches. |
 | **Native Asset Decompression HLE** | **100% Native C** | Custom Konami 5-mode LZSS/RLE decompressor reimplemented in native C ([`ISSDNative/issd_decompress.c`](ISSDNative/issd_decompress.c)), replacing slow 65816 bitstream loops and the WRAM MVN trampoline. |
 | **Native Audio Fast-Path HLE** | **100% Native C** | Konami SPC700 audio command protocol fast-pathed in C ([`ISSDNative/issd_audio.c`](ISSDNative/issd_audio.c)), eliminating 262k cycle spin-waits with 74 voice/sfx telemetry mappings. |
