@@ -26,6 +26,7 @@ set(GAME_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_save.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_mod.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_menu.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_decompress.c"
 )
 
 add_executable(ISSDNative
