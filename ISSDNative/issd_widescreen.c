@@ -19,9 +19,19 @@ static uint16_t word(const uint8_t *p, unsigned a) {
 bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram) {
   if (!ppu || !ram) return false;
   /* $80846C: 3=demo, 6=menus/game. $50 enables the match OAM builder.
-   * Mode alone cannot identify the pitch: menus share mode 6. */
-  unsigned mode = word(ram, 0x32), stride = word(ram, 0x1ffcc);
-  return (mode == 3 || mode == 6) && word(ram, 0x50) != 0 &&
+   * Mode alone cannot identify the pitch: menus share mode 6.
+   * Submode in $70: 0x08 = InGame match, 0x13 = Replay, 0x17 = Training mode.
+   * Pre-match coin toss / cutscenes share mode 6 + $50!=0, but lack wide
+   * pitch metatile maps in WRAM $7F8000. Pillarbox them with clean black bars. */
+  unsigned mode = word(ram, 0x32);
+  unsigned submode = word(ram, 0x70);
+  if (mode != 3 && mode != 6) return false;
+  if (submode != 0x08 && submode != 0x13 && submode != 0x17) return false;
+  /* Check coin toss state machine (CODE_8BC4E4: $38 == 0xC4E4, $3A == 0x8B) */
+  if (word(ram, 0x38) == 0xC4E4 && (word(ram, 0x3A) & 0xFF) == 0x8B) return false;
+
+  unsigned stride = word(ram, 0x1ffcc);
+  return word(ram, 0x50) != 0 &&
          (ppu->bgmode & 0xf7) == 1 && ppu->bgXsc[0] == 3 &&
          ppu->bgXsc[1] == 0x13 && stride >= 0x80 &&
          stride <= 0x340 && (stride & 63) == 0;
@@ -101,6 +111,11 @@ typedef struct {
   bool missing_native_copy;
 } ObjectEntry;
 
+static inline bool is_oam_slot_free(uint16_t oam_val) {
+  /* Parked or offscreen OAM slots in SNES have Y=240 (0xF0) or Y >= 224 */
+  return (oam_val == 0xf0f0) || ((oam_val >> 8) >= 224);
+}
+
 /* Supplemental OAM comes from the same sorted draw list ($8095E0), not from
  * interpolated/history sprites. If the native list already contains the object,
  * include only pieces the original horizontal clipping rejected. If the native
@@ -113,10 +128,10 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   };
   uint8_t left[16] = {0}, right[16] = {0};
   int free_slot = 0;
-  /* Existing negative sprites are genuine edge pieces; parked F0F0 entries
+  /* Existing negative sprites are genuine edge pieces; parked entries
    * never receive a hint. Positive 9-bit sprites require an explicit hint. */
   for (unsigned slot=0; slot<128; slot++) {
-    if (ppu->oam[slot*2] == 0xf0f0) continue;
+    if (is_oam_slot_free(ppu->oam[slot*2])) continue;
     unsigned raw = (ppu->oam[slot*2] & 255) |
       ((ppu->highOam[slot/4] >> ((slot%4)*2)) & 1) * 256;
     if (raw >= 512-64) left[slot/8] |= 1 << (slot%8);
@@ -128,32 +143,33 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     objects[count].missing_native_copy = false;
     count++;
   }
-  /* $83CFE5 and $809B04 omit whole players at x<-32/x>=288. Their
-   * simulation and current pose continue; recover them without changing the
-   * shared offscreen flag, which gameplay routines also read. */
+  /* Active players ($0400..$1B00 step $0100) not in the 4:3 list:
+   * add if they have an active pose */
   for (unsigned object=0x400;object<0x1b00;object+=0x100) {
+    if (!word(ram, object)) continue;
     bool exists=false;
-    for (unsigned i=0;i<count;i++) exists |= objects[i].object==object;
+    for (unsigned i=0;i<count;i++) {
+      if (objects[i].object==object) { exists=true; break; }
+    }
     if (!exists && count < 128) {
       objects[count].object=object;
       objects[count].missing_native_copy=true;
       count++;
     }
   }
-  /* Referee/assistants and field effects use the auxiliary draw records
-   * enumerated by $809B28/$809B4A. Their zero pose is the inactive marker. */
-  for (unsigned base=0x400;base<0xd00;base+=0x100) {
-    for (unsigned offset=0xa0;offset<=0xd0;offset+=0x30) {
-      if (offset==0xd0 && base<0x800) continue;
-      unsigned object=base+offset;
-      if (!word(ram,object)) continue;
-      bool exists=false;
-      for (unsigned i=0;i<count;i++) exists |= objects[i].object==object;
-      if (!exists && count < 128) {
-        objects[count].object=object;
-        objects[count].missing_native_copy=true;
-        count++;
-      }
+  /* Active match officials (referee, linesmen) */
+  const unsigned aux_officials[] = { 0x04A0, 0x08A0, 0x08D0 };
+  for (unsigned k=0; k < sizeof(aux_officials)/sizeof(aux_officials[0]); k++) {
+    unsigned object = aux_officials[k];
+    if (!word(ram, object)) continue;
+    bool exists=false;
+    for (unsigned i=0;i<count;i++) {
+      if (objects[i].object==object) { exists=true; break; }
+    }
+    if (!exists && count < 128) {
+      objects[count].object=object;
+      objects[count].missing_native_copy=true;
+      count++;
     }
   }
   for (unsigned i=1;i<count;i++) {
@@ -206,7 +222,7 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
           x + size <= -left_extra || x >= 256+right_extra ||
           y+size <= 0 || y >= 224) continue;
       /* These are hardware parked entries, never an arbitrary visible slot. */
-      while (free_slot<128 && ppu->oam[free_slot*2]!=0xf0f0) free_slot++;
+      while (free_slot<128 && !is_oam_slot_free(ppu->oam[free_slot*2])) free_slot++;
       if (free_slot == 128) goto done;
       unsigned color=(attr&0xc1)^props;
       if (attr&0x20) color = color&8 ? color|2 : (color&~4)|8;
@@ -224,19 +240,27 @@ done:
   PpuWsSetOamRightHints(ppu,right);
 }
 
+static int s_ws_extra = 0;
+
+bool Issd_IsWidescreenActive(void) {
+  return s_ws_extra > 0;
+}
+
 bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
                           size_t rom_size, int extra) {
-  if (!ppu) return false;
+  if (!ppu) { s_ws_extra = 0; return false; }
   if (frame.owner) issd_widescreen_end(frame.owner);
   if (extra < 0) extra=0;
   if (extra > 95) extra=95;
   PpuWsSetOamLeftHints(ppu,NULL); PpuWsSetOamRightHints(ppu,NULL);
   PpuSetWidescreenLayerClamp(ppu,0);
   for (int l=0;l<4;l++) PpuSetWidescreenLayerClampBand(ppu,l,0,0);
-  if (!extra) { PpuSetExtraSpace(ppu,0); return false; }
+  if (!extra) { s_ws_extra = 0; PpuSetExtraSpace(ppu,0); return false; }
   if (!issd_widescreen_pitch_layout(ppu,ram)) {
+    s_ws_extra = 0;
     PpuSetExtraSpaceCentered(ppu,(uint16_t)extra); return false;
   }
+  s_ws_extra = extra;
   frame.owner=ppu;
   memcpy(frame.vram,ppu->vram,sizeof(frame.vram));
   memcpy(frame.oam,ppu->oam,sizeof(frame.oam));
@@ -262,3 +286,4 @@ void issd_widescreen_end(Ppu *ppu) {
   memcpy(ppu->highOam,frame.high_oam,sizeof(frame.high_oam));
   frame.owner=NULL;
 }
+

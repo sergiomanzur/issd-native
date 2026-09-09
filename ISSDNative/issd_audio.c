@@ -177,45 +177,18 @@ bool Issd_HlePumpAudio(CpuState *cpu) {
 }
 
 bool Issd_HlePlayVoice(CpuState *cpu) {
-    if (!cpu || !g_snes || !g_snes->apu) return false;
+    if (!cpu) return false;
 
     uint16_t voice_id = cpu->A;
     s_last_voice_desc = Issd_GetVoiceName(voice_id);
     s_voice_dispatched++;
 
-    RtlApuLock();
-
-    uint8_t port2_val = (uint8_t)(voice_id & 0xFF);
-    uint8_t port1_cmd = (uint8_t)(0xF0 | (((voice_id >> 8) & 0x03) << 1));
-
-    /* Apply port writes to SPC */
-    apu_writePortNow(g_snes->apu, 2, port2_val);
-    apu_writePortNow(g_snes->apu, 1, port1_cmd);
-
-    /* Fast-step SPC until it echoes Port 1 */
-    for (int i = 0; i < 512; i++) {
-        if (g_snes->apu->outPorts[1] == port1_cmd) break;
-        apu_cycle(g_snes->apu);
-    }
-    g_snes->apu->outPorts[1] = port1_cmd;
-
-    /* Write acknowledge back to Port 1 */
-    apu_writePortNow(g_snes->apu, 1, 0);
-
-    RtlApuUnlock();
-
-    /* Reset pending voice request */
-    g_ram[0x1D2E] = 0;
-    g_ram[0x1D2F] = 0;
-    g_ram[0x1D30] = 1;
-    g_ram[0x1D31] = 0;
-
-    /* Restore CPU registers to expected post-RTL state: REP #$30 */
-    cpu->m_flag = 0;
-    cpu->x_flag = 0;
-    cpu->P &= ~0x30;
-
-    return true;
+    /* Return false so that the recompiled CODE_80BFAE executes naturally!
+     * CODE_80BFAE sets up the sequence and direct-page pointers ($1D00, $1D08,
+     * $1D15..$1D17, $1D1A, $1D30) and uses RtlApuWriteWaitEcho for reliable
+     * command handshaking, allowing the in-match commentary sequencer
+     * (CODE_80C14F / CODE_80C1F2) to stream voice samples every frame. */
+    return false;
 }
 
 bool Issd_HleStopSound(CpuState *cpu) {
