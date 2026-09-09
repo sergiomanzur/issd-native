@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern uint8_t g_ram[0x20000];
+
 IssdOverlayMenu g_overlay_menu;
 
 /* 8x8 Basic ASCII font (32-127) bitmap table */
@@ -108,7 +110,7 @@ static const uint8_t s_font8x8[96][8] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}  /* 127 */
 };
 
-#define MENU_TOTAL_ITEMS 14
+#define MENU_TOTAL_ITEMS 15
 
 static void DrawChar(uint32_t *fb, int fb_w, int fb_h, int x, int y, char c, uint32_t color) {
     if (c < 32 || c > 126) c = ' ';
@@ -254,6 +256,18 @@ bool issd_menu_navigate_left(void) {
         case 12: /* Engine Mode */
             g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
             break;
+        case 13: /* Debug & Japanese Unhooked Code */
+            g_issd_config.debug_unhooked_code = !g_issd_config.debug_unhooked_code;
+            if (g_issd_config.debug_unhooked_code) {
+                g_ram[0x1D854] = 1; g_ram[0x1D855] = 0;
+                g_ram[0x1D856] = 1; g_ram[0x1D857] = 0;
+                g_ram[0x1D858] = 1; g_ram[0x1D859] = 0;
+            } else {
+                g_ram[0x1D854] = 0; g_ram[0x1D855] = 0;
+                g_ram[0x1D856] = 0; g_ram[0x1D857] = 0;
+                g_ram[0x1D858] = 0; g_ram[0x1D859] = 0;
+            }
+            break;
         default:
             break;
     }
@@ -311,6 +325,18 @@ bool issd_menu_navigate_right(void) {
         case 12: /* Engine Mode */
             g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
             break;
+        case 13: /* Debug & Japanese Unhooked Code */
+            g_issd_config.debug_unhooked_code = !g_issd_config.debug_unhooked_code;
+            if (g_issd_config.debug_unhooked_code) {
+                g_ram[0x1D854] = 1; g_ram[0x1D855] = 0;
+                g_ram[0x1D856] = 1; g_ram[0x1D857] = 0;
+                g_ram[0x1D858] = 1; g_ram[0x1D859] = 0;
+            } else {
+                g_ram[0x1D854] = 0; g_ram[0x1D855] = 0;
+                g_ram[0x1D856] = 0; g_ram[0x1D857] = 0;
+                g_ram[0x1D858] = 0; g_ram[0x1D859] = 0;
+            }
+            break;
         default:
             break;
     }
@@ -354,9 +380,10 @@ bool issd_menu_confirm(void) {
             break;
         case 11: /* Volume */
         case 12: /* Engine Mode */
+        case 13: /* Debug & JPN Mode */
             issd_menu_navigate_right();
             break;
-        case 13: /* Save & Quit */
+        case 14: /* Save & Quit */
             issd_config_save(&g_issd_config, NULL);
             exit(0);
             break;
@@ -455,12 +482,13 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[10], sizeof(items[10]), "Load Slot:  <Slot %d>", g_overlay_menu.current_slot + 1);
     snprintf(items[11], sizeof(items[11]), "Volume:     <%d%%>", g_issd_config.master_volume);
     snprintf(items[12], sizeof(items[12]), "Engine:     <%s>", mode_str);
-    snprintf(items[13], sizeof(items[13]), "Save & Quit to Desktop");
+    snprintf(items[13], sizeof(items[13]), "Debug/JPN:  <%s>", g_issd_config.debug_unhooked_code ? "ENABLED" : "DISABLED");
+    snprintf(items[14], sizeof(items[14]), "Save & Quit to Desktop");
 
-    int start_y = box_y + 15;
+    int start_y = box_y + 14;
     for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {
         uint32_t color = (i == g_overlay_menu.current_item) ? 0xFF00FF66 : 0xFFE0E0E0;
-        int item_y = start_y + i * 13;
+        int item_y = start_y + i * 12;
         if (i == g_overlay_menu.current_item) {
             DrawChar(fb, width, height, box_x + 4, item_y, '>', 0xFF00FF66);
         }

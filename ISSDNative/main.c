@@ -158,17 +158,47 @@ static bool SaveBmp(const char *path, const uint32_t *pixels, int width, int hei
 /* Audio parameters */
 #define AUDIO_FREQ 44100
 #define AUDIO_CHANNELS 2
-#define AUDIO_SAMPLES 1024
+#define AUDIO_SAMPLES 512
+
+static int g_audio_frames_per_block = 0;
+static int16_t s_audio_block[1024 * 2];
+static int s_audio_block_avail = 0;
+static int s_audio_block_pos = 0;
 
 static void SDLCALL SdlAudioCallback(void *userdata, Uint8 *stream, int len) {
     (void)userdata;
-    int samples = len / (sizeof(int16_t) * AUDIO_CHANNELS);
-    int16_t *buf = (int16_t *)stream;
-    RtlRenderAudio(buf, samples, AUDIO_CHANNELS);
+    int samples_needed = len / (sizeof(int16_t) * AUDIO_CHANNELS);
+    int16_t *out = (int16_t *)stream;
+
+    if (g_audio_frames_per_block <= 0) {
+        g_audio_frames_per_block = (534 * AUDIO_FREQ + 32040 / 2) / 32040;
+    }
+
+    int written = 0;
+    while (written < samples_needed) {
+        if (s_audio_block_avail <= 0) {
+            int chunk = g_audio_frames_per_block;
+            if (chunk > 1024) chunk = 1024;
+            RtlRenderAudio(s_audio_block, chunk, AUDIO_CHANNELS);
+            s_audio_block_avail = chunk;
+            s_audio_block_pos = 0;
+        }
+        int to_copy = samples_needed - written;
+        if (to_copy > s_audio_block_avail) {
+            to_copy = s_audio_block_avail;
+        }
+        memcpy(out + written * AUDIO_CHANNELS,
+               s_audio_block + s_audio_block_pos * AUDIO_CHANNELS,
+               to_copy * AUDIO_CHANNELS * sizeof(int16_t));
+        s_audio_block_pos += to_copy;
+        s_audio_block_avail -= to_copy;
+        written += to_copy;
+    }
+
     int vol = g_issd_config.master_volume;
     if (vol < 100 && vol >= 0) {
-        for (int i = 0; i < samples * AUDIO_CHANNELS; i++) {
-            buf[i] = (int16_t)(((int32_t)buf[i] * vol) / 100);
+        for (int i = 0; i < samples_needed * AUDIO_CHANNELS; i++) {
+            out[i] = (int16_t)(((int32_t)out[i] * vol) / 100);
         }
     }
 }
@@ -266,6 +296,16 @@ static void IssdRunFrame(void) {
     cpu_write8(&g_cpu, 0x00, g_cpu.S--, (return_pc >> 8) & 0xFF);
     cpu_write8(&g_cpu, 0x00, g_cpu.S--, return_pc & 0xFF);
     cpu_write8(&g_cpu, 0x00, g_cpu.S--, g_cpu.P);
+
+    /* Apply Debug / Japanese developer cheat flags */
+    if (g_issd_config.debug_unhooked_code) {
+        g_ram[0x1D854] = 1; /* Dog referee cheat flag ($7ED854) */
+        g_ram[0x1D855] = 0;
+        g_ram[0x1D856] = 1; /* Unlock All-Star teams ($7ED856) */
+        g_ram[0x1D857] = 0;
+        g_ram[0x1D858] = 1; /* Superstar difficulty / stats ($7ED858) */
+        g_ram[0x1D859] = 0;
+    }
 
     /* Execute 1 frame via NMI interrupt handler at $80:80E0 */
     interp_tier_dispatch_interrupt(&g_cpu, 0x8080E0);
@@ -1069,9 +1109,12 @@ int main(int argc, char **argv) {
         audio_dev = SDL_OpenAudioDevice(NULL, 0, &wanted_spec, &obtained_spec, 0);
         if (audio_dev) {
             RtlSetAudioOutputRate(obtained_spec.freq);
+            g_audio_frames_per_block = (534 * obtained_spec.freq + 32040 / 2) / 32040;
+            s_audio_block_avail = 0;
+            s_audio_block_pos = 0;
             SDL_PauseAudioDevice(audio_dev, 0);
-            printf("[Audio] SDL Audio Device opened (%d Hz, %d channels, %d samples)\n",
-                   obtained_spec.freq, obtained_spec.channels, obtained_spec.samples);
+            printf("[Audio] SDL Audio Device opened (%d Hz, %d channels, %d samples, %d per block)\n",
+                   obtained_spec.freq, obtained_spec.channels, obtained_spec.samples, g_audio_frames_per_block);
         } else {
             printf("[Audio] Warning: Could not open audio device: %s\n", SDL_GetError());
         }

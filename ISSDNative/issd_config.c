@@ -40,6 +40,7 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->engine_mode = ISSD_MODE_ENHANCED;
     cfg->skip_intro = false;
     cfg->fast_menus = false;
+    cfg->debug_unhooked_code = false;
 
     cfg->key_p1_up = 26;
     cfg->key_p1_down = 22;
@@ -138,6 +139,7 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     else if (strcmp(key, "engine_mode") == 0) cfg->engine_mode = (IssdEngineMode)ival;
     else if (strcmp(key, "skip_intro") == 0) cfg->skip_intro = (ival != 0);
     else if (strcmp(key, "fast_menus") == 0) cfg->fast_menus = (ival != 0);
+    else if (strcmp(key, "debug_unhooked_code") == 0) cfg->debug_unhooked_code = (ival != 0);
     else if (strcmp(key, "key_p1_up") == 0) cfg->key_p1_up = ival;
     else if (strcmp(key, "key_p1_down") == 0) cfg->key_p1_down = ival;
     else if (strcmp(key, "key_p1_left") == 0) cfg->key_p1_left = ival;
@@ -204,6 +206,7 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "engine_mode=%d\n", (int)cfg->engine_mode);
     fprintf(f, "skip_intro=%d\n", cfg->skip_intro ? 1 : 0);
     fprintf(f, "fast_menus=%d\n", cfg->fast_menus ? 1 : 0);
+    fprintf(f, "debug_unhooked_code=%d\n", cfg->debug_unhooked_code ? 1 : 0);
     fprintf(f, "key_p1_up=%d\n", cfg->key_p1_up);
     fprintf(f, "key_p1_down=%d\n", cfg->key_p1_down);
     fprintf(f, "key_p1_left=%d\n", cfg->key_p1_left);

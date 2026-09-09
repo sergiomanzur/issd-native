@@ -18,15 +18,14 @@ static uint16_t word(const uint8_t *p, unsigned a) {
 
 bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram) {
   if (!ppu || !ram) return false;
-  /* $80846C: 3=demo, 6=menus/game. $50 enables the match OAM builder.
-   * Mode alone cannot identify the pitch: menus share mode 6.
-   * Submode in $70: 0x08 = InGame match, 0x13 = Replay, 0x17 = Training mode.
-   * Pre-match coin toss / cutscenes share mode 6 + $50!=0, but lack wide
-   * pitch metatile maps in WRAM $7F8000. Pillarbox them with clean black bars. */
+  /* $80846C: 3=demo, 6=menus/game.
+   * Submode in $70: 0x00..0x07 = menus, stadium select, pre-match coin toss (pillarboxed).
+   *                 0x08+ = live match (gameplay, fouls, corners, throw-ins, goals, replays).
+   * $50 enables the match OAM builder. */
   unsigned mode = word(ram, 0x32);
   unsigned submode = word(ram, 0x70);
   if (mode != 3 && mode != 6) return false;
-  if (submode != 0x08 && submode != 0x13 && submode != 0x17) return false;
+  if (submode < 0x08) return false;
   /* Check coin toss state machine (CODE_8BC4E4: $38 == 0xC4E4, $3A == 0x8B) */
   if (word(ram, 0x38) == 0xC4E4 && (word(ram, 0x3A) & 0xFF) == 0x8B) return false;
 
@@ -255,8 +254,15 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   PpuWsSetOamLeftHints(ppu,NULL); PpuWsSetOamRightHints(ppu,NULL);
   PpuSetWidescreenLayerClamp(ppu,0);
   for (int l=0;l<4;l++) PpuSetWidescreenLayerClampBand(ppu,l,0,0);
-  if (!extra) { s_ws_extra = 0; PpuSetExtraSpace(ppu,0); return false; }
-  if (!issd_widescreen_pitch_layout(ppu,ram)) {
+  static int s_inactive_frames = 0;
+  bool is_pitch = issd_widescreen_pitch_layout(ppu, ram);
+  if (is_pitch) {
+    s_inactive_frames = 0;
+  } else {
+    s_inactive_frames++;
+  }
+
+  if (!is_pitch && (s_inactive_frames >= 2 || s_ws_extra == 0)) {
     s_ws_extra = 0;
     PpuSetExtraSpaceCentered(ppu,(uint16_t)extra); return false;
   }

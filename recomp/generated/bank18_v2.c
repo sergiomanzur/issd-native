@@ -762,8 +762,8 @@ RecompReturn CODE_98F4ED_M1X1(CpuState *cpu) {
     cpu_write_a_m(cpu, (uint16)(_v6));
     cpu->_flag_Z = (((_v6 & 0xFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v6 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F50F_M1X1; }
+    extern bool Issd_IsWidescreenActive(void);
+    if (cpu->_flag_Z == 0 && !Issd_IsWidescreenActive()) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F50F_M1X1; }
     goto L_F509_M1X1; /* fall-through */
   L_F509_M1X1:
     cpu_trace_block(cpu, 0x18F509);
@@ -888,7 +888,7 @@ RecompReturn CODE_98F4ED_M1X1(CpuState *cpu) {
     cpu->_flag_Z = (((_v17 & 0xFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v17 & 0xFF)) & 0x80) != 0) ? 1 : 0;
     cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F526_M1X1; }
+    if (cpu->_flag_Z == 0 && !Issd_IsWidescreenActive()) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F526_M1X1; }
     goto L_F522_M1X1; /* fall-through */
   L_F522_M1X1:
     cpu_trace_block(cpu, 0x18F522);
@@ -955,7 +955,7 @@ RecompReturn CODE_98F4ED_M1X1(CpuState *cpu) {
     cpu->_flag_Z = (((_v22 & 0xFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v22 & 0xFF)) & 0x80) != 0) ? 1 : 0;
     cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F532_M1X1; }
+    if (cpu->_flag_Z == 0 && !Issd_IsWidescreenActive()) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F532_M1X1; }
     goto L_F52E_M1X1; /* fall-through */
   L_F52E_M1X1:
     cpu_trace_block(cpu, 0x18F52E);
@@ -10230,8 +10230,8 @@ RecompReturn CODE_98F4ED_M0X0(CpuState *cpu) {
     cpu_write_a_m(cpu, (uint16)(_v3));
     cpu->_flag_Z = (((_v3 & 0xFFFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v3 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F50F_M0X0; }
+    extern bool Issd_IsWidescreenActive(void);
+    if (cpu->_flag_Z == 0 && !Issd_IsWidescreenActive()) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F50F_M0X0; }
     goto L_F509_M0X0; /* fall-through */
   L_F509_M0X0:
     cpu_trace_block(cpu, 0x18F509);
@@ -10350,7 +10350,7 @@ RecompReturn CODE_98F4ED_M0X0(CpuState *cpu) {
     cpu->_flag_Z = (((_v11 & 0xFFFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v11 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
     cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F526_M0X0; }
+    if (cpu->_flag_Z == 0 && !Issd_IsWidescreenActive()) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F526_M0X0; }
     goto L_F522_M0X0; /* fall-through */
   L_F522_M0X0:
     cpu_trace_block(cpu, 0x18F522);
@@ -10414,7 +10414,7 @@ RecompReturn CODE_98F4ED_M0X0(CpuState *cpu) {
     cpu->_flag_Z = (((_v13 & 0xFFFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v13 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
     cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F532_M0X0; }
+    if (cpu->_flag_Z == 0 && !Issd_IsWidescreenActive()) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_F532_M0X0; }
     goto L_F52E_M0X0; /* fall-through */
   L_F52E_M0X0:
     cpu_trace_block(cpu, 0x18F52E);

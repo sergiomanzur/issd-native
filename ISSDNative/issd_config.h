@@ -63,6 +63,7 @@ typedef struct {
     IssdEngineMode engine_mode;
     bool skip_intro;
     bool fast_menus;
+    bool debug_unhooked_code;
 
     /* Controls (P1 Scancodes / Buttons) */
     int key_p1_up;

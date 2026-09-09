@@ -1,6 +1,6 @@
 # ISSD Native configuration
 # ROM files are not distributed with this project. Select or provide your own valid cartridge dump.
-rom_path=
+rom_path=International Superstar Soccer Deluxe (USA).sfc
 window_width=1280
 window_height=720
 fullscreen=0
@@ -19,6 +19,7 @@ sfx_volume=100
 engine_mode=1
 skip_intro=0
 fast_menus=0
+debug_unhooked_code=0
 key_p1_up=26
 key_p1_down=22
 key_p1_left=4
