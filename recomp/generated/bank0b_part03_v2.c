@@ -11,6 +11,7 @@
 #include "cpu_state.h"
 #include "cpu_trace.h"
 #include "common_cpu_infra.h"
+#include "common_rtl.h"
 #include "funcs.h"
 
 /* Split translation unit: bank $0B, part 03; entry PCs $9800-$9FFF. */
@@ -1191,6 +1192,196 @@ RecompReturn CODE_8B9FC3_M1X1(CpuState *cpu) {
   return RECOMP_RETURN_NORMAL;
 }
 
+RecompReturn bank_0B_9DA9_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9DA9_M1X1";
+  RecompStackPush("bank_0B_9DA9_M1X1");
+  cpu_dbg_funcname("bank_0B_9DA9_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9DA9, "bank_0B_9DA9_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9DA9u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9DA9_M1X1:
+    cpu_trace_block(cpu, 0x0B9DA9);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9DA9u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 28;
+    cpu->master_cycles += 224;
+    uint8 _v1 = 0x8;
+    cpu_write_y_x(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    {
+      uint8 _m = cpu_read8(cpu, 0x00, (uint16)(cpu->D + 0x00ae));
+      cpu->_flag_Z = ((_m & cpu->A) == 0) ? 1 : 0;
+      cpu_write8(cpu, 0x00, (uint16)(cpu->D + 0x00ae), (uint8)(_m | cpu->A));
+    }
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0016))));
+    uint16 _v3 = cpu_read_a16(cpu);
+    uint8 _v4 = (uint8)(_v3 ^ _v2);
+    cpu->_flag_Z = ((_v4) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v4) & 0x80) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v4));
+    uint8 _v5 = 0x83;
+    cpu_write_a_m(cpu, (uint16)(_v5));
+    cpu->_flag_Z = (((_v5 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v5 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if ((0x9522 & 0xFF00) != ((0x9522 + cpu->Y) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,Y read page-cross */
+    uint8 _v6 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x9522 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x9522 + (uint32)cpu->Y)));
+    uint16 _v7 = cpu_read_a16(cpu);
+    uint32 _tc7_6 = (uint32)(_v7 & 0xFF) - (uint32)(_v6 & 0xFF);
+    cpu->_flag_C = ((_v7 & 0xFF) >= (_v6 & 0xFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint8)_tc7_6) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint8)_tc7_6) & 0x80) != 0) ? 1 : 0;
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v8 = cpu_read_y16(cpu);
+    cpu_write8(cpu, 0x00, (uint16)(cpu->D + 0x0085 + cpu->X), _v8);
+    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      uint8 _rpb = cpu->PB;
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9db6u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 2 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
+      }
+      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9db6u,
+            (uint16)(_entry_s + 2u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9db6u);  /* RTS dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9C7B_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9C7B_M1X1";
+  RecompStackPush("bank_0B_9C7B_M1X1");
+  cpu_dbg_funcname("bank_0B_9C7B_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9C7B, "bank_0B_9C7B_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C7Bu);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9C7B_M1X1:
+    cpu_trace_block(cpu, 0x0B9C7B);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C7Bu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 14;
+    cpu->master_cycles += 112;
+    uint8 _v1 = cpu_read8(cpu, cpu->DB, (uint16)(0x00f8));
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v2 = 0x80;
+    {
+      uint8 _bt = (uint8)((cpu->A & 0xFF) & (_v2 & 0xFF));
+      cpu->_flag_Z = (_bt == 0) ? 1 : 0;
+    }
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9c80u, 0x0b9c80u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
 RecompReturn bank_0B_9D1C_M1X1(CpuState *cpu) {
   extern const char *g_last_recomp_func;
   g_last_recomp_func = "bank_0B_9D1C_M1X1";
@@ -1324,6 +1515,265 @@ RecompReturn bank_0B_9D1C_M1X1(CpuState *cpu) {
       cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
     RecompStackPop();
       return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9d24u);  /* RTL dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9ABD_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9ABD_M1X1";
+  RecompStackPush("bank_0B_9ABD_M1X1");
+  cpu_dbg_funcname("bank_0B_9ABD_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9ABD, "bank_0B_9ABD_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9ABDu);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9ABD_M1X1:
+    cpu_trace_block(cpu, 0x0B9ABD);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9ABDu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 18;
+    cpu->master_cycles += 144;
+    uint8 _v1 = 0x0;
+    cpu_write_y_x(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(0xa4ad));
+    uint16 _v3 = cpu_read_a16(cpu);
+    uint8 _v4 = (uint8)(_v3 | _v2);
+    cpu->_flag_Z = ((_v4) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v4) & 0x80) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v4));
+    uint8 _v5 = cpu_read8(cpu, cpu->DB, (uint16)(0x0289));
+    uint16 _v6 = cpu_read_a16(cpu);
+    uint8 _v7 = (uint8)(_v6 | _v5);
+    cpu->_flag_Z = ((_v7) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v7) & 0x80) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v7));
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9ac5u, 0x0b9ac5u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9D0E_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9D0E_M1X1";
+  RecompStackPush("bank_0B_9D0E_M1X1");
+  cpu_dbg_funcname("bank_0B_9D0E_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9D0E, "bank_0B_9D0E_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9D0Eu);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9D0E_M1X1:
+    cpu_trace_block(cpu, 0x0B9D0E);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D0Eu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x10); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d0eu, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d0eu, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d0eu, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d0eu, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9D11_M1X1; /* implicit fall-through */
+  L_9D11_M1X1:
+    cpu_trace_block(cpu, 0x0B9D11);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D11u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x13); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d11u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d11u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d11u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9E34_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d11u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9D14_M1X1; /* implicit fall-through */
+  L_9D14_M1X1:
+    cpu_trace_block(cpu, 0x0B9D14);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D14u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 2;
+    cpu->master_cycles += 16;
+    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9D0D_M1X1; }
+    goto L_9D16_M1X1; /* fall-through */
+  L_9D16_M1X1:
+    cpu_trace_block(cpu, 0x0B9D16);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D16u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 10;
+    cpu->master_cycles += 80;
+    uint8 _v1 = 0x8;
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9d18u, 0x0b9d18u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  L_9D0D_M1X1:
+    cpu_trace_block(cpu, 0x0B9D0D);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D0Du);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9d0du, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 3 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d0du);
+      }
+      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d0du); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d0du);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d0du);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9d0du,
+            (uint16)(_entry_s + 3u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9d0du);  /* RTL dispatch */ }
   RecompStackPop();
   return RECOMP_RETURN_NORMAL;
 }
@@ -1651,6 +2101,1823 @@ RecompReturn bank_0B_9D8B_M1X1(CpuState *cpu) {
   return RECOMP_RETURN_NORMAL;
 }
 
+RecompReturn bank_0B_9C5F_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9C5F_M1X1";
+  RecompStackPush("bank_0B_9C5F_M1X1");
+  cpu_dbg_funcname("bank_0B_9C5F_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9C5F, "bank_0B_9C5F_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C5Fu);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9C5F_M1X1:
+    cpu_trace_block(cpu, 0x0B9C5F);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C5Fu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9c); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x61); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9c5fu, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9c5fu, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9c5fu, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9745_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9c5fu, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9C62_M1X1; /* implicit fall-through */
+  L_9C62_M1X1:
+    cpu_trace_block(cpu, 0x0B9C62);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C62u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 2;
+    cpu->master_cycles += 16;
+    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9C5E_M1X1; }
+    goto L_9C64_M1X1; /* fall-through */
+  L_9C64_M1X1:
+    cpu_trace_block(cpu, 0x0B9C64);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C64u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 10;
+    cpu->master_cycles += 80;
+    uint8 _v1 = 0x6;
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9c66u, 0x0b9c66u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  L_9C5E_M1X1:
+    cpu_trace_block(cpu, 0x0B9C5E);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C5Eu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9c5eu, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 3 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c5eu);
+      }
+      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c5eu); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c5eu);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c5eu);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9c5eu,
+            (uint16)(_entry_s + 3u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9c5eu);  /* RTL dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9DB7_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9DB7_M1X1";
+  RecompStackPush("bank_0B_9DB7_M1X1");
+  cpu_dbg_funcname("bank_0B_9DB7_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9DB7, "bank_0B_9DB7_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9DB7u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9DB7_M1X1:
+    cpu_trace_block(cpu, 0x0B9DB7);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9DB7u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 14;
+    cpu->master_cycles += 112;
+    uint8 _v1 = cpu_read8(cpu, cpu->DB, (uint16)(0x1652));
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v2 = 0x23;
+    uint16 _v3 = cpu_read_a16(cpu);
+    uint32 _tc3_2 = (uint32)(_v3 & 0xFF) - (uint32)(_v2 & 0xFF);
+    cpu->_flag_C = ((_v3 & 0xFF) >= (_v2 & 0xFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint8)_tc3_2) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint8)_tc3_2) & 0x80) != 0) ? 1 : 0;
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9dbcu, 0x0b9dbcu, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9B68_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9B68_M1X1";
+  RecompStackPush("bank_0B_9B68_M1X1");
+  cpu_dbg_funcname("bank_0B_9B68_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9B68, "bank_0B_9B68_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9B68u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9B68_M1X1:
+    cpu_trace_block(cpu, 0x0B9B68);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B68u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 8;
+    cpu->master_cycles += 64;
+    {
+      /* JSL return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x6b); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
+      uint8 _saved_pb = cpu->PB;
+      cpu_trace_pb_change(cpu, 0x0b9b68u, _saved_pb, 0x8b, CPU_TR_JSL);
+      cpu->PB = 0x8b;
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x8b95c5u, 0x0b9b68u, 3, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x8b95c5u, 0x0b9b68u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x8b95c5u, 0x0b9b68u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = CODE_8B95C5_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x8b95c5u, 0x0b9b68u, 3, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      cpu_trace_pb_change(cpu, 0x0b9b68u, cpu->PB, _saved_pb, CPU_TR_RTL);
+      cpu->PB = _saved_pb;
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9B6C_M1X1; /* implicit fall-through */
+  L_9B6C_M1X1:
+    cpu_trace_block(cpu, 0x0B9B6C);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B6Cu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 10;
+    cpu->master_cycles += 80;
+    uint8 _v1 = 0x0;
+    cpu_write8(cpu, cpu->DB, (uint16)(0x19a8), _v1);
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x71); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9b6fu, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9b6fu, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9b6fu, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9b6fu, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9B72_M1X1; /* implicit fall-through */
+  L_9B72_M1X1:
+    cpu_trace_block(cpu, 0x0B9B72);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B72u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 10;
+    cpu->master_cycles += 80;
+    uint8 _v2 = 0x1;
+    cpu_write_a_m(cpu, (uint16)(_v2));
+    cpu->_flag_Z = (((_v2 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v2 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9b74u, 0x0b9b74u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9BD1_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9BD1_M1X1";
+  RecompStackPush("bank_0B_9BD1_M1X1");
+  cpu_dbg_funcname("bank_0B_9BD1_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9BD1, "bank_0B_9BD1_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD1u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9BD1_M1X1:
+    cpu_trace_block(cpu, 0x0B9BD1);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD1u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0xd3); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9bd1u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9bd1u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9bd1u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9bd1u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9BD4_M1X1; /* implicit fall-through */
+  L_9BD4_M1X1:
+    cpu_trace_block(cpu, 0x0B9BD4);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD4u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0xd6); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9bd4u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9bd4u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9bd4u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9745_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9bd4u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9BD7_M1X1; /* implicit fall-through */
+  L_9BD7_M1X1:
+    cpu_trace_block(cpu, 0x0B9BD7);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD7u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 2;
+    cpu->master_cycles += 16;
+    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9BB9_M1X1; }
+    goto L_9BD9_M1X1; /* fall-through */
+  L_9BD9_M1X1:
+    cpu_trace_block(cpu, 0x0B9BD9);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD9u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 16;
+    cpu->master_cycles += 128;
+    {
+      uint8 _im = cpu_read8(cpu, cpu->DB, (uint16)(0x0072));
+      _im = (uint8)(_im -1);
+      cpu_write8(cpu, cpu->DB, (uint16)(0x0072), _im);
+      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_im) & 0x80) != 0) ? 1 : 0;
+    }
+    uint8 _v1 = 0x6;
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9bdeu, 0x0b9bdeu, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  L_9BB9_M1X1:
+    cpu_trace_block(cpu, 0x0B9BB9);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BB9u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9bb9u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 3 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9bb9u);
+      }
+      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9bb9u); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9bb9u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9bb9u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9bb9u,
+            (uint16)(_entry_s + 3u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9bb9u);  /* RTL dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9C19_M0X0(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9C19_M0X0";
+  RecompStackPush("bank_0B_9C19_M0X0");
+  cpu_dbg_funcname("bank_0B_9C19_M0X0");
+  cpu_trace_func_entry(cpu, 0x0B9C19, "bank_0B_9C19_M0X0");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C19u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9C19_M0X0:
+    cpu_trace_block(cpu, 0x0B9C19);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C19u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 18;
+    cpu->master_cycles += 144;
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->X & 0xFF);
+      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->Y = (uint16)(cpu->X);
+      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v1 = 0x0;
+    cpu_write16(cpu, cpu->DB, (uint16)(0x19c2), _v1);
+    uint16 _v2 = 0x8553;
+    cpu_write_x_x(cpu, (uint16)(_v2));
+    cpu->_flag_Z = (((_v2 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v2 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    {
+      /* JSL return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x9c); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x23); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
+      uint8 _saved_pb = cpu->PB;
+      cpu_trace_pb_change(cpu, 0x0b9c20u, _saved_pb, 0x80, CPU_TR_JSL);
+      cpu->PB = 0x80;
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = CODE_80B527_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x80b527u, 0x0b9c20u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x80b527u, 0x0b9c20u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = CODE_80B527_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x80b527u, 0x0b9c20u, 3, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      cpu_trace_pb_change(cpu, 0x0b9c20u, cpu->PB, _saved_pb, CPU_TR_RTL);
+      cpu->PB = _saved_pb;
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9C24_M0X0; /* implicit fall-through */
+  L_9C24_M0X0:
+    cpu_trace_block(cpu, 0x0B9C24);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C24u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 19;
+    cpu->master_cycles += 152;
+    uint16 _v3 = 0x0;
+    cpu_write16(cpu, cpu->DB, (uint16)(0x19a8), _v3);
+    {
+      uint16 _im = cpu_read16(cpu, cpu->DB, (uint16)(0x0072));
+      _im = (uint16)(_im +1);
+      cpu_write16(cpu, cpu->DB, (uint16)(0x0072), _im);
+      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_im) & 0x8000) != 0) ? 1 : 0;
+    }
+    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9c2au, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 3 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c2au);
+      }
+      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c2au); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c2au);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c2au);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9c2au,
+            (uint16)(_entry_s + 3u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9c2au);  /* RTL dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9B9C_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9B9C_M1X1";
+  RecompStackPush("bank_0B_9B9C_M1X1");
+  cpu_dbg_funcname("bank_0B_9B9C_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9B9C, "bank_0B_9B9C_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9B9Cu);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9B9C_M1X1:
+    cpu_trace_block(cpu, 0x0B9B9C);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B9Cu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 13;
+    cpu->master_cycles += 104;
+    uint8 _v1 = 0x0;
+    cpu_write8(cpu, cpu->DB, (uint16)(0x0074), _v1);
+    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(0x00f8));
+    cpu_write_a_m(cpu, (uint16)(_v2));
+    cpu->_flag_Z = (((_v2 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v2 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v3 = 0x80;
+    {
+      uint8 _bt = (uint8)((cpu->A & 0xFF) & (_v3 & 0xFF));
+      cpu->_flag_Z = (_bt == 0) ? 1 : 0;
+    }
+    goto L_9B76_M1X1;
+  L_9B76_M1X1:
+    cpu_trace_block(cpu, 0x0B9B76);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B76u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 9;
+    cpu->master_cycles += 72;
+    {
+      uint8 _old_p = cpu->P;
+      cpu_mirrors_to_p(cpu);
+      cpu->P = (uint8)(cpu->P & ~0x19);
+      cpu_p_to_mirrors(cpu);
+      cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
+    }
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x7a); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0ba032u, 0x0b9b78u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0ba032u, 0x0b9b78u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = bank_0B_A032_M1X0(cpu); break;
+        case 3: _r = interp_tier_run_call_frame(cpu, 0x0ba032u, 0x0b9b78u, 2, NULL); break;  /* exact M1X1 -> authoritative LLE */
+        default: _r = interp_tier_run_call_frame(cpu, 0x0ba032u, 0x0b9b78u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9B7B_M1X0; /* implicit fall-through */
+  L_9B7B_M1X0:
+    cpu_trace_block(cpu, 0x0B9B7B);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B7Bu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 14;
+    cpu->master_cycles += 112;
+    uint16 _v4 = 0x417;
+    cpu_write_y_x(cpu, (uint16)(_v4));
+    cpu->_flag_Z = (((_v4 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v4 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v5 = cpu_read8(cpu, cpu->DB, (uint16)(0x1652));
+    cpu_write_a_m(cpu, (uint16)(_v5));
+    cpu->_flag_Z = (((_v5 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v5 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if (cpu->m_flag) {
+      uint8 _lo8 = ((uint8)(cpu->A & 0xFF)) + (1);
+      cpu->A = (uint16)((cpu->A & 0xFF00) | ((_lo8) & 0xFF));
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->A = (uint16)((cpu->A) + (1));
+      cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
+    }
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->A & 0xFF);
+      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)(cpu->A);
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    goto L_9C37_M1X0;
+  L_9C37_M1X0:
+    cpu_trace_block(cpu, 0x0B9C37);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C37u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9c); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x39); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9dafu, 0x0b9c37u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9dafu, 0x0b9c37u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = bank_0B_9DAF_M1X0(cpu); break;
+        case 3: _r = bank_0B_9DAF_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9dafu, 0x0b9c37u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9C3A_M1X0; /* implicit fall-through */
+  L_9C3A_M1X0:
+    cpu_trace_block(cpu, 0x0B9C3A);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C3Au);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9c); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x3c); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b96aau, 0x0b9c3au, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b96aau, 0x0b9c3au, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = bank_0B_96AA_M1X0(cpu); break;
+        case 3: _r = bank_0B_96AA_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b96aau, 0x0b9c3au, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9C3D_M1X0; /* implicit fall-through */
+  L_9C3D_M1X0:
+    cpu_trace_block(cpu, 0x0B9C3D);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C3Du);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 17;
+    cpu->master_cycles += 136;
+    uint16 _v6 = 0xd962;
+    cpu_write_y_x(cpu, (uint16)(_v6));
+    cpu->_flag_Z = (((_v6 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v6 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v7 = cpu_read8(cpu, cpu->DB, (uint16)(0x1648));
+    cpu_write_a_m(cpu, (uint16)(_v7));
+    cpu->_flag_Z = (((_v7 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v7 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v8 = 0x40;
+    {
+      uint8 _bt = (uint8)((cpu->A & 0xFF) & (_v8 & 0xFF));
+      cpu->_flag_Z = (_bt == 0) ? 1 : 0;
+    }
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9c45u, 0x0b9c45u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9D54_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9D54_M1X1";
+  RecompStackPush("bank_0B_9D54_M1X1");
+  cpu_dbg_funcname("bank_0B_9D54_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9D54, "bank_0B_9D54_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9D54u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9D54_M1X1:
+    cpu_trace_block(cpu, 0x0B9D54);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D54u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x56); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d54u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d54u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d54u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d54u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9D57_M1X1; /* implicit fall-through */
+  L_9D57_M1X1:
+    cpu_trace_block(cpu, 0x0B9D57);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D57u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x59); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d57u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d57u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d57u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9E34_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d57u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9D5A_M1X1; /* implicit fall-through */
+  L_9D5A_M1X1:
+    cpu_trace_block(cpu, 0x0B9D5A);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D5Au);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 2;
+    cpu->master_cycles += 16;
+    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9D42_M1X1; }
+    goto L_9D5C_M1X1; /* fall-through */
+  L_9D5C_M1X1:
+    cpu_trace_block(cpu, 0x0B9D5C);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D5Cu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x5e); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = bank_0B_9EC8_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ec8u, 0x0b9d5cu, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ec8u, 0x0b9d5cu, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9EC8_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ec8u, 0x0b9d5cu, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9D5F_M1X1; /* implicit fall-through */
+  L_9D5F_M1X1:
+    cpu_trace_block(cpu, 0x0B9D5F);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D5Fu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 16;
+    cpu->master_cycles += 128;
+    {
+      uint8 _im = cpu_read8(cpu, cpu->DB, (uint16)(0x0072));
+      _im = (uint8)(_im -1);
+      cpu_write8(cpu, cpu->DB, (uint16)(0x0072), _im);
+      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_im) & 0x80) != 0) ? 1 : 0;
+    }
+    uint8 _v1 = 0x8;
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9d64u, 0x0b9d64u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  L_9D42_M1X1:
+    cpu_trace_block(cpu, 0x0B9D42);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D42u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9d42u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 3 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d42u);
+      }
+      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d42u); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d42u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d42u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9d42u,
+            (uint16)(_entry_s + 3u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9d42u);  /* RTL dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9F19_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9F19_M1X1";
+  RecompStackPush("bank_0B_9F19_M1X1");
+  cpu_dbg_funcname("bank_0B_9F19_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9F19, "bank_0B_9F19_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9F19u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9F19_M1X1:
+    cpu_trace_block(cpu, 0x0B9F19);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F19u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 8;
+    cpu->master_cycles += 64;
+    {
+      /* JSL return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x1c); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
+      uint8 _saved_pb = cpu->PB;
+      cpu_trace_pb_change(cpu, 0x0b9f19u, _saved_pb, 0x80, CPU_TR_JSL);
+      cpu->PB = 0x80;
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = interp_tier_run_call_frame(cpu, 0x8089b8u, 0x0b9f19u, 3, NULL); break;  /* exact M0X0 -> authoritative LLE */
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x8089b8u, 0x0b9f19u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x8089b8u, 0x0b9f19u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = CODE_8089B8_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x8089b8u, 0x0b9f19u, 3, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      cpu_trace_pb_change(cpu, 0x0b9f19u, cpu->PB, _saved_pb, CPU_TR_RTL);
+      cpu->PB = _saved_pb;
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9F1D_M0X0; /* implicit fall-through */
+  L_9F1D_M0X0:
+    cpu_trace_block(cpu, 0x0B9F1D);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F1Du);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 3;
+    cpu->master_cycles += 24;
+    uint16 _v1 = 0x0;
+    cpu_write_x_x(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    goto L_9F20_M0X0; /* implicit fall-through */
+  L_9F20_M0X0:
+    cpu_trace_block(cpu, 0x0B9F20);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F20u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 41;
+    cpu->master_cycles += 328;
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v2 = cpu_read_x16(cpu);
+    cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0008), _v2);
+    uint16 _v3 = cpu_read16(cpu, (uint8)((((uint32)0x7edc26 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7edc26 + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v3));
+    cpu->_flag_Z = (((_v3 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v3 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v4 = 0x3f;
+    uint16 _v5 = cpu_read_a16(cpu);
+    uint16 _v6 = (uint16)(_v5 & _v4);
+    cpu->_flag_Z = ((_v6) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v6) & 0x8000) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v6));
+    uint16 _v7 = cpu_read_a16(cpu);
+    uint16 _v8 = (uint16)((_v7 & 0xFFFF) << 1);
+    cpu->_flag_C = (((_v7 & 0xFFFF)) & 0x8000) ? 1 : 0;
+    cpu->_flag_Z = ((_v8) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v8) & 0x8000) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v8));
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v9 = cpu_read_a16(cpu);
+    cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0000), _v9);
+    uint16 _v10 = cpu_read16(cpu, (uint8)((((uint32)0x7edc26 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7edc26 + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v10));
+    cpu->_flag_Z = (((_v10 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v10 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v11 = 0x3f00;
+    uint16 _v12 = cpu_read_a16(cpu);
+    uint16 _v13 = (uint16)(_v12 & _v11);
+    cpu->_flag_Z = ((_v13) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v13) & 0x8000) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v13));
+    uint16 _v14 = cpu_read_a16(cpu);
+    uint16 _v15 = (uint16)((_v14 & 0xFFFF) << 1);
+    cpu->_flag_C = (((_v14 & 0xFFFF)) & 0x8000) ? 1 : 0;
+    cpu->_flag_Z = ((_v15) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v15) & 0x8000) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v15));
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v16 = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0000));
+    uint16 _v17 = cpu_read_a16(cpu);
+    uint16 _v18 = (uint16)(_v17 | _v16);
+    cpu->_flag_Z = ((_v18) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v18) & 0x8000) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v18));
+    uint16 _v19 = cpu_read16(cpu, cpu->DB, (uint16)(0x19a6));
+    uint16 _v20 = cpu_read_x16(cpu);
+    uint32 _tc20_19 = (uint32)(_v20 & 0xFFFF) - (uint32)(_v19 & 0xFFFF);
+    cpu->_flag_C = ((_v20 & 0xFFFF) >= (_v19 & 0xFFFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint16)_tc20_19) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint16)_tc20_19) & 0x8000) != 0) ? 1 : 0;
+    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F3E_M0X0; }
+    goto L_9F3B_M0X0; /* fall-through */
+  L_9F3B_M0X0:
+    cpu_trace_block(cpu, 0x0B9F3B);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F3Bu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 3;
+    cpu->master_cycles += 24;
+    uint16 _v21 = 0x1;
+    uint16 _v22 = cpu_read_a16(cpu);
+    uint16 _v23 = (uint16)(_v22 | _v21);
+    cpu->_flag_Z = ((_v23) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v23) & 0x8000) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v23));
+    goto L_9F3E_M0X0; /* implicit fall-through */
+  L_9F3E_M0X0:
+    cpu_trace_block(cpu, 0x0B9F3E);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F3Eu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 42;
+    cpu->master_cycles += 336;
+    if ((0xEBC5 & 0xFF00) != ((0xEBC5 + cpu->X) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,X read page-cross */
+    uint16 _v24 = cpu_read16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)));
+    cpu_write_y_x(cpu, (uint16)(_v24));
+    cpu->_flag_Z = (((_v24 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v24 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v25 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0012 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0012 + (uint32)cpu->Y)), _v25);
+    uint16 _v26 = 0x0;
+    cpu_write_a_m(cpu, (uint16)(_v26));
+    cpu->_flag_Z = (((_v26 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v26 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v27 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x001e + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x001e + (uint32)cpu->Y)), _v27);
+    uint16 _v28 = 0x5696;
+    cpu_write_a_m(cpu, (uint16)(_v28));
+    cpu->_flag_Z = (((_v28 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v28 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v29 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)), _v29);
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v30 = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0008));
+    cpu_write_x_x(cpu, (uint16)(_v30));
+    cpu->_flag_Z = (((_v30 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v30 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if (cpu->x_flag) {
+      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
+      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)((cpu->X) + (1));
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    if (cpu->x_flag) {
+      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
+      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)((cpu->X) + (1));
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    uint16 _v31 = 0x48;
+    uint16 _v32 = cpu_read_x16(cpu);
+    uint32 _tc32_31 = (uint32)(_v32 & 0xFFFF) - (uint32)(_v31 & 0xFFFF);
+    cpu->_flag_C = ((_v32 & 0xFFFF) >= (_v31 & 0xFFFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint16)_tc32_31) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint16)_tc32_31) & 0x8000) != 0) ? 1 : 0;
+    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F20_M0X0; }
+    goto L_9F59_M0X0; /* fall-through */
+  L_9F59_M0X0:
+    cpu_trace_block(cpu, 0x0B9F59);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F59u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 8;
+    cpu->master_cycles += 64;
+    {
+      /* JSL return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x5c); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
+      uint8 _saved_pb = cpu->PB;
+      cpu_trace_pb_change(cpu, 0x0b9f59u, _saved_pb, 0x83, CPU_TR_JSL);
+      cpu->PB = 0x83;
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = CODE_83AE95_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x83ae95u, 0x0b9f59u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x83ae95u, 0x0b9f59u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = interp_tier_run_call_frame(cpu, 0x83ae95u, 0x0b9f59u, 3, NULL); break;  /* exact M1X1 -> authoritative LLE */
+        default: _r = interp_tier_run_call_frame(cpu, 0x83ae95u, 0x0b9f59u, 3, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      cpu_trace_pb_change(cpu, 0x0b9f59u, cpu->PB, _saved_pb, CPU_TR_RTL);
+      cpu->PB = _saved_pb;
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9F5D_M0X0; /* implicit fall-through */
+  L_9F5D_M0X0:
+    cpu_trace_block(cpu, 0x0B9F5D);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F5Du);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 3;
+    cpu->master_cycles += 24;
+    uint16 _v33 = 0x0;
+    cpu_write_x_x(cpu, (uint16)(_v33));
+    cpu->_flag_Z = (((_v33 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v33 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    goto L_9F60_M0X0; /* implicit fall-through */
+  L_9F60_M0X0:
+    cpu_trace_block(cpu, 0x0B9F60);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F60u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 12;
+    cpu->master_cycles += 96;
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v34 = cpu_read_x16(cpu);
+    cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0000), _v34);
+    uint16 _v35 = 0x0;
+    cpu_write_y_x(cpu, (uint16)(_v35));
+    cpu->_flag_Z = (((_v35 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v35 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if ((0x1D40 & 0xFF00) != ((0x1D40 + cpu->X) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,X read page-cross */
+    uint16 _v36 = cpu_read16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x1d40 + (uint32)cpu->X)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x1d40 + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v36));
+    cpu->_flag_Z = (((_v36 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v36 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    goto L_9F68_M0X0; /* implicit fall-through */
+  L_9F68_M0X0:
+    cpu_trace_block(cpu, 0x0B9F68);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F68u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 7;
+    cpu->master_cycles += 56;
+    if ((0xEBC5 & 0xFF00) != ((0xEBC5 + cpu->Y) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,Y read page-cross */
+    uint16 _v37 = cpu_read16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->Y)));
+    uint16 _v38 = cpu_read_a16(cpu);
+    uint32 _tc38_37 = (uint32)(_v38 & 0xFFFF) - (uint32)(_v37 & 0xFFFF);
+    cpu->_flag_C = ((_v38 & 0xFFFF) >= (_v37 & 0xFFFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint16)_tc38_37) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint16)_tc38_37) & 0x8000) != 0) ? 1 : 0;
+    if (cpu->_flag_Z == 1) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F74_M0X0; }
+    goto L_9F6D_M0X0; /* fall-through */
+  L_9F6D_M0X0:
+    cpu_trace_block(cpu, 0x0B9F6D);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F6Du);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 9;
+    cpu->master_cycles += 72;
+    if (cpu->x_flag) {
+      uint8 _lo8 = ((uint8)(cpu->Y & 0xFF)) + (1);
+      cpu->Y = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->Y = (uint16)((cpu->Y) + (1));
+      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
+    }
+    if (cpu->x_flag) {
+      uint8 _lo8 = ((uint8)(cpu->Y & 0xFF)) + (1);
+      cpu->Y = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->Y = (uint16)((cpu->Y) + (1));
+      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
+    }
+    uint16 _v39 = 0x48;
+    uint16 _v40 = cpu_read_y16(cpu);
+    uint32 _tc40_39 = (uint32)(_v40 & 0xFFFF) - (uint32)(_v39 & 0xFFFF);
+    cpu->_flag_C = ((_v40 & 0xFFFF) >= (_v39 & 0xFFFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint16)_tc40_39) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint16)_tc40_39) & 0x8000) != 0) ? 1 : 0;
+    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F68_M0X0; }
+    goto L_9F74_M0X0; /* fall-through */
+  L_9F74_M0X0:
+    cpu_trace_block(cpu, 0x0B9F74);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F74u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 21;
+    cpu->master_cycles += 168;
+    if (cpu->m_flag) {
+      uint8 _v = (uint8)(cpu->Y & 0xFF);
+      cpu->A = (uint16)((cpu->A & 0xFF00) | ((_v) & 0xFF));
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->A = (uint16)(cpu->Y);
+      cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v41 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)((((uint32)0x7edd08 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7edd08 + (uint32)cpu->X)), _v41);
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v42 = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0000));
+    cpu_write_x_x(cpu, (uint16)(_v42));
+    cpu->_flag_Z = (((_v42 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v42 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if (cpu->x_flag) {
+      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
+      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)((cpu->X) + (1));
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    if (cpu->x_flag) {
+      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
+      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)((cpu->X) + (1));
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    uint16 _v43 = 0x48;
+    uint16 _v44 = cpu_read_x16(cpu);
+    uint32 _tc44_43 = (uint32)(_v44 & 0xFFFF) - (uint32)(_v43 & 0xFFFF);
+    cpu->_flag_C = ((_v44 & 0xFFFF) >= (_v43 & 0xFFFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint16)_tc44_43) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint16)_tc44_43) & 0x8000) != 0) ? 1 : 0;
+    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F60_M0X0; }
+    goto L_9F82_M0X0; /* fall-through */
+  L_9F82_M0X0:
+    cpu_trace_block(cpu, 0x0B9F82);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F82u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      uint8 _rpb = cpu->PB;
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9f82u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 2 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9f82u);
+      }
+      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9f82u); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9f82u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9f82u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9f82u,
+            (uint16)(_entry_s + 2u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9f82u);  /* RTS dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9EC8_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9EC8_M1X1";
+  RecompStackPush("bank_0B_9EC8_M1X1");
+  cpu_dbg_funcname("bank_0B_9EC8_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9EC8, "bank_0B_9EC8_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9EC8u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9EC8_M1X1:
+    cpu_trace_block(cpu, 0x0B9EC8);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9EC8u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 8;
+    cpu->master_cycles += 64;
+    {
+      /* JSL return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0xcb); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
+      uint8 _saved_pb = cpu->PB;
+      cpu_trace_pb_change(cpu, 0x0b9ec8u, _saved_pb, 0x8b, CPU_TR_JSL);
+      cpu->PB = 0x8b;
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = CODE_8B9612_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x8b9612u, 0x0b9ec8u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x8b9612u, 0x0b9ec8u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = CODE_8B9612_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x8b9612u, 0x0b9ec8u, 3, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      cpu_trace_pb_change(cpu, 0x0b9ec8u, cpu->PB, _saved_pb, CPU_TR_RTL);
+      cpu->PB = _saved_pb;
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9ECC_M1X1; /* implicit fall-through */
+  L_9ECC_M1X1:
+    cpu_trace_block(cpu, 0x0B9ECC);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9ECCu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 21;
+    cpu->master_cycles += 168;
+    uint8 _v1 = cpu_read8(cpu, cpu->DB, (uint16)(0x0ea0));
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    {
+      uint16 _old = cpu->A;
+      cpu->A = (uint16)(((_old & 0xFF) << 8) | ((_old >> 8) & 0xFF));
+      cpu->_flag_Z = ((cpu->A & 0xFF) == 0) ? 1 : 0;
+      cpu->_flag_N = ((cpu->A & 0x80) != 0) ? 1 : 0;
+    }
+    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(0x0da0));
+    uint16 _v3 = cpu_read_a16(cpu);
+    uint8 _v4 = (uint8)(_v3 | _v2);
+    cpu->_flag_Z = ((_v4) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v4) & 0x80) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v4));
+    uint16 _v5 = cpu_read_a16(cpu);
+    cpu_write8(cpu, cpu->DB, (uint16)(0x1cc6), _v5);
+    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      uint8 _rpb = cpu->PB;
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9ed6u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 2 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ed6u);
+      }
+      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ed6u); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ed6u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ed6u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9ed6u,
+            (uint16)(_entry_s + 2u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9ed6u);  /* RTS dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
 RecompReturn bank_0B_9C2B_M1X1(CpuState *cpu) {
   extern const char *g_last_recomp_func;
   g_last_recomp_func = "bank_0B_9C2B_M1X1";
@@ -1862,15 +4129,15 @@ RecompReturn bank_0B_9C2B_M1X1(CpuState *cpu) {
   return RECOMP_RETURN_NORMAL;
 }
 
-RecompReturn bank_0B_9C75_M1X1(CpuState *cpu) {
+RecompReturn bank_0B_9E34_M1X1(CpuState *cpu) {
   extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9C75_M1X1";
-  RecompStackPush("bank_0B_9C75_M1X1");
-  cpu_dbg_funcname("bank_0B_9C75_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9C75, "bank_0B_9C75_M1X1");
+  g_last_recomp_func = "bank_0B_9E34_M1X1";
+  RecompStackPush("bank_0B_9E34_M1X1");
+  cpu_dbg_funcname("bank_0B_9E34_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9E34, "bank_0B_9E34_M1X1");
   if (interp_bridge_lle_master_deadline_reached(cpu)) {
     RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C75u);
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9E34u);
   }
   RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
   (void)_pending_skip;  /* unused if no NLR site in this fn */
@@ -1891,166 +4158,648 @@ RecompReturn bank_0B_9C75_M1X1(CpuState *cpu) {
   (void)_hrv;
   (void)_host_return_pc24;
   if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9C75_M1X1:
-    cpu_trace_block(cpu, 0x0B9C75);
+  L_9E34_M1X1:
+    cpu_trace_block(cpu, 0x0B9E34);
     WatchdogCheck();
     if (interp_bridge_lle_master_deadline_reached(cpu)) {
       RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C75u);
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9E34u);
     }
     cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 8;
-    cpu->master_cycles += 64;
-    {
-      uint8 _im = cpu_read8(cpu, cpu->DB, (uint16)(0x19a2));
-      _im = (uint8)(_im -1);
-      cpu_write8(cpu, cpu->DB, (uint16)(0x19a2), _im);
-      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_im) & 0x80) != 0) ? 1 : 0;
+    cpu->cycles += 32;
+    cpu->master_cycles += 256;
+    cpu->_flag_C = 0;
+    cpu->P = (uint8)(cpu->P & ~0x01);
+    uint8 _v1 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(0x19aa));
+    uint16 _v3 = cpu_read_a16(cpu);
+    uint8 _v4;
+    if (cpu->_flag_D) {
+      int _bcd = ((_v3 & 0xFF) & 0xf) + ((_v2 & 0xFF) & 0xf) + cpu->_flag_C;
+      if (_bcd > 0x9) _bcd = ((_bcd + 0x6) & 0xf) + 0x10;
+      _bcd = ((_v3 & 0xFF) & 0xf0) + ((_v2 & 0xFF) & 0xf0) + _bcd;
+      cpu->_flag_V = (((_v3 & 0xFF) & 0x80) == ((_v2 & 0xFF) & 0x80)) && (((_v2 & 0xFF) & 0x80) != (_bcd & 0x80)) ? 1 : 0;
+      if (_bcd > 0x9f) _bcd += 0x60;
+      cpu->_flag_C = (_bcd > 0xff) ? 1 : 0;
+      _v4 = (uint8)(_bcd & 0xff);
+    } else {
+      uint32 _t4 = (uint32)(_v3 & 0xFF) + (uint32)(_v2 & 0xFF) + cpu->_flag_C;
+      _v4 = (uint8)_t4;
+      cpu->_flag_C = (_t4 & 0x100) ? 1 : 0;
+      cpu->_flag_V = ((((_v3 & 0xFF) ^ _v4) & ((_v2 & 0xFF) ^ _v4) & 0x80) != 0) ? 1 : 0;
     }
-    if (cpu->_flag_N == 1) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9C5B_M1X1; }
-    goto L_9C7A_M1X1; /* fall-through */
-  L_9C7A_M1X1:
-    cpu_trace_block(cpu, 0x0B9C7A);
+    cpu->_flag_Z = ((_v4) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v4) & 0x80) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v4));
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->A & 0xFF);
+      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)(cpu->A);
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v5 = cpu_read8(cpu, (uint8)((((uint32)0x7edd08 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7edd08 + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v5));
+    cpu->_flag_Z = (((_v5 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v5 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->A & 0xFF);
+      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)(cpu->A);
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v6 = cpu_read_x16(cpu);
+    cpu_write8(cpu, cpu->DB, (uint16)(0x19ae), _v6);
+    { uint16 _old_s = cpu->S;
+      cpu_write8(cpu, 0x00, cpu->S, (uint8)(cpu->X & 0xFF));
+      cpu->S = (uint16)(cpu->S - 1);
+      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PHX, _old_s, -1); }
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x47); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = bank_0B_9ED7_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ed7u, 0x0b9e45u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ed7u, 0x0b9e45u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9ED7_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ed7u, 0x0b9e45u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9E48_M1X1; /* implicit fall-through */
+  L_9E48_M1X1:
+    cpu_trace_block(cpu, 0x0B9E48);
     WatchdogCheck();
     if (interp_bridge_lle_master_deadline_reached(cpu)) {
       RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C7Au);
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9E48u);
     }
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 6;
     cpu->master_cycles += 48;
-    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9c7au, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 3 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c7au);
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x4a); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = bank_0B_9EF0_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ef0u, 0x0b9e48u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ef0u, 0x0b9e48u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = bank_0B_9EF0_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ef0u, 0x0b9e48u, 2, NULL); break;  /* masked M/X index should make this unreachable */
       }
-      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
     RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c7au); }
+        return (RecompReturn)((int)_r - 1);
       }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c7au);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c7au);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9c7au,
-            (uint16)(_entry_s + 3u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9c7au);  /* RTL dispatch */ }
-  L_9C5B_M1X1:
-    cpu_trace_block(cpu, 0x0B9C5B);
+    }
+    goto L_9E4B_M1X1; /* implicit fall-through */
+  L_9E4B_M1X1:
+    cpu_trace_block(cpu, 0x0B9E4B);
     WatchdogCheck();
     if (interp_bridge_lle_master_deadline_reached(cpu)) {
       RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C5Bu);
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9E4Bu);
     }
     cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 12;
-    cpu->master_cycles += 96;
-    {
-      uint8 _im = cpu_read8(cpu, cpu->DB, (uint16)(0x0072));
-      _im = (uint8)(_im +1);
-      cpu_write8(cpu, cpu->DB, (uint16)(0x0072), _im);
-      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_im) & 0x80) != 0) ? 1 : 0;
+    cpu->cycles += 40;
+    cpu->master_cycles += 320;
+    { uint16 _old_s = cpu->S;
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _v = cpu_read8(cpu, 0x00, cpu->S);
+      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PLX, _old_s, +1);
+      cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0)); }
+    uint8 _v7 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
+    cpu_write_a_m(cpu, (uint16)(_v7));
+    cpu->_flag_Z = (((_v7 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v7 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v8 = cpu_read_a16(cpu);
+    uint8 _v9 = (uint8)((_v8 & 0xFF) << 1);
+    cpu->_flag_C = (((_v8 & 0xFF)) & 0x80) ? 1 : 0;
+    cpu->_flag_Z = ((_v9) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v9) & 0x80) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v9));
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->A & 0xFF);
+      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->Y = (uint16)(cpu->A);
+      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
     }
-    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint8 _v10 = cpu_read8(cpu, (uint8)((((uint32)0x81e7d8 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x81e7d8 + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v10));
+    cpu->_flag_Z = (((_v10 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v10 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    { uint16 _old_s = cpu->S;
+      cpu_write8(cpu, 0x00, cpu->S, (uint8)(cpu->A & 0xFF));
+      cpu->S = (uint16)(cpu->S - 1);
+      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PHA, _old_s, -1); }
+    uint8 _v11 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
+    cpu_write_y_x(cpu, (uint16)(_v11));
+    cpu->_flag_Z = (((_v11 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v11 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if ((0xF0D3 & 0xFF00) != ((0xF0D3 + cpu->Y) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,Y read page-cross */
+    uint8 _v12 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xf0d3 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xf0d3 + (uint32)cpu->Y)));
+    cpu_write_a_m(cpu, (uint16)(_v12));
+    cpu->_flag_Z = (((_v12 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v12 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    { uint16 _old_s = cpu->S;
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _v = cpu_read8(cpu, 0x00, cpu->S);
+      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PLY, _old_s, +1);
+      cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0)); }
+    {
+      /* JSL return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x60); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
+      uint8 _saved_pb = cpu->PB;
+      cpu_trace_pb_change(cpu, 0x0b9e5du, _saved_pb, 0x8b, CPU_TR_JSL);
+      cpu->PB = 0x8b;
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = CODE_8B8DC1_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x8b8dc1u, 0x0b9e5du, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x8b8dc1u, 0x0b9e5du, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = CODE_8B8DC1_M1X1(cpu); break;
+        default: _r = interp_tier_run_call_frame(cpu, 0x8b8dc1u, 0x0b9e5du, 3, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      cpu_trace_pb_change(cpu, 0x0b9e5du, cpu->PB, _saved_pb, CPU_TR_RTL);
+      cpu->PB = _saved_pb;
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9E61_M1X1; /* implicit fall-through */
+  L_9E61_M1X1:
+    cpu_trace_block(cpu, 0x0B9E61);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9E61u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 171;
+    cpu->master_cycles += 1368;
+    uint8 _v13 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
+    cpu_write_a_m(cpu, (uint16)(_v13));
+    cpu->_flag_Z = (((_v13 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v13 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v14 = cpu_read_a16(cpu);
+    uint8 _v15 = (uint8)((_v14 & 0xFF) >> 1);
+    cpu->_flag_C = (((_v14 & 0xFF)) & 1) ? 1 : 0;
+    cpu->_flag_Z = ((_v15) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v15) & 0x80) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v15));
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->A & 0xFF);
+      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->Y = (uint16)(cpu->A);
+      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    {
+      uint8 _old_p = cpu->P;
+      cpu_mirrors_to_p(cpu);
+      cpu->P = (uint8)(cpu->P | 0x20);
+      cpu_p_to_mirrors(cpu);
+      cpu_trace_px_record(cpu, 0, 1 /*SEP*/, _old_p, cpu->P);
+    }
+    if (cpu->m_flag) {
+      uint8 _v = (uint8)(cpu->X & 0xFF);
+      cpu->A = (uint16)((cpu->A & 0xFF00) | ((_v) & 0xFF));
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->A = (uint16)(cpu->X);
+      cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v16 = cpu_read_a16(cpu);
+    cpu_write8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x1cc0 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x1cc0 + (uint32)cpu->Y)), _v16);
+    {
+      uint8 _old_p = cpu->P;
+      cpu_mirrors_to_p(cpu);
+      cpu->P = (uint8)(cpu->P & ~0x20);
+      cpu_p_to_mirrors(cpu);
+      cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
+    }
+    uint8 _v17 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
+    cpu_write_x_x(cpu, (uint16)(_v17));
+    cpu->_flag_Z = (((_v17 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v17 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v18 = cpu_read16(cpu, (uint8)((((uint32)0x82f486 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x82f486 + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v18));
+    cpu->_flag_Z = (((_v18 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v18 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if ((0xEBC5 & 0xFF00) != ((0xEBC5 + cpu->X) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,X read page-cross */
+    uint8 _v19 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)));
+    cpu_write_y_x(cpu, (uint16)(_v19));
+    cpu->_flag_Z = (((_v19 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v19 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v20 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)), _v20);
+    uint16 _v21 = 0x20;
+    cpu_write_a_m(cpu, (uint16)(_v21));
+    cpu->_flag_Z = (((_v21 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v21 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v22 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0008 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0008 + (uint32)cpu->Y)), _v22);
+    uint16 _v23 = cpu_read16(cpu, (uint8)((((uint32)0x81f12b + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x81f12b + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v23));
+    cpu->_flag_Z = (((_v23 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v23 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v24 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x000c + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x000c + (uint32)cpu->Y)), _v24);
+    uint16 _v25 = cpu_read16(cpu, (uint8)((((uint32)0x81f11f + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x81f11f + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v25));
+    cpu->_flag_Z = (((_v25 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v25 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v26 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0002 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0002 + (uint32)cpu->Y)), _v26);
+    uint8 _v27 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ae));
+    cpu_write_x_x(cpu, (uint16)(_v27));
+    cpu->_flag_Z = (((_v27 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v27 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v28 = cpu_read16(cpu, (uint8)((((uint32)0x82f59a + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x82f59a + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v28));
+    cpu->_flag_Z = (((_v28 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v28 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    { uint16 _old_s = cpu->S;
+      cpu->S = (uint16)(cpu->S - 1);
+      cpu_write16(cpu, 0x00, cpu->S, cpu->A);
+      cpu->S = (uint16)(cpu->S - 1);
+      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PHA, _old_s, -2); }
+    cpu->_flag_C = 0;
+    cpu->P = (uint8)(cpu->P & ~0x01);
+    uint16 _v29 = cpu_read16(cpu, cpu->DB, (uint16)(0x19ac));
+    cpu_write_a_m(cpu, (uint16)(_v29));
+    cpu->_flag_Z = (((_v29 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v29 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v30 = 0xc;
+    uint16 _v31 = cpu_read_a16(cpu);
+    uint16 _v32;
+    if (cpu->_flag_D) {
+      int _bcd = ((_v31 & 0xFFFF) & 0xf) + ((_v30 & 0xFFFF) & 0xf) + cpu->_flag_C;
+      if (_bcd > 0x9) _bcd = ((_bcd + 0x6) & 0xf) + 0x10;
+      _bcd = ((_v31 & 0xFFFF) & 0xf0) + ((_v30 & 0xFFFF) & 0xf0) + _bcd;
+      if (_bcd > 0x9f) _bcd = ((_bcd + 0x60) & 0xff) + 0x100;
+      _bcd = ((_v31 & 0xFFFF) & 0xf00) + ((_v30 & 0xFFFF) & 0xf00) + _bcd;
+      if (_bcd > 0x9ff) _bcd = ((_bcd + 0x600) & 0xfff) + 0x1000;
+      _bcd = ((_v31 & 0xFFFF) & 0xf000) + ((_v30 & 0xFFFF) & 0xf000) + _bcd;
+      cpu->_flag_V = (((_v31 & 0xFFFF) & 0x8000) == ((_v30 & 0xFFFF) & 0x8000)) && (((_v30 & 0xFFFF) & 0x8000) != (_bcd & 0x8000)) ? 1 : 0;
+      if (_bcd > 0x9fff) _bcd += 0x6000;
+      cpu->_flag_C = (_bcd > 0xffff) ? 1 : 0;
+      _v32 = (uint16)_bcd;
+    } else {
+      uint32 _t32 = (uint32)(_v31 & 0xFFFF) + (uint32)(_v30 & 0xFFFF) + cpu->_flag_C;
+      _v32 = (uint16)_t32;
+      cpu->_flag_C = (_t32 & 0x10000) ? 1 : 0;
+      cpu->_flag_V = ((((_v31 & 0xFFFF) ^ _v32) & ((_v30 & 0xFFFF) ^ _v32) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->_flag_Z = ((_v32) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v32) & 0x8000) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v32));
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->A & 0xFF);
+      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)(cpu->A);
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    { uint16 _old_s = cpu->S;
+      cpu->S = (uint16)(cpu->S + 1);
+      cpu->A = cpu_read16(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
+      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PLA, _old_s, +2);
+      cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0)); }
+    if ((0xEBC5 & 0xFF00) != ((0xEBC5 + cpu->X) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,X read page-cross */
+    uint8 _v33 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)));
+    cpu_write_y_x(cpu, (uint16)(_v33));
+    cpu->_flag_Z = (((_v33 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v33 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v34 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)), _v34);
+    uint8 _v35 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
+    cpu_write_x_x(cpu, (uint16)(_v35));
+    cpu->_flag_Z = (((_v35 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v35 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v36 = 0x38;
+    cpu_write_a_m(cpu, (uint16)(_v36));
+    cpu->_flag_Z = (((_v36 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v36 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v37 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0008 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0008 + (uint32)cpu->Y)), _v37);
+    uint16 _v38 = cpu_read16(cpu, (uint8)((((uint32)0x81f12b + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x81f12b + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v38));
+    cpu->_flag_Z = (((_v38 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v38 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v39 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x000c + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x000c + (uint32)cpu->Y)), _v39);
+    uint16 _v40 = 0xa00;
+    cpu_write_a_m(cpu, (uint16)(_v40));
+    cpu->_flag_Z = (((_v40 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v40 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v41 = cpu_read_a16(cpu);
+    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0002 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0002 + (uint32)cpu->Y)), _v41);
+    uint8 _v42 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
+    cpu_write_x_x(cpu, (uint16)(_v42));
+    cpu->_flag_Z = (((_v42 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v42 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if (cpu->x_flag) {
+      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
+      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)((cpu->X) + (1));
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    if (cpu->x_flag) {
+      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
+      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)((cpu->X) + (1));
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    uint16 _v43 = cpu_read_x16(cpu);
+    cpu_write8(cpu, cpu->DB, (uint16)(0x19ac), _v43);
+    uint8 _v44 = 0xc;
+    uint16 _v45 = cpu_read_x16(cpu);
+    uint32 _tc45_44 = (uint32)(_v45 & 0xFF) - (uint32)(_v44 & 0xFF);
+    cpu->_flag_C = ((_v45 & 0xFF) >= (_v44 & 0xFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint8)_tc45_44) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint8)_tc45_44) & 0x80) != 0) ? 1 : 0;
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9ec6u, 0x0b9ec6u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9DAF_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9DAF_M1X1";
+  RecompStackPush("bank_0B_9DAF_M1X1");
+  cpu_dbg_funcname("bank_0B_9DAF_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9DAF, "bank_0B_9DAF_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9DAFu);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9DAF_M1X1:
+    cpu_trace_block(cpu, 0x0B9DAF);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9DAFu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 16;
+    cpu->master_cycles += 128;
+    uint8 _v1 = 0x83;
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if ((0x9522 & 0xFF00) != ((0x9522 + cpu->Y) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,Y read page-cross */
+    uint8 _v2 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x9522 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x9522 + (uint32)cpu->Y)));
+    uint16 _v3 = cpu_read_a16(cpu);
+    uint32 _tc3_2 = (uint32)(_v3 & 0xFF) - (uint32)(_v2 & 0xFF);
+    cpu->_flag_C = ((_v3 & 0xFF) >= (_v2 & 0xFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint8)_tc3_2) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint8)_tc3_2) & 0x80) != 0) ? 1 : 0;
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v4 = cpu_read_y16(cpu);
+    cpu_write8(cpu, 0x00, (uint16)(cpu->D + 0x0085 + cpu->X), _v4);
+    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
       cpu->S = (uint16)(cpu->S + 1);
       uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
       cpu->S = (uint16)(cpu->S + 1);
       uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+      uint8 _rpb = cpu->PB;
       uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
       uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
     #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9c5eu, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+      dbg_rts_trace(cpu, 0x0b9db6u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
     #endif
-      if (_hrv == 3 && _ret_s == _entry_s &&
+      if (_hrv == 2 && _ret_s == _entry_s &&
           _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
     RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c5eu);
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
       }
-      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
     RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
+        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
       if (_ret_s != _entry_s) {
         int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
         if (_anc_skip >= 0) {
           cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
     RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
+          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
         if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
           cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
     RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
         if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
             interp_bridge_has_direct_paired_bounce()) {
     RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c5eu); }
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u); }
       }
       if (_ret_s != _entry_s && cpu->S == _entry_s &&
           interp_bridge_has_direct_paired_bounce()) {
     RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c5eu);
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
       }
       if (_ret_s != _entry_s &&
           (uint16)(_entry_s - _ret_s) < 0x8000u &&
           cpu->S != _entry_s &&
           (uint16)(cpu->S - _entry_s) < 0x8000u) {
     RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c5eu);
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
       }
       if (_ret_s != _entry_s &&
           (uint16)(_entry_s - _ret_s) < 0x8000u &&
           !cpu_dispatch_has_entry(cpu, _rpc24)) {
     RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9c5eu,
-            (uint16)(_entry_s + 3u));
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9db6u,
+            (uint16)(_entry_s + 2u));
       }
       cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
     RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9c5eu);  /* RTL dispatch */ }
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9db6u);  /* RTS dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
+RecompReturn bank_0B_9C1A_M1X1(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9C1A_M1X1";
+  RecompStackPush("bank_0B_9C1A_M1X1");
+  cpu_dbg_funcname("bank_0B_9C1A_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9C1A, "bank_0B_9C1A_M1X1");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C1Au);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9C1A_M1X1:
+    cpu_trace_block(cpu, 0x0B9C1A);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C1Au);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 18;
+    cpu->master_cycles += 144;
+    uint8 _v1 = 0x0;
+    cpu_write8(cpu, cpu->DB, (uint16)(0x19c2), _v1);
+    uint8 _v2 = 0x53;
+    cpu_write_x_x(cpu, (uint16)(_v2));
+    cpu->_flag_Z = (((_v2 & 0xFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v2 & 0xFF)) & 0x80) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v3 = cpu_read_a16(cpu);
+    cpu_write8(cpu, 0x00, (uint16)(cpu->D + 0x0022), _v3);
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint8 _v4 = cpu_read8(cpu, cpu_read8(cpu, 0x00, (uint16)((uint16)(cpu->D + 0x00b5) + 2)), cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x00b5)));
+    uint16 _v5 = cpu_read_a16(cpu);
+    uint8 _v6 = (uint8)(_v5 & _v4);
+    cpu->_flag_Z = ((_v6) == 0) ? 1 : 0;
+    cpu->_flag_N = (((_v6) & 0x80) != 0) ? 1 : 0;
+    cpu_write_a_m(cpu, (uint16)(_v6));
+    goto L_9BC1_M1X1;
+  L_9BC1_M1X1:
+    cpu_trace_block(cpu, 0x0B9BC1);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BC1u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 8;
+    cpu->master_cycles += 64;
+    /* BRK: execute exact software interrupt in authoritative LLE */
+    RecompStackPop();
+    return interp_tier_dispatch_tail(cpu, 0x0b9bc1u, 0x0b9bc1u, _entry_s, _hrv);
+    RecompStackPop();
+    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
   RecompStackPop();
   return RECOMP_RETURN_NORMAL;
 }
@@ -2709,15 +5458,15 @@ RecompReturn bank_0B_9DAF_M1X0(CpuState *cpu) {
   return RECOMP_RETURN_NORMAL;
 }
 
-RecompReturn bank_0B_9C7B_M1X1(CpuState *cpu) {
+RecompReturn bank_0B_9C75_M1X1(CpuState *cpu) {
   extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9C7B_M1X1";
-  RecompStackPush("bank_0B_9C7B_M1X1");
-  cpu_dbg_funcname("bank_0B_9C7B_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9C7B, "bank_0B_9C7B_M1X1");
+  g_last_recomp_func = "bank_0B_9C75_M1X1";
+  RecompStackPush("bank_0B_9C75_M1X1");
+  cpu_dbg_funcname("bank_0B_9C75_M1X1");
+  cpu_trace_func_entry(cpu, 0x0B9C75, "bank_0B_9C75_M1X1");
   if (interp_bridge_lle_master_deadline_reached(cpu)) {
     RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C7Bu);
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C75u);
   }
   RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
   (void)_pending_skip;  /* unused if no NLR site in this fn */
@@ -2738,1587 +5487,109 @@ RecompReturn bank_0B_9C7B_M1X1(CpuState *cpu) {
   (void)_hrv;
   (void)_host_return_pc24;
   if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9C7B_M1X1:
-    cpu_trace_block(cpu, 0x0B9C7B);
+  L_9C75_M1X1:
+    cpu_trace_block(cpu, 0x0B9C75);
     WatchdogCheck();
     if (interp_bridge_lle_master_deadline_reached(cpu)) {
       RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C7Bu);
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C75u);
     }
     cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 14;
-    cpu->master_cycles += 112;
-    uint8 _v1 = cpu_read8(cpu, cpu->DB, (uint16)(0x00f8));
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v2 = 0x80;
+    cpu->cycles += 8;
+    cpu->master_cycles += 64;
     {
-      uint8 _bt = (uint8)((cpu->A & 0xFF) & (_v2 & 0xFF));
-      cpu->_flag_Z = (_bt == 0) ? 1 : 0;
+      uint8 _im = cpu_read8(cpu, cpu->DB, (uint16)(0x19a2));
+      _im = (uint8)(_im -1);
+      cpu_write8(cpu, cpu->DB, (uint16)(0x19a2), _im);
+      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_im) & 0x80) != 0) ? 1 : 0;
     }
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9c80u, 0x0b9c80u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9B9C_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9B9C_M1X1";
-  RecompStackPush("bank_0B_9B9C_M1X1");
-  cpu_dbg_funcname("bank_0B_9B9C_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9B9C, "bank_0B_9B9C_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9B9Cu);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9B9C_M1X1:
-    cpu_trace_block(cpu, 0x0B9B9C);
+    if (cpu->_flag_N == 1) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9C5B_M1X1; }
+    goto L_9C7A_M1X1; /* fall-through */
+  L_9C7A_M1X1:
+    cpu_trace_block(cpu, 0x0B9C7A);
     WatchdogCheck();
     if (interp_bridge_lle_master_deadline_reached(cpu)) {
       RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B9Cu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 13;
-    cpu->master_cycles += 104;
-    uint8 _v1 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x0074), _v1);
-    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(0x00f8));
-    cpu_write_a_m(cpu, (uint16)(_v2));
-    cpu->_flag_Z = (((_v2 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v2 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v3 = 0x80;
-    {
-      uint8 _bt = (uint8)((cpu->A & 0xFF) & (_v3 & 0xFF));
-      cpu->_flag_Z = (_bt == 0) ? 1 : 0;
-    }
-    goto L_9B76_M1X1;
-  L_9B76_M1X1:
-    cpu_trace_block(cpu, 0x0B9B76);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B76u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 9;
-    cpu->master_cycles += 72;
-    {
-      uint8 _old_p = cpu->P;
-      cpu_mirrors_to_p(cpu);
-      cpu->P = (uint8)(cpu->P & ~0x19);
-      cpu_p_to_mirrors(cpu);
-      cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
-    }
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x7a); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0ba032u, 0x0b9b78u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0ba032u, 0x0b9b78u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = bank_0B_A032_M1X0(cpu); break;
-        case 3: _r = interp_tier_run_call_frame(cpu, 0x0ba032u, 0x0b9b78u, 2, NULL); break;  /* exact M1X1 -> authoritative LLE */
-        default: _r = interp_tier_run_call_frame(cpu, 0x0ba032u, 0x0b9b78u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9B7B_M1X0; /* implicit fall-through */
-  L_9B7B_M1X0:
-    cpu_trace_block(cpu, 0x0B9B7B);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B7Bu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 14;
-    cpu->master_cycles += 112;
-    uint16 _v4 = 0x417;
-    cpu_write_y_x(cpu, (uint16)(_v4));
-    cpu->_flag_Z = (((_v4 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v4 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v5 = cpu_read8(cpu, cpu->DB, (uint16)(0x1652));
-    cpu_write_a_m(cpu, (uint16)(_v5));
-    cpu->_flag_Z = (((_v5 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v5 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->m_flag) {
-      uint8 _lo8 = ((uint8)(cpu->A & 0xFF)) + (1);
-      cpu->A = (uint16)((cpu->A & 0xFF00) | ((_lo8) & 0xFF));
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->A = (uint16)((cpu->A) + (1));
-      cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
-    }
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->A & 0xFF);
-      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)(cpu->A);
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    goto L_9C37_M1X0;
-  L_9C37_M1X0:
-    cpu_trace_block(cpu, 0x0B9C37);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C37u);
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C7Au);
     }
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 6;
     cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9c); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x39); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9dafu, 0x0b9c37u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9dafu, 0x0b9c37u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = bank_0B_9DAF_M1X0(cpu); break;
-        case 3: _r = bank_0B_9DAF_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9dafu, 0x0b9c37u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9c7au, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 3 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
     RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c7au);
       }
-    }
-    goto L_9C3A_M1X0; /* implicit fall-through */
-  L_9C3A_M1X0:
-    cpu_trace_block(cpu, 0x0B9C3A);
+      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c7au); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c7au);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c7au);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9c7au,
+            (uint16)(_entry_s + 3u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9c7au);  /* RTL dispatch */ }
+  L_9C5B_M1X1:
+    cpu_trace_block(cpu, 0x0B9C5B);
     WatchdogCheck();
     if (interp_bridge_lle_master_deadline_reached(cpu)) {
       RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C3Au);
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C5Bu);
     }
     cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9c); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x3c); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b96aau, 0x0b9c3au, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b96aau, 0x0b9c3au, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = bank_0B_96AA_M1X0(cpu); break;
-        case 3: _r = bank_0B_96AA_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b96aau, 0x0b9c3au, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9C3D_M1X0; /* implicit fall-through */
-  L_9C3D_M1X0:
-    cpu_trace_block(cpu, 0x0B9C3D);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C3Du);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 17;
-    cpu->master_cycles += 136;
-    uint16 _v6 = 0xd962;
-    cpu_write_y_x(cpu, (uint16)(_v6));
-    cpu->_flag_Z = (((_v6 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v6 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v7 = cpu_read8(cpu, cpu->DB, (uint16)(0x1648));
-    cpu_write_a_m(cpu, (uint16)(_v7));
-    cpu->_flag_Z = (((_v7 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v7 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v8 = 0x40;
-    {
-      uint8 _bt = (uint8)((cpu->A & 0xFF) & (_v8 & 0xFF));
-      cpu->_flag_Z = (_bt == 0) ? 1 : 0;
-    }
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9c45u, 0x0b9c45u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9D54_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9D54_M1X1";
-  RecompStackPush("bank_0B_9D54_M1X1");
-  cpu_dbg_funcname("bank_0B_9D54_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9D54, "bank_0B_9D54_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9D54u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9D54_M1X1:
-    cpu_trace_block(cpu, 0x0B9D54);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D54u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x56); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d54u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d54u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d54u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d54u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9D57_M1X1; /* implicit fall-through */
-  L_9D57_M1X1:
-    cpu_trace_block(cpu, 0x0B9D57);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D57u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x59); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d57u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d57u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d57u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9E34_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d57u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9D5A_M1X1; /* implicit fall-through */
-  L_9D5A_M1X1:
-    cpu_trace_block(cpu, 0x0B9D5A);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D5Au);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 2;
-    cpu->master_cycles += 16;
-    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9D42_M1X1; }
-    goto L_9D5C_M1X1; /* fall-through */
-  L_9D5C_M1X1:
-    cpu_trace_block(cpu, 0x0B9D5C);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D5Cu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x5e); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = bank_0B_9EC8_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ec8u, 0x0b9d5cu, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ec8u, 0x0b9d5cu, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9EC8_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ec8u, 0x0b9d5cu, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9D5F_M1X1; /* implicit fall-through */
-  L_9D5F_M1X1:
-    cpu_trace_block(cpu, 0x0B9D5F);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D5Fu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 16;
-    cpu->master_cycles += 128;
+    cpu->cycles += 12;
+    cpu->master_cycles += 96;
     {
       uint8 _im = cpu_read8(cpu, cpu->DB, (uint16)(0x0072));
-      _im = (uint8)(_im -1);
+      _im = (uint8)(_im +1);
       cpu_write8(cpu, cpu->DB, (uint16)(0x0072), _im);
       cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
       cpu->_flag_N = (((_im) & 0x80) != 0) ? 1 : 0;
     }
-    uint8 _v1 = 0x8;
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9d64u, 0x0b9d64u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  L_9D42_M1X1:
-    cpu_trace_block(cpu, 0x0B9D42);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D42u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9d42u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 3 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d42u);
-      }
-      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d42u); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d42u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d42u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9d42u,
-            (uint16)(_entry_s + 3u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9d42u);  /* RTL dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9E34_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9E34_M1X1";
-  RecompStackPush("bank_0B_9E34_M1X1");
-  cpu_dbg_funcname("bank_0B_9E34_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9E34, "bank_0B_9E34_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9E34u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9E34_M1X1:
-    cpu_trace_block(cpu, 0x0B9E34);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9E34u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 32;
-    cpu->master_cycles += 256;
-    cpu->_flag_C = 0;
-    cpu->P = (uint8)(cpu->P & ~0x01);
-    uint8 _v1 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(0x19aa));
-    uint16 _v3 = cpu_read_a16(cpu);
-    uint8 _v4;
-    if (cpu->_flag_D) {
-      int _bcd = ((_v3 & 0xFF) & 0xf) + ((_v2 & 0xFF) & 0xf) + cpu->_flag_C;
-      if (_bcd > 0x9) _bcd = ((_bcd + 0x6) & 0xf) + 0x10;
-      _bcd = ((_v3 & 0xFF) & 0xf0) + ((_v2 & 0xFF) & 0xf0) + _bcd;
-      cpu->_flag_V = (((_v3 & 0xFF) & 0x80) == ((_v2 & 0xFF) & 0x80)) && (((_v2 & 0xFF) & 0x80) != (_bcd & 0x80)) ? 1 : 0;
-      if (_bcd > 0x9f) _bcd += 0x60;
-      cpu->_flag_C = (_bcd > 0xff) ? 1 : 0;
-      _v4 = (uint8)(_bcd & 0xff);
-    } else {
-      uint32 _t4 = (uint32)(_v3 & 0xFF) + (uint32)(_v2 & 0xFF) + cpu->_flag_C;
-      _v4 = (uint8)_t4;
-      cpu->_flag_C = (_t4 & 0x100) ? 1 : 0;
-      cpu->_flag_V = ((((_v3 & 0xFF) ^ _v4) & ((_v2 & 0xFF) ^ _v4) & 0x80) != 0) ? 1 : 0;
-    }
-    cpu->_flag_Z = ((_v4) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v4) & 0x80) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v4));
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->A & 0xFF);
-      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)(cpu->A);
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v5 = cpu_read8(cpu, (uint8)((((uint32)0x7edd08 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7edd08 + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v5));
-    cpu->_flag_Z = (((_v5 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v5 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->A & 0xFF);
-      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)(cpu->A);
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v6 = cpu_read_x16(cpu);
-    cpu_write8(cpu, cpu->DB, (uint16)(0x19ae), _v6);
-    { uint16 _old_s = cpu->S;
-      cpu_write8(cpu, 0x00, cpu->S, (uint8)(cpu->X & 0xFF));
-      cpu->S = (uint16)(cpu->S - 1);
-      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PHX, _old_s, -1); }
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x47); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = bank_0B_9ED7_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ed7u, 0x0b9e45u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ed7u, 0x0b9e45u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9ED7_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ed7u, 0x0b9e45u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9E48_M1X1; /* implicit fall-through */
-  L_9E48_M1X1:
-    cpu_trace_block(cpu, 0x0B9E48);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9E48u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x4a); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = bank_0B_9EF0_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ef0u, 0x0b9e48u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ef0u, 0x0b9e48u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9EF0_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ef0u, 0x0b9e48u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9E4B_M1X1; /* implicit fall-through */
-  L_9E4B_M1X1:
-    cpu_trace_block(cpu, 0x0B9E4B);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9E4Bu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 40;
-    cpu->master_cycles += 320;
-    { uint16 _old_s = cpu->S;
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _v = cpu_read8(cpu, 0x00, cpu->S);
-      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PLX, _old_s, +1);
-      cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0)); }
-    uint8 _v7 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
-    cpu_write_a_m(cpu, (uint16)(_v7));
-    cpu->_flag_Z = (((_v7 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v7 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v8 = cpu_read_a16(cpu);
-    uint8 _v9 = (uint8)((_v8 & 0xFF) << 1);
-    cpu->_flag_C = (((_v8 & 0xFF)) & 0x80) ? 1 : 0;
-    cpu->_flag_Z = ((_v9) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v9) & 0x80) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v9));
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->A & 0xFF);
-      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->Y = (uint16)(cpu->A);
-      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v10 = cpu_read8(cpu, (uint8)((((uint32)0x81e7d8 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x81e7d8 + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v10));
-    cpu->_flag_Z = (((_v10 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v10 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    { uint16 _old_s = cpu->S;
-      cpu_write8(cpu, 0x00, cpu->S, (uint8)(cpu->A & 0xFF));
-      cpu->S = (uint16)(cpu->S - 1);
-      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PHA, _old_s, -1); }
-    uint8 _v11 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
-    cpu_write_y_x(cpu, (uint16)(_v11));
-    cpu->_flag_Z = (((_v11 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v11 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if ((0xF0D3 & 0xFF00) != ((0xF0D3 + cpu->Y) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,Y read page-cross */
-    uint8 _v12 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xf0d3 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xf0d3 + (uint32)cpu->Y)));
-    cpu_write_a_m(cpu, (uint16)(_v12));
-    cpu->_flag_Z = (((_v12 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v12 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    { uint16 _old_s = cpu->S;
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _v = cpu_read8(cpu, 0x00, cpu->S);
-      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PLY, _old_s, +1);
-      cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0)); }
-    {
-      /* JSL return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x60); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
-      uint8 _saved_pb = cpu->PB;
-      cpu_trace_pb_change(cpu, 0x0b9e5du, _saved_pb, 0x8b, CPU_TR_JSL);
-      cpu->PB = 0x8b;
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = CODE_8B8DC1_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x8b8dc1u, 0x0b9e5du, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x8b8dc1u, 0x0b9e5du, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = CODE_8B8DC1_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x8b8dc1u, 0x0b9e5du, 3, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      cpu_trace_pb_change(cpu, 0x0b9e5du, cpu->PB, _saved_pb, CPU_TR_RTL);
-      cpu->PB = _saved_pb;
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9E61_M1X1; /* implicit fall-through */
-  L_9E61_M1X1:
-    cpu_trace_block(cpu, 0x0B9E61);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9E61u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 171;
-    cpu->master_cycles += 1368;
-    uint8 _v13 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
-    cpu_write_a_m(cpu, (uint16)(_v13));
-    cpu->_flag_Z = (((_v13 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v13 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v14 = cpu_read_a16(cpu);
-    uint8 _v15 = (uint8)((_v14 & 0xFF) >> 1);
-    cpu->_flag_C = (((_v14 & 0xFF)) & 1) ? 1 : 0;
-    cpu->_flag_Z = ((_v15) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v15) & 0x80) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v15));
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->A & 0xFF);
-      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->Y = (uint16)(cpu->A);
-      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    {
-      uint8 _old_p = cpu->P;
-      cpu_mirrors_to_p(cpu);
-      cpu->P = (uint8)(cpu->P | 0x20);
-      cpu_p_to_mirrors(cpu);
-      cpu_trace_px_record(cpu, 0, 1 /*SEP*/, _old_p, cpu->P);
-    }
-    if (cpu->m_flag) {
-      uint8 _v = (uint8)(cpu->X & 0xFF);
-      cpu->A = (uint16)((cpu->A & 0xFF00) | ((_v) & 0xFF));
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->A = (uint16)(cpu->X);
-      cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v16 = cpu_read_a16(cpu);
-    cpu_write8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x1cc0 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x1cc0 + (uint32)cpu->Y)), _v16);
-    {
-      uint8 _old_p = cpu->P;
-      cpu_mirrors_to_p(cpu);
-      cpu->P = (uint8)(cpu->P & ~0x20);
-      cpu_p_to_mirrors(cpu);
-      cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
-    }
-    uint8 _v17 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
-    cpu_write_x_x(cpu, (uint16)(_v17));
-    cpu->_flag_Z = (((_v17 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v17 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v18 = cpu_read16(cpu, (uint8)((((uint32)0x82f486 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x82f486 + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v18));
-    cpu->_flag_Z = (((_v18 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v18 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if ((0xEBC5 & 0xFF00) != ((0xEBC5 + cpu->X) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,X read page-cross */
-    uint8 _v19 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)));
-    cpu_write_y_x(cpu, (uint16)(_v19));
-    cpu->_flag_Z = (((_v19 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v19 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v20 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)), _v20);
-    uint16 _v21 = 0x20;
-    cpu_write_a_m(cpu, (uint16)(_v21));
-    cpu->_flag_Z = (((_v21 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v21 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v22 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0008 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0008 + (uint32)cpu->Y)), _v22);
-    uint16 _v23 = cpu_read16(cpu, (uint8)((((uint32)0x81f12b + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x81f12b + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v23));
-    cpu->_flag_Z = (((_v23 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v23 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v24 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x000c + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x000c + (uint32)cpu->Y)), _v24);
-    uint16 _v25 = cpu_read16(cpu, (uint8)((((uint32)0x81f11f + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x81f11f + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v25));
-    cpu->_flag_Z = (((_v25 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v25 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v26 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0002 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0002 + (uint32)cpu->Y)), _v26);
-    uint8 _v27 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ae));
-    cpu_write_x_x(cpu, (uint16)(_v27));
-    cpu->_flag_Z = (((_v27 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v27 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v28 = cpu_read16(cpu, (uint8)((((uint32)0x82f59a + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x82f59a + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v28));
-    cpu->_flag_Z = (((_v28 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v28 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    { uint16 _old_s = cpu->S;
-      cpu->S = (uint16)(cpu->S - 1);
-      cpu_write16(cpu, 0x00, cpu->S, cpu->A);
-      cpu->S = (uint16)(cpu->S - 1);
-      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PHA, _old_s, -2); }
-    cpu->_flag_C = 0;
-    cpu->P = (uint8)(cpu->P & ~0x01);
-    uint16 _v29 = cpu_read16(cpu, cpu->DB, (uint16)(0x19ac));
-    cpu_write_a_m(cpu, (uint16)(_v29));
-    cpu->_flag_Z = (((_v29 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v29 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v30 = 0xc;
-    uint16 _v31 = cpu_read_a16(cpu);
-    uint16 _v32;
-    if (cpu->_flag_D) {
-      int _bcd = ((_v31 & 0xFFFF) & 0xf) + ((_v30 & 0xFFFF) & 0xf) + cpu->_flag_C;
-      if (_bcd > 0x9) _bcd = ((_bcd + 0x6) & 0xf) + 0x10;
-      _bcd = ((_v31 & 0xFFFF) & 0xf0) + ((_v30 & 0xFFFF) & 0xf0) + _bcd;
-      if (_bcd > 0x9f) _bcd = ((_bcd + 0x60) & 0xff) + 0x100;
-      _bcd = ((_v31 & 0xFFFF) & 0xf00) + ((_v30 & 0xFFFF) & 0xf00) + _bcd;
-      if (_bcd > 0x9ff) _bcd = ((_bcd + 0x600) & 0xfff) + 0x1000;
-      _bcd = ((_v31 & 0xFFFF) & 0xf000) + ((_v30 & 0xFFFF) & 0xf000) + _bcd;
-      cpu->_flag_V = (((_v31 & 0xFFFF) & 0x8000) == ((_v30 & 0xFFFF) & 0x8000)) && (((_v30 & 0xFFFF) & 0x8000) != (_bcd & 0x8000)) ? 1 : 0;
-      if (_bcd > 0x9fff) _bcd += 0x6000;
-      cpu->_flag_C = (_bcd > 0xffff) ? 1 : 0;
-      _v32 = (uint16)_bcd;
-    } else {
-      uint32 _t32 = (uint32)(_v31 & 0xFFFF) + (uint32)(_v30 & 0xFFFF) + cpu->_flag_C;
-      _v32 = (uint16)_t32;
-      cpu->_flag_C = (_t32 & 0x10000) ? 1 : 0;
-      cpu->_flag_V = ((((_v31 & 0xFFFF) ^ _v32) & ((_v30 & 0xFFFF) ^ _v32) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->_flag_Z = ((_v32) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v32) & 0x8000) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v32));
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->A & 0xFF);
-      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)(cpu->A);
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    { uint16 _old_s = cpu->S;
-      cpu->S = (uint16)(cpu->S + 1);
-      cpu->A = cpu_read16(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
-      cpu_trace_stack_op(cpu, 0, CPU_STACK_OP_PLA, _old_s, +2);
-      cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0)); }
-    if ((0xEBC5 & 0xFF00) != ((0xEBC5 + cpu->X) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,X read page-cross */
-    uint8 _v33 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)));
-    cpu_write_y_x(cpu, (uint16)(_v33));
-    cpu->_flag_Z = (((_v33 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v33 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v34 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)), _v34);
-    uint8 _v35 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
-    cpu_write_x_x(cpu, (uint16)(_v35));
-    cpu->_flag_Z = (((_v35 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v35 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v36 = 0x38;
-    cpu_write_a_m(cpu, (uint16)(_v36));
-    cpu->_flag_Z = (((_v36 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v36 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v37 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0008 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0008 + (uint32)cpu->Y)), _v37);
-    uint16 _v38 = cpu_read16(cpu, (uint8)((((uint32)0x81f12b + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x81f12b + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v38));
-    cpu->_flag_Z = (((_v38 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v38 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v39 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x000c + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x000c + (uint32)cpu->Y)), _v39);
-    uint16 _v40 = 0xa00;
-    cpu_write_a_m(cpu, (uint16)(_v40));
-    cpu->_flag_Z = (((_v40 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v40 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v41 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0002 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0002 + (uint32)cpu->Y)), _v41);
-    uint8 _v42 = cpu_read8(cpu, cpu->DB, (uint16)(0x19ac));
-    cpu_write_x_x(cpu, (uint16)(_v42));
-    cpu->_flag_Z = (((_v42 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v42 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->x_flag) {
-      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
-      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)((cpu->X) + (1));
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    if (cpu->x_flag) {
-      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
-      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)((cpu->X) + (1));
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    uint16 _v43 = cpu_read_x16(cpu);
-    cpu_write8(cpu, cpu->DB, (uint16)(0x19ac), _v43);
-    uint8 _v44 = 0xc;
-    uint16 _v45 = cpu_read_x16(cpu);
-    uint32 _tc45_44 = (uint32)(_v45 & 0xFF) - (uint32)(_v44 & 0xFF);
-    cpu->_flag_C = ((_v45 & 0xFF) >= (_v44 & 0xFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint8)_tc45_44) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint8)_tc45_44) & 0x80) != 0) ? 1 : 0;
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9ec6u, 0x0b9ec6u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9DAF_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9DAF_M1X1";
-  RecompStackPush("bank_0B_9DAF_M1X1");
-  cpu_dbg_funcname("bank_0B_9DAF_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9DAF, "bank_0B_9DAF_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9DAFu);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9DAF_M1X1:
-    cpu_trace_block(cpu, 0x0B9DAF);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9DAFu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 16;
-    cpu->master_cycles += 128;
-    uint8 _v1 = 0x83;
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if ((0x9522 & 0xFF00) != ((0x9522 + cpu->Y) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,Y read page-cross */
-    uint8 _v2 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x9522 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x9522 + (uint32)cpu->Y)));
-    uint16 _v3 = cpu_read_a16(cpu);
-    uint32 _tc3_2 = (uint32)(_v3 & 0xFF) - (uint32)(_v2 & 0xFF);
-    cpu->_flag_C = ((_v3 & 0xFF) >= (_v2 & 0xFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint8)_tc3_2) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint8)_tc3_2) & 0x80) != 0) ? 1 : 0;
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v4 = cpu_read_y16(cpu);
-    cpu_write8(cpu, 0x00, (uint16)(cpu->D + 0x0085 + cpu->X), _v4);
-    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      uint8 _rpb = cpu->PB;
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9db6u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 2 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
-      }
-      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9db6u,
-            (uint16)(_entry_s + 2u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9db6u);  /* RTS dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9DA9_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9DA9_M1X1";
-  RecompStackPush("bank_0B_9DA9_M1X1");
-  cpu_dbg_funcname("bank_0B_9DA9_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9DA9, "bank_0B_9DA9_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9DA9u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9DA9_M1X1:
-    cpu_trace_block(cpu, 0x0B9DA9);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9DA9u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 28;
-    cpu->master_cycles += 224;
-    uint8 _v1 = 0x8;
-    cpu_write_y_x(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    {
-      uint8 _m = cpu_read8(cpu, 0x00, (uint16)(cpu->D + 0x00ae));
-      cpu->_flag_Z = ((_m & cpu->A) == 0) ? 1 : 0;
-      cpu_write8(cpu, 0x00, (uint16)(cpu->D + 0x00ae), (uint8)(_m | cpu->A));
-    }
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0016))));
-    uint16 _v3 = cpu_read_a16(cpu);
-    uint8 _v4 = (uint8)(_v3 ^ _v2);
-    cpu->_flag_Z = ((_v4) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v4) & 0x80) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v4));
-    uint8 _v5 = 0x83;
-    cpu_write_a_m(cpu, (uint16)(_v5));
-    cpu->_flag_Z = (((_v5 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v5 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if ((0x9522 & 0xFF00) != ((0x9522 + cpu->Y) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,Y read page-cross */
-    uint8 _v6 = cpu_read8(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x9522 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x9522 + (uint32)cpu->Y)));
-    uint16 _v7 = cpu_read_a16(cpu);
-    uint32 _tc7_6 = (uint32)(_v7 & 0xFF) - (uint32)(_v6 & 0xFF);
-    cpu->_flag_C = ((_v7 & 0xFF) >= (_v6 & 0xFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint8)_tc7_6) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint8)_tc7_6) & 0x80) != 0) ? 1 : 0;
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v8 = cpu_read_y16(cpu);
-    cpu_write8(cpu, 0x00, (uint16)(cpu->D + 0x0085 + cpu->X), _v8);
-    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      uint8 _rpb = cpu->PB;
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9db6u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 2 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
-      }
-      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9db6u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9db6u,
-            (uint16)(_entry_s + 2u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9db6u);  /* RTS dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9ABD_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9ABD_M1X1";
-  RecompStackPush("bank_0B_9ABD_M1X1");
-  cpu_dbg_funcname("bank_0B_9ABD_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9ABD, "bank_0B_9ABD_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9ABDu);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9ABD_M1X1:
-    cpu_trace_block(cpu, 0x0B9ABD);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9ABDu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 18;
-    cpu->master_cycles += 144;
-    uint8 _v1 = 0x0;
-    cpu_write_y_x(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(0xa4ad));
-    uint16 _v3 = cpu_read_a16(cpu);
-    uint8 _v4 = (uint8)(_v3 | _v2);
-    cpu->_flag_Z = ((_v4) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v4) & 0x80) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v4));
-    uint8 _v5 = cpu_read8(cpu, cpu->DB, (uint16)(0x0289));
-    uint16 _v6 = cpu_read_a16(cpu);
-    uint8 _v7 = (uint8)(_v6 | _v5);
-    cpu->_flag_Z = ((_v7) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v7) & 0x80) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v7));
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9ac5u, 0x0b9ac5u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9D0E_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9D0E_M1X1";
-  RecompStackPush("bank_0B_9D0E_M1X1");
-  cpu_dbg_funcname("bank_0B_9D0E_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9D0E, "bank_0B_9D0E_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9D0Eu);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9D0E_M1X1:
-    cpu_trace_block(cpu, 0x0B9D0E);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D0Eu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x10); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d0eu, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d0eu, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d0eu, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9d0eu, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9D11_M1X1; /* implicit fall-through */
-  L_9D11_M1X1:
-    cpu_trace_block(cpu, 0x0B9D11);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D11u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9d); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x13); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d11u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d11u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d11u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9E34_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9e34u, 0x0b9d11u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9D14_M1X1; /* implicit fall-through */
-  L_9D14_M1X1:
-    cpu_trace_block(cpu, 0x0B9D14);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D14u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 2;
-    cpu->master_cycles += 16;
-    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9D0D_M1X1; }
-    goto L_9D16_M1X1; /* fall-through */
-  L_9D16_M1X1:
-    cpu_trace_block(cpu, 0x0B9D16);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D16u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 10;
-    cpu->master_cycles += 80;
-    uint8 _v1 = 0x8;
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9d18u, 0x0b9d18u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  L_9D0D_M1X1:
-    cpu_trace_block(cpu, 0x0B9D0D);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9D0Du);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9d0du, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 3 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d0du);
-      }
-      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d0du); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d0du);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9d0du);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9d0du,
-            (uint16)(_entry_s + 3u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9d0du);  /* RTL dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9C5F_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9C5F_M1X1";
-  RecompStackPush("bank_0B_9C5F_M1X1");
-  cpu_dbg_funcname("bank_0B_9C5F_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9C5F, "bank_0B_9C5F_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C5Fu);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9C5F_M1X1:
-    cpu_trace_block(cpu, 0x0B9C5F);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C5Fu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9c); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x61); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9c5fu, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9c5fu, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9c5fu, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9745_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9c5fu, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9C62_M1X1; /* implicit fall-through */
-  L_9C62_M1X1:
-    cpu_trace_block(cpu, 0x0B9C62);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C62u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 2;
-    cpu->master_cycles += 16;
-    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9C5E_M1X1; }
-    goto L_9C64_M1X1; /* fall-through */
-  L_9C64_M1X1:
-    cpu_trace_block(cpu, 0x0B9C64);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C64u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 10;
-    cpu->master_cycles += 80;
-    uint8 _v1 = 0x6;
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9c66u, 0x0b9c66u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  L_9C5E_M1X1:
-    cpu_trace_block(cpu, 0x0B9C5E);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C5Eu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
     { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
       cpu->S = (uint16)(cpu->S + 1);
       uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
@@ -4376,1112 +5647,6 @@ RecompReturn bank_0B_9C5F_M1X1(CpuState *cpu) {
       cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
     RecompStackPop();
       return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9c5eu);  /* RTL dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9DB7_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9DB7_M1X1";
-  RecompStackPush("bank_0B_9DB7_M1X1");
-  cpu_dbg_funcname("bank_0B_9DB7_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9DB7, "bank_0B_9DB7_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9DB7u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9DB7_M1X1:
-    cpu_trace_block(cpu, 0x0B9DB7);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9DB7u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 14;
-    cpu->master_cycles += 112;
-    uint8 _v1 = cpu_read8(cpu, cpu->DB, (uint16)(0x1652));
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v2 = 0x23;
-    uint16 _v3 = cpu_read_a16(cpu);
-    uint32 _tc3_2 = (uint32)(_v3 & 0xFF) - (uint32)(_v2 & 0xFF);
-    cpu->_flag_C = ((_v3 & 0xFF) >= (_v2 & 0xFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint8)_tc3_2) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint8)_tc3_2) & 0x80) != 0) ? 1 : 0;
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9dbcu, 0x0b9dbcu, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9B68_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9B68_M1X1";
-  RecompStackPush("bank_0B_9B68_M1X1");
-  cpu_dbg_funcname("bank_0B_9B68_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9B68, "bank_0B_9B68_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9B68u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9B68_M1X1:
-    cpu_trace_block(cpu, 0x0B9B68);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B68u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 8;
-    cpu->master_cycles += 64;
-    {
-      /* JSL return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x6b); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
-      uint8 _saved_pb = cpu->PB;
-      cpu_trace_pb_change(cpu, 0x0b9b68u, _saved_pb, 0x8b, CPU_TR_JSL);
-      cpu->PB = 0x8b;
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x8b95c5u, 0x0b9b68u, 3, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x8b95c5u, 0x0b9b68u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x8b95c5u, 0x0b9b68u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = CODE_8B95C5_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x8b95c5u, 0x0b9b68u, 3, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      cpu_trace_pb_change(cpu, 0x0b9b68u, cpu->PB, _saved_pb, CPU_TR_RTL);
-      cpu->PB = _saved_pb;
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9B6C_M1X1; /* implicit fall-through */
-  L_9B6C_M1X1:
-    cpu_trace_block(cpu, 0x0B9B6C);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B6Cu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 10;
-    cpu->master_cycles += 80;
-    uint8 _v1 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x19a8), _v1);
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x71); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9b6fu, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9b6fu, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9b6fu, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9b6fu, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9B72_M1X1; /* implicit fall-through */
-  L_9B72_M1X1:
-    cpu_trace_block(cpu, 0x0B9B72);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9B72u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 10;
-    cpu->master_cycles += 80;
-    uint8 _v2 = 0x1;
-    cpu_write_a_m(cpu, (uint16)(_v2));
-    cpu->_flag_Z = (((_v2 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v2 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9b74u, 0x0b9b74u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9BD1_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9BD1_M1X1";
-  RecompStackPush("bank_0B_9BD1_M1X1");
-  cpu_dbg_funcname("bank_0B_9BD1_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9BD1, "bank_0B_9BD1_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD1u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9BD1_M1X1:
-    cpu_trace_block(cpu, 0x0B9BD1);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD1u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0xd3); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9bd1u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9bd1u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9bd1u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9d8bu, 0x0b9bd1u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9BD4_M1X1; /* implicit fall-through */
-  L_9BD4_M1X1:
-    cpu_trace_block(cpu, 0x0B9BD4);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD4u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0xd6); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9bd4u, 2, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9bd4u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9bd4u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = bank_0B_9745_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9745u, 0x0b9bd4u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9BD7_M1X1; /* implicit fall-through */
-  L_9BD7_M1X1:
-    cpu_trace_block(cpu, 0x0B9BD7);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD7u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 2;
-    cpu->master_cycles += 16;
-    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9BB9_M1X1; }
-    goto L_9BD9_M1X1; /* fall-through */
-  L_9BD9_M1X1:
-    cpu_trace_block(cpu, 0x0B9BD9);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BD9u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 16;
-    cpu->master_cycles += 128;
-    {
-      uint8 _im = cpu_read8(cpu, cpu->DB, (uint16)(0x0072));
-      _im = (uint8)(_im -1);
-      cpu_write8(cpu, cpu->DB, (uint16)(0x0072), _im);
-      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_im) & 0x80) != 0) ? 1 : 0;
-    }
-    uint8 _v1 = 0x6;
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9bdeu, 0x0b9bdeu, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
-  L_9BB9_M1X1:
-    cpu_trace_block(cpu, 0x0B9BB9);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BB9u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9bb9u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 3 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9bb9u);
-      }
-      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9bb9u); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9bb9u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9bb9u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9bb9u,
-            (uint16)(_entry_s + 3u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9bb9u);  /* RTL dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9F19_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9F19_M1X1";
-  RecompStackPush("bank_0B_9F19_M1X1");
-  cpu_dbg_funcname("bank_0B_9F19_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9F19, "bank_0B_9F19_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9F19u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9F19_M1X1:
-    cpu_trace_block(cpu, 0x0B9F19);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F19u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 8;
-    cpu->master_cycles += 64;
-    {
-      /* JSL return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x1c); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
-      uint8 _saved_pb = cpu->PB;
-      cpu_trace_pb_change(cpu, 0x0b9f19u, _saved_pb, 0x80, CPU_TR_JSL);
-      cpu->PB = 0x80;
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = interp_tier_run_call_frame(cpu, 0x8089b8u, 0x0b9f19u, 3, NULL); break;  /* exact M0X0 -> authoritative LLE */
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x8089b8u, 0x0b9f19u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x8089b8u, 0x0b9f19u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = CODE_8089B8_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x8089b8u, 0x0b9f19u, 3, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      cpu_trace_pb_change(cpu, 0x0b9f19u, cpu->PB, _saved_pb, CPU_TR_RTL);
-      cpu->PB = _saved_pb;
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9F1D_M0X0; /* implicit fall-through */
-  L_9F1D_M0X0:
-    cpu_trace_block(cpu, 0x0B9F1D);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F1Du);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 3;
-    cpu->master_cycles += 24;
-    uint16 _v1 = 0x0;
-    cpu_write_x_x(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    goto L_9F20_M0X0; /* implicit fall-through */
-  L_9F20_M0X0:
-    cpu_trace_block(cpu, 0x0B9F20);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F20u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 41;
-    cpu->master_cycles += 328;
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v2 = cpu_read_x16(cpu);
-    cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0008), _v2);
-    uint16 _v3 = cpu_read16(cpu, (uint8)((((uint32)0x7edc26 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7edc26 + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v3));
-    cpu->_flag_Z = (((_v3 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v3 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v4 = 0x3f;
-    uint16 _v5 = cpu_read_a16(cpu);
-    uint16 _v6 = (uint16)(_v5 & _v4);
-    cpu->_flag_Z = ((_v6) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v6) & 0x8000) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v6));
-    uint16 _v7 = cpu_read_a16(cpu);
-    uint16 _v8 = (uint16)((_v7 & 0xFFFF) << 1);
-    cpu->_flag_C = (((_v7 & 0xFFFF)) & 0x8000) ? 1 : 0;
-    cpu->_flag_Z = ((_v8) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v8) & 0x8000) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v8));
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v9 = cpu_read_a16(cpu);
-    cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0000), _v9);
-    uint16 _v10 = cpu_read16(cpu, (uint8)((((uint32)0x7edc26 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7edc26 + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v10));
-    cpu->_flag_Z = (((_v10 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v10 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v11 = 0x3f00;
-    uint16 _v12 = cpu_read_a16(cpu);
-    uint16 _v13 = (uint16)(_v12 & _v11);
-    cpu->_flag_Z = ((_v13) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v13) & 0x8000) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v13));
-    uint16 _v14 = cpu_read_a16(cpu);
-    uint16 _v15 = (uint16)((_v14 & 0xFFFF) << 1);
-    cpu->_flag_C = (((_v14 & 0xFFFF)) & 0x8000) ? 1 : 0;
-    cpu->_flag_Z = ((_v15) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v15) & 0x8000) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v15));
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v16 = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0000));
-    uint16 _v17 = cpu_read_a16(cpu);
-    uint16 _v18 = (uint16)(_v17 | _v16);
-    cpu->_flag_Z = ((_v18) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v18) & 0x8000) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v18));
-    uint16 _v19 = cpu_read16(cpu, cpu->DB, (uint16)(0x19a6));
-    uint16 _v20 = cpu_read_x16(cpu);
-    uint32 _tc20_19 = (uint32)(_v20 & 0xFFFF) - (uint32)(_v19 & 0xFFFF);
-    cpu->_flag_C = ((_v20 & 0xFFFF) >= (_v19 & 0xFFFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint16)_tc20_19) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint16)_tc20_19) & 0x8000) != 0) ? 1 : 0;
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F3E_M0X0; }
-    goto L_9F3B_M0X0; /* fall-through */
-  L_9F3B_M0X0:
-    cpu_trace_block(cpu, 0x0B9F3B);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F3Bu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 3;
-    cpu->master_cycles += 24;
-    uint16 _v21 = 0x1;
-    uint16 _v22 = cpu_read_a16(cpu);
-    uint16 _v23 = (uint16)(_v22 | _v21);
-    cpu->_flag_Z = ((_v23) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v23) & 0x8000) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v23));
-    goto L_9F3E_M0X0; /* implicit fall-through */
-  L_9F3E_M0X0:
-    cpu_trace_block(cpu, 0x0B9F3E);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F3Eu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 42;
-    cpu->master_cycles += 336;
-    if ((0xEBC5 & 0xFF00) != ((0xEBC5 + cpu->X) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,X read page-cross */
-    uint16 _v24 = cpu_read16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->X)));
-    cpu_write_y_x(cpu, (uint16)(_v24));
-    cpu->_flag_Z = (((_v24 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v24 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v25 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0012 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0012 + (uint32)cpu->Y)), _v25);
-    uint16 _v26 = 0x0;
-    cpu_write_a_m(cpu, (uint16)(_v26));
-    cpu->_flag_Z = (((_v26 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v26 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v27 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x001e + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x001e + (uint32)cpu->Y)), _v27);
-    uint16 _v28 = 0x5696;
-    cpu_write_a_m(cpu, (uint16)(_v28));
-    cpu->_flag_Z = (((_v28 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v28 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v29 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x0000 + (uint32)cpu->Y)), _v29);
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v30 = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0008));
-    cpu_write_x_x(cpu, (uint16)(_v30));
-    cpu->_flag_Z = (((_v30 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v30 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->x_flag) {
-      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
-      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)((cpu->X) + (1));
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    if (cpu->x_flag) {
-      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
-      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)((cpu->X) + (1));
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    uint16 _v31 = 0x48;
-    uint16 _v32 = cpu_read_x16(cpu);
-    uint32 _tc32_31 = (uint32)(_v32 & 0xFFFF) - (uint32)(_v31 & 0xFFFF);
-    cpu->_flag_C = ((_v32 & 0xFFFF) >= (_v31 & 0xFFFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint16)_tc32_31) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint16)_tc32_31) & 0x8000) != 0) ? 1 : 0;
-    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F20_M0X0; }
-    goto L_9F59_M0X0; /* fall-through */
-  L_9F59_M0X0:
-    cpu_trace_block(cpu, 0x0B9F59);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F59u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 8;
-    cpu->master_cycles += 64;
-    {
-      /* JSL return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x5c); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
-      uint8 _saved_pb = cpu->PB;
-      cpu_trace_pb_change(cpu, 0x0b9f59u, _saved_pb, 0x83, CPU_TR_JSL);
-      cpu->PB = 0x83;
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = CODE_83AE95_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x83ae95u, 0x0b9f59u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x83ae95u, 0x0b9f59u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = interp_tier_run_call_frame(cpu, 0x83ae95u, 0x0b9f59u, 3, NULL); break;  /* exact M1X1 -> authoritative LLE */
-        default: _r = interp_tier_run_call_frame(cpu, 0x83ae95u, 0x0b9f59u, 3, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      cpu_trace_pb_change(cpu, 0x0b9f59u, cpu->PB, _saved_pb, CPU_TR_RTL);
-      cpu->PB = _saved_pb;
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9F5D_M0X0; /* implicit fall-through */
-  L_9F5D_M0X0:
-    cpu_trace_block(cpu, 0x0B9F5D);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F5Du);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 3;
-    cpu->master_cycles += 24;
-    uint16 _v33 = 0x0;
-    cpu_write_x_x(cpu, (uint16)(_v33));
-    cpu->_flag_Z = (((_v33 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v33 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    goto L_9F60_M0X0; /* implicit fall-through */
-  L_9F60_M0X0:
-    cpu_trace_block(cpu, 0x0B9F60);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F60u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 12;
-    cpu->master_cycles += 96;
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v34 = cpu_read_x16(cpu);
-    cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0000), _v34);
-    uint16 _v35 = 0x0;
-    cpu_write_y_x(cpu, (uint16)(_v35));
-    cpu->_flag_Z = (((_v35 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v35 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if ((0x1D40 & 0xFF00) != ((0x1D40 + cpu->X) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,X read page-cross */
-    uint16 _v36 = cpu_read16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0x1d40 + (uint32)cpu->X)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0x1d40 + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v36));
-    cpu->_flag_Z = (((_v36 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v36 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    goto L_9F68_M0X0; /* implicit fall-through */
-  L_9F68_M0X0:
-    cpu_trace_block(cpu, 0x0B9F68);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F68u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 7;
-    cpu->master_cycles += 56;
-    if ((0xEBC5 & 0xFF00) != ((0xEBC5 + cpu->Y) & 0xFF00)) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* abs,Y read page-cross */
-    uint16 _v37 = cpu_read16(cpu, (uint8)(((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->Y)) >> 16), (uint16)((((uint32)cpu->DB << 16) + (uint32)0xebc5 + (uint32)cpu->Y)));
-    uint16 _v38 = cpu_read_a16(cpu);
-    uint32 _tc38_37 = (uint32)(_v38 & 0xFFFF) - (uint32)(_v37 & 0xFFFF);
-    cpu->_flag_C = ((_v38 & 0xFFFF) >= (_v37 & 0xFFFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint16)_tc38_37) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint16)_tc38_37) & 0x8000) != 0) ? 1 : 0;
-    if (cpu->_flag_Z == 1) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F74_M0X0; }
-    goto L_9F6D_M0X0; /* fall-through */
-  L_9F6D_M0X0:
-    cpu_trace_block(cpu, 0x0B9F6D);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F6Du);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 9;
-    cpu->master_cycles += 72;
-    if (cpu->x_flag) {
-      uint8 _lo8 = ((uint8)(cpu->Y & 0xFF)) + (1);
-      cpu->Y = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->Y = (uint16)((cpu->Y) + (1));
-      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
-    }
-    if (cpu->x_flag) {
-      uint8 _lo8 = ((uint8)(cpu->Y & 0xFF)) + (1);
-      cpu->Y = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->Y = (uint16)((cpu->Y) + (1));
-      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
-    }
-    uint16 _v39 = 0x48;
-    uint16 _v40 = cpu_read_y16(cpu);
-    uint32 _tc40_39 = (uint32)(_v40 & 0xFFFF) - (uint32)(_v39 & 0xFFFF);
-    cpu->_flag_C = ((_v40 & 0xFFFF) >= (_v39 & 0xFFFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint16)_tc40_39) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint16)_tc40_39) & 0x8000) != 0) ? 1 : 0;
-    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F68_M0X0; }
-    goto L_9F74_M0X0; /* fall-through */
-  L_9F74_M0X0:
-    cpu_trace_block(cpu, 0x0B9F74);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F74u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 21;
-    cpu->master_cycles += 168;
-    if (cpu->m_flag) {
-      uint8 _v = (uint8)(cpu->Y & 0xFF);
-      cpu->A = (uint16)((cpu->A & 0xFF00) | ((_v) & 0xFF));
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->A = (uint16)(cpu->Y);
-      cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v41 = cpu_read_a16(cpu);
-    cpu_write16(cpu, (uint8)((((uint32)0x7edd08 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7edd08 + (uint32)cpu->X)), _v41);
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v42 = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0000));
-    cpu_write_x_x(cpu, (uint16)(_v42));
-    cpu->_flag_Z = (((_v42 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v42 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->x_flag) {
-      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
-      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)((cpu->X) + (1));
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    if (cpu->x_flag) {
-      uint8 _lo8 = ((uint8)(cpu->X & 0xFF)) + (1);
-      cpu->X = (uint16)((_lo8) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_lo8) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_lo8) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)((cpu->X) + (1));
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    uint16 _v43 = 0x48;
-    uint16 _v44 = cpu_read_x16(cpu);
-    uint32 _tc44_43 = (uint32)(_v44 & 0xFFFF) - (uint32)(_v43 & 0xFFFF);
-    cpu->_flag_C = ((_v44 & 0xFFFF) >= (_v43 & 0xFFFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint16)_tc44_43) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint16)_tc44_43) & 0x8000) != 0) ? 1 : 0;
-    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9F60_M0X0; }
-    goto L_9F82_M0X0; /* fall-through */
-  L_9F82_M0X0:
-    cpu_trace_block(cpu, 0x0B9F82);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9F82u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      uint8 _rpb = cpu->PB;
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9f82u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 2 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9f82u);
-      }
-      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9f82u); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9f82u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9f82u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9f82u,
-            (uint16)(_entry_s + 2u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9f82u);  /* RTS dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9EC8_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9EC8_M1X1";
-  RecompStackPush("bank_0B_9EC8_M1X1");
-  cpu_dbg_funcname("bank_0B_9EC8_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9EC8, "bank_0B_9EC8_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9EC8u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9EC8_M1X1:
-    cpu_trace_block(cpu, 0x0B9EC8);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9EC8u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 8;
-    cpu->master_cycles += 64;
-    {
-      /* JSL return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0xcb); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
-      uint8 _saved_pb = cpu->PB;
-      cpu_trace_pb_change(cpu, 0x0b9ec8u, _saved_pb, 0x8b, CPU_TR_JSL);
-      cpu->PB = 0x8b;
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = CODE_8B9612_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x8b9612u, 0x0b9ec8u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x8b9612u, 0x0b9ec8u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = CODE_8B9612_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x8b9612u, 0x0b9ec8u, 3, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      cpu_trace_pb_change(cpu, 0x0b9ec8u, cpu->PB, _saved_pb, CPU_TR_RTL);
-      cpu->PB = _saved_pb;
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9ECC_M1X1; /* implicit fall-through */
-  L_9ECC_M1X1:
-    cpu_trace_block(cpu, 0x0B9ECC);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9ECCu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 21;
-    cpu->master_cycles += 168;
-    uint8 _v1 = cpu_read8(cpu, cpu->DB, (uint16)(0x0ea0));
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    {
-      uint16 _old = cpu->A;
-      cpu->A = (uint16)(((_old & 0xFF) << 8) | ((_old >> 8) & 0xFF));
-      cpu->_flag_Z = ((cpu->A & 0xFF) == 0) ? 1 : 0;
-      cpu->_flag_N = ((cpu->A & 0x80) != 0) ? 1 : 0;
-    }
-    uint8 _v2 = cpu_read8(cpu, cpu->DB, (uint16)(0x0da0));
-    uint16 _v3 = cpu_read_a16(cpu);
-    uint8 _v4 = (uint8)(_v3 | _v2);
-    cpu->_flag_Z = ((_v4) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v4) & 0x80) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v4));
-    uint16 _v5 = cpu_read_a16(cpu);
-    cpu_write8(cpu, cpu->DB, (uint16)(0x1cc6), _v5);
-    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      uint8 _rpb = cpu->PB;
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9ed6u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 2 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ed6u);
-      }
-      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ed6u); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ed6u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ed6u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9ed6u,
-            (uint16)(_entry_s + 2u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9ed6u);  /* RTS dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9C1A_M1X1(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9C1A_M1X1";
-  RecompStackPush("bank_0B_9C1A_M1X1");
-  cpu_dbg_funcname("bank_0B_9C1A_M1X1");
-  cpu_trace_func_entry(cpu, 0x0B9C1A, "bank_0B_9C1A_M1X1");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C1Au);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9C1A_M1X1:
-    cpu_trace_block(cpu, 0x0B9C1A);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C1Au);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 18;
-    cpu->master_cycles += 144;
-    uint8 _v1 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x19c2), _v1);
-    uint8 _v2 = 0x53;
-    cpu_write_x_x(cpu, (uint16)(_v2));
-    cpu->_flag_Z = (((_v2 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v2 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v3 = cpu_read_a16(cpu);
-    cpu_write8(cpu, 0x00, (uint16)(cpu->D + 0x0022), _v3);
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint8 _v4 = cpu_read8(cpu, cpu_read8(cpu, 0x00, (uint16)((uint16)(cpu->D + 0x00b5) + 2)), cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x00b5)));
-    uint16 _v5 = cpu_read_a16(cpu);
-    uint8 _v6 = (uint8)(_v5 & _v4);
-    cpu->_flag_Z = ((_v6) == 0) ? 1 : 0;
-    cpu->_flag_N = (((_v6) & 0x80) != 0) ? 1 : 0;
-    cpu_write_a_m(cpu, (uint16)(_v6));
-    goto L_9BC1_M1X1;
-  L_9BC1_M1X1:
-    cpu_trace_block(cpu, 0x0B9BC1);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9BC1u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 8;
-    cpu->master_cycles += 64;
-    /* BRK: execute exact software interrupt in authoritative LLE */
-    RecompStackPop();
-    return interp_tier_dispatch_tail(cpu, 0x0b9bc1u, 0x0b9bc1u, _entry_s, _hrv);
-    RecompStackPop();
-    return RECOMP_RETURN_NORMAL; /* no terminator, no successor */
   RecompStackPop();
   return RECOMP_RETURN_NORMAL;
 }
@@ -7160,6 +7325,314 @@ RecompReturn bank_0B_984D_M1X1(CpuState *cpu) {
   return RECOMP_RETURN_NORMAL;
 }
 
+RecompReturn CODE_8B9FC3_M0X0(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "CODE_8B9FC3_M0X0";
+  RecompStackPush("CODE_8B9FC3_M0X0");
+  cpu_dbg_funcname("CODE_8B9FC3_M0X0");
+  cpu_trace_func_entry(cpu, 0x0B9FC3, "CODE_8B9FC3_M0X0");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9FC3u);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9FC3_M0X0:
+    cpu_trace_block(cpu, 0x0B9FC3);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FC3u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 7;
+    cpu->master_cycles += 56;
+    uint16 _v1 = 0x0;
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v2 = cpu_read_a16(cpu);
+    cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0018), _v2);
+    goto L_9FC8_M0X0; /* implicit fall-through */
+  L_9FC8_M0X0:
+    cpu_trace_block(cpu, 0x0B9FC8);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FC8u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 11;
+    cpu->master_cycles += 88;
+    uint16 _v3 = 0xa;
+    cpu_write_y_x(cpu, (uint16)(_v3));
+    cpu->_flag_Z = (((_v3 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v3 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    {
+      /* JSL return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0xce); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
+      uint8 _saved_pb = cpu->PB;
+      cpu_trace_pb_change(cpu, 0x0b9fcbu, _saved_pb, 0x80, CPU_TR_JSL);
+      cpu->PB = 0x80;
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = CODE_808AD8_M0X0(cpu); break;
+        case 1: _r = CODE_808AD8_M0X1(cpu); break;
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x808ad8u, 0x0b9fcbu, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = interp_tier_run_call_frame(cpu, 0x808ad8u, 0x0b9fcbu, 3, NULL); break;  /* exact M1X1 -> authoritative LLE */
+        default: _r = interp_tier_run_call_frame(cpu, 0x808ad8u, 0x0b9fcbu, 3, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      cpu_trace_pb_change(cpu, 0x0b9fcbu, cpu->PB, _saved_pb, CPU_TR_RTL);
+      cpu->PB = _saved_pb;
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9FCF_M0X0; /* implicit fall-through */
+  L_9FCF_M0X0:
+    cpu_trace_block(cpu, 0x0B9FCF);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FCFu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 14;
+    cpu->master_cycles += 112;
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->A & 0xFF);
+      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->X = (uint16)(cpu->A);
+      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v4 = cpu_read16(cpu, (uint8)((((uint32)0x7e3e07 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7e3e07 + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v4));
+    cpu->_flag_Z = (((_v4 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v4 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0xd6); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = bank_0B_9FF8_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fd4u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fd4u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fd4u, 2, NULL); break;  /* exact M1X1 -> authoritative LLE */
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fd4u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9FD7_M0X0; /* implicit fall-through */
+  L_9FD7_M0X0:
+    cpu_trace_block(cpu, 0x0B9FD7);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FD7u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 23;
+    cpu->master_cycles += 184;
+    {
+      uint8 _old_p = cpu->P;
+      cpu_mirrors_to_p(cpu);
+      cpu->P = (uint8)(cpu->P | 0x20);
+      cpu_p_to_mirrors(cpu);
+      cpu_trace_px_record(cpu, 0, 1 /*SEP*/, _old_p, cpu->P);
+    }
+    uint16 _v5 = cpu_read_a16(cpu);
+    cpu_write8(cpu, (uint8)((((uint32)0x7e3e07 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7e3e07 + (uint32)cpu->X)), _v5);
+    {
+      uint8 _old_p = cpu->P;
+      cpu_mirrors_to_p(cpu);
+      cpu->P = (uint8)(cpu->P & ~0x20);
+      cpu_p_to_mirrors(cpu);
+      cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
+    }
+    uint16 _v6 = cpu_read16(cpu, (uint8)((((uint32)0x7e3ecf + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7e3ecf + (uint32)cpu->X)));
+    cpu_write_a_m(cpu, (uint16)(_v6));
+    cpu->_flag_Z = (((_v6 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v6 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0xe5); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = bank_0B_9FF8_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fe3u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fe3u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fe3u, 2, NULL); break;  /* exact M1X1 -> authoritative LLE */
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fe3u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9FE6_M0X0; /* implicit fall-through */
+  L_9FE6_M0X0:
+    cpu_trace_block(cpu, 0x0B9FE6);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FE6u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 27;
+    cpu->master_cycles += 216;
+    {
+      uint8 _old_p = cpu->P;
+      cpu_mirrors_to_p(cpu);
+      cpu->P = (uint8)(cpu->P | 0x20);
+      cpu_p_to_mirrors(cpu);
+      cpu_trace_px_record(cpu, 0, 1 /*SEP*/, _old_p, cpu->P);
+    }
+    uint16 _v7 = cpu_read_a16(cpu);
+    cpu_write8(cpu, (uint8)((((uint32)0x7e3ecf + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7e3ecf + (uint32)cpu->X)), _v7);
+    {
+      uint8 _old_p = cpu->P;
+      cpu_mirrors_to_p(cpu);
+      cpu->P = (uint8)(cpu->P & ~0x20);
+      cpu_p_to_mirrors(cpu);
+      cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
+    }
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    {
+      uint16 _im = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0018));
+      _im = (uint16)(_im +1);
+      cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0018), _im);
+      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_im) & 0x8000) != 0) ? 1 : 0;
+    }
+    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
+    uint16 _v8 = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0018));
+    cpu_write_a_m(cpu, (uint16)(_v8));
+    cpu->_flag_Z = (((_v8 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v8 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v9 = 0x14;
+    uint16 _v10 = cpu_read_a16(cpu);
+    uint32 _tc10_9 = (uint32)(_v10 & 0xFFFF) - (uint32)(_v9 & 0xFFFF);
+    cpu->_flag_C = ((_v10 & 0xFFFF) >= (_v9 & 0xFFFF)) ? 1 : 0;
+    cpu->_flag_Z = (((uint16)_tc10_9) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((uint16)_tc10_9) & 0x8000) != 0) ? 1 : 0;
+    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9FC8_M0X0; }
+    goto L_9FF7_M0X0; /* fall-through */
+  L_9FF7_M0X0:
+    cpu_trace_block(cpu, 0x0B9FF7);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FF7u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9ff7u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 3 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ff7u);
+      }
+      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ff7u); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ff7u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ff7u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9ff7u,
+            (uint16)(_entry_s + 3u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9ff7u);  /* RTL dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
 RecompReturn bank_0B_9EF0_M1X1(CpuState *cpu) {
   extern const char *g_last_recomp_func;
   g_last_recomp_func = "bank_0B_9EF0_M1X1";
@@ -7781,170 +8254,6 @@ RecompReturn bank_0B_9ED7_M0X0(CpuState *cpu) {
   return RECOMP_RETURN_NORMAL;
 }
 
-RecompReturn bank_0B_9C19_M0X0(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9C19_M0X0";
-  RecompStackPush("bank_0B_9C19_M0X0");
-  cpu_dbg_funcname("bank_0B_9C19_M0X0");
-  cpu_trace_func_entry(cpu, 0x0B9C19, "bank_0B_9C19_M0X0");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9C19u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9C19_M0X0:
-    cpu_trace_block(cpu, 0x0B9C19);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C19u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 18;
-    cpu->master_cycles += 144;
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->X & 0xFF);
-      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->Y = (uint16)(cpu->X);
-      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v1 = 0x0;
-    cpu_write16(cpu, cpu->DB, (uint16)(0x19c2), _v1);
-    uint16 _v2 = 0x8553;
-    cpu_write_x_x(cpu, (uint16)(_v2));
-    cpu->_flag_Z = (((_v2 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v2 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    {
-      /* JSL return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x9c); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x23); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
-      uint8 _saved_pb = cpu->PB;
-      cpu_trace_pb_change(cpu, 0x0b9c20u, _saved_pb, 0x80, CPU_TR_JSL);
-      cpu->PB = 0x80;
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = CODE_80B527_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x80b527u, 0x0b9c20u, 3, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x80b527u, 0x0b9c20u, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = CODE_80B527_M1X1(cpu); break;
-        default: _r = interp_tier_run_call_frame(cpu, 0x80b527u, 0x0b9c20u, 3, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      cpu_trace_pb_change(cpu, 0x0b9c20u, cpu->PB, _saved_pb, CPU_TR_RTL);
-      cpu->PB = _saved_pb;
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9C24_M0X0; /* implicit fall-through */
-  L_9C24_M0X0:
-    cpu_trace_block(cpu, 0x0B9C24);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9C24u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 19;
-    cpu->master_cycles += 152;
-    uint16 _v3 = 0x0;
-    cpu_write16(cpu, cpu->DB, (uint16)(0x19a8), _v3);
-    {
-      uint16 _im = cpu_read16(cpu, cpu->DB, (uint16)(0x0072));
-      _im = (uint16)(_im +1);
-      cpu_write16(cpu, cpu->DB, (uint16)(0x0072), _im);
-      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_im) & 0x8000) != 0) ? 1 : 0;
-    }
-    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9c2au, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 3 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c2au);
-      }
-      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c2au); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c2au);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9c2au);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9c2au,
-            (uint16)(_entry_s + 3u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9c2au);  /* RTL dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
 RecompReturn bank_0B_9DB2_M0X0(CpuState *cpu) {
   extern const char *g_last_recomp_func;
   g_last_recomp_func = "bank_0B_9DB2_M0X0";
@@ -8077,471 +8386,6 @@ RecompReturn bank_0B_9DB2_M0X0(CpuState *cpu) {
       cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
     RecompStackPop();
       return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9db6u);  /* RTS dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn bank_0B_9EEA_M0X0(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "bank_0B_9EEA_M0X0";
-  RecompStackPush("bank_0B_9EEA_M0X0");
-  cpu_dbg_funcname("bank_0B_9EEA_M0X0");
-  cpu_trace_func_entry(cpu, 0x0B9EEA, "bank_0B_9EEA_M0X0");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9EEAu);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9EEA_M0X0:
-    cpu_trace_block(cpu, 0x0B9EEA);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9EEAu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 8;
-    cpu->master_cycles += 64;
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->A & 0xFF);
-      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->Y = (uint16)(cpu->A);
-      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v1 = 0xd983;
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    goto L_9EE6_M0X0;
-  L_9EE6_M0X0:
-    cpu_trace_block(cpu, 0x0B9EE6);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9EE6u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0xe8); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = bank_0B_9DB2_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9db2u, 0x0b9ee6u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9db2u, 0x0b9ee6u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = interp_tier_run_call_frame(cpu, 0x0b9db2u, 0x0b9ee6u, 2, NULL); break;  /* exact M1X1 -> authoritative LLE */
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9db2u, 0x0b9ee6u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9EE9_M0X0; /* implicit fall-through */
-  L_9EE9_M0X0:
-    cpu_trace_block(cpu, 0x0B9EE9);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9EE9u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      uint8 _rpb = cpu->PB;
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9ee9u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 2 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ee9u);
-      }
-      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ee9u); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ee9u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ee9u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9ee9u,
-            (uint16)(_entry_s + 2u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9ee9u);  /* RTS dispatch */ }
-  RecompStackPop();
-  return RECOMP_RETURN_NORMAL;
-}
-
-RecompReturn CODE_8B9FC3_M0X0(CpuState *cpu) {
-  extern const char *g_last_recomp_func;
-  g_last_recomp_func = "CODE_8B9FC3_M0X0";
-  RecompStackPush("CODE_8B9FC3_M0X0");
-  cpu_dbg_funcname("CODE_8B9FC3_M0X0");
-  cpu_trace_func_entry(cpu, 0x0B9FC3, "CODE_8B9FC3_M0X0");
-  if (interp_bridge_lle_master_deadline_reached(cpu)) {
-    RecompStackPop();
-    return interp_bridge_lle_yield_unwind(cpu, 0x0B9FC3u);
-  }
-  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
-  (void)_pending_skip;  /* unused if no NLR site in this fn */
-  uint16 _entry_s = cpu->S;
-  uint8 _hrv = cpu->host_return_valid;
-  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
-    cpu->host_return_valid = _hrv;
-  }
-  uint32 _host_return_pc24 = 0xFFFFFFFFu;
-  if (_hrv == 2 || _hrv == 3) {
-    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
-    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
-    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
-    _host_return_pc24 = ((uint32)_host_rpb << 16) |
-        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
-  }
-  (void)_entry_s;  /* used by trampoline balance check */
-  (void)_hrv;
-  (void)_host_return_pc24;
-  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
-  L_9FC3_M0X0:
-    cpu_trace_block(cpu, 0x0B9FC3);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FC3u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 7;
-    cpu->master_cycles += 56;
-    uint16 _v1 = 0x0;
-    cpu_write_a_m(cpu, (uint16)(_v1));
-    cpu->_flag_Z = (((_v1 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v1 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v2 = cpu_read_a16(cpu);
-    cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0018), _v2);
-    goto L_9FC8_M0X0; /* implicit fall-through */
-  L_9FC8_M0X0:
-    cpu_trace_block(cpu, 0x0B9FC8);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FC8u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 11;
-    cpu->master_cycles += 88;
-    uint16 _v3 = 0xa;
-    cpu_write_y_x(cpu, (uint16)(_v3));
-    cpu->_flag_Z = (((_v3 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v3 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    {
-      /* JSL return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x0b); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0xce); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 3;  /* paired host caller, JSL frame */
-      uint8 _saved_pb = cpu->PB;
-      cpu_trace_pb_change(cpu, 0x0b9fcbu, _saved_pb, 0x80, CPU_TR_JSL);
-      cpu->PB = 0x80;
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = CODE_808AD8_M0X0(cpu); break;
-        case 1: _r = CODE_808AD8_M0X1(cpu); break;
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x808ad8u, 0x0b9fcbu, 3, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = interp_tier_run_call_frame(cpu, 0x808ad8u, 0x0b9fcbu, 3, NULL); break;  /* exact M1X1 -> authoritative LLE */
-        default: _r = interp_tier_run_call_frame(cpu, 0x808ad8u, 0x0b9fcbu, 3, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      cpu_trace_pb_change(cpu, 0x0b9fcbu, cpu->PB, _saved_pb, CPU_TR_RTL);
-      cpu->PB = _saved_pb;
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9FCF_M0X0; /* implicit fall-through */
-  L_9FCF_M0X0:
-    cpu_trace_block(cpu, 0x0B9FCF);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FCFu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 14;
-    cpu->master_cycles += 112;
-    if (cpu->x_flag) {
-      uint8 _v = (uint8)(cpu->A & 0xFF);
-      cpu->X = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
-      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
-    } else {
-      cpu->X = (uint16)(cpu->A);
-      cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
-      cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
-    }
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v4 = cpu_read16(cpu, (uint8)((((uint32)0x7e3e07 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7e3e07 + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v4));
-    cpu->_flag_Z = (((_v4 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v4 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0xd6); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = bank_0B_9FF8_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fd4u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fd4u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fd4u, 2, NULL); break;  /* exact M1X1 -> authoritative LLE */
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fd4u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9FD7_M0X0; /* implicit fall-through */
-  L_9FD7_M0X0:
-    cpu_trace_block(cpu, 0x0B9FD7);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FD7u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 23;
-    cpu->master_cycles += 184;
-    {
-      uint8 _old_p = cpu->P;
-      cpu_mirrors_to_p(cpu);
-      cpu->P = (uint8)(cpu->P | 0x20);
-      cpu_p_to_mirrors(cpu);
-      cpu_trace_px_record(cpu, 0, 1 /*SEP*/, _old_p, cpu->P);
-    }
-    uint16 _v5 = cpu_read_a16(cpu);
-    cpu_write8(cpu, (uint8)((((uint32)0x7e3e07 + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7e3e07 + (uint32)cpu->X)), _v5);
-    {
-      uint8 _old_p = cpu->P;
-      cpu_mirrors_to_p(cpu);
-      cpu->P = (uint8)(cpu->P & ~0x20);
-      cpu_p_to_mirrors(cpu);
-      cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
-    }
-    uint16 _v6 = cpu_read16(cpu, (uint8)((((uint32)0x7e3ecf + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7e3ecf + (uint32)cpu->X)));
-    cpu_write_a_m(cpu, (uint16)(_v6));
-    cpu->_flag_Z = (((_v6 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v6 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    {
-      /* JSR return frame -> cpu->S (Option-1) */
-      cpu_write8(cpu, 0x00, cpu->S, 0x9f); cpu->S = (uint16)(cpu->S - 1);
-      cpu_write8(cpu, 0x00, cpu->S, 0xe5); cpu->S = (uint16)(cpu->S - 1);
-      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
-      RecompReturn _r;
-      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-        case 0: _r = bank_0B_9FF8_M0X0(cpu); break;
-        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fe3u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
-        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fe3u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
-        case 3: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fe3u, 2, NULL); break;  /* exact M1X1 -> authoritative LLE */
-        default: _r = interp_tier_run_call_frame(cpu, 0x0b9ff8u, 0x0b9fe3u, 2, NULL); break;  /* masked M/X index should make this unreachable */
-      }
-      if (_r != RECOMP_RETURN_NORMAL) {
-        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
-        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
-    RecompStackPop();
-        return (RecompReturn)((int)_r - 1);
-      }
-    }
-    goto L_9FE6_M0X0; /* implicit fall-through */
-  L_9FE6_M0X0:
-    cpu_trace_block(cpu, 0x0B9FE6);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FE6u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 27;
-    cpu->master_cycles += 216;
-    {
-      uint8 _old_p = cpu->P;
-      cpu_mirrors_to_p(cpu);
-      cpu->P = (uint8)(cpu->P | 0x20);
-      cpu_p_to_mirrors(cpu);
-      cpu_trace_px_record(cpu, 0, 1 /*SEP*/, _old_p, cpu->P);
-    }
-    uint16 _v7 = cpu_read_a16(cpu);
-    cpu_write8(cpu, (uint8)((((uint32)0x7e3ecf + (uint32)cpu->X)) >> 16), (uint16)(((uint32)0x7e3ecf + (uint32)cpu->X)), _v7);
-    {
-      uint8 _old_p = cpu->P;
-      cpu_mirrors_to_p(cpu);
-      cpu->P = (uint8)(cpu->P & ~0x20);
-      cpu_p_to_mirrors(cpu);
-      cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
-    }
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    {
-      uint16 _im = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0018));
-      _im = (uint16)(_im +1);
-      cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x0018), _im);
-      cpu->_flag_Z = ((_im) == 0) ? 1 : 0;
-      cpu->_flag_N = (((_im) & 0x8000) != 0) ? 1 : 0;
-    }
-    if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
-    uint16 _v8 = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 0x0018));
-    cpu_write_a_m(cpu, (uint16)(_v8));
-    cpu->_flag_Z = (((_v8 & 0xFFFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v8 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v9 = 0x14;
-    uint16 _v10 = cpu_read_a16(cpu);
-    uint32 _tc10_9 = (uint32)(_v10 & 0xFFFF) - (uint32)(_v9 & 0xFFFF);
-    cpu->_flag_C = ((_v10 & 0xFFFF) >= (_v9 & 0xFFFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint16)_tc10_9) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint16)_tc10_9) & 0x8000) != 0) ? 1 : 0;
-    if (cpu->_flag_C == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_9FC8_M0X0; }
-    goto L_9FF7_M0X0; /* fall-through */
-  L_9FF7_M0X0:
-    cpu_trace_block(cpu, 0x0B9FF7);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x0B9FF7u);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 6;
-    cpu->master_cycles += 48;
-    { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
-      cpu->S = (uint16)(cpu->S + 1);
-      uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
-      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
-      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
-    #if SNESRECOMP_TRACE
-      dbg_rts_trace(cpu, 0x0b9ff7u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
-    #endif
-      if (_hrv == 3 && _ret_s == _entry_s &&
-          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ff7u);
-      }
-      if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
-    RecompStackPop();
-        return RECOMP_RETURN_NORMAL;  /* RTL host return */ }
-      if (_ret_s != _entry_s) {
-        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
-        if (_anc_skip >= 0) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return (RecompReturn)_anc_skip;  /* RTL return-to-ancestor */ }
-        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
-          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTL return-to-interpreter-owner */ }
-        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
-            interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ff7u); }
-      }
-      if (_ret_s != _entry_s && cpu->S == _entry_s &&
-          interp_bridge_has_direct_paired_bounce()) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ff7u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          cpu->S != _entry_s &&
-          (uint16)(cpu->S - _entry_s) < 0x8000u) {
-    RecompStackPop();
-        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ff7u);
-      }
-      if (_ret_s != _entry_s &&
-          (uint16)(_entry_s - _ret_s) < 0x8000u &&
-          !cpu_dispatch_has_entry(cpu, _rpc24)) {
-    RecompStackPop();
-        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9ff7u,
-            (uint16)(_entry_s + 3u));
-      }
-      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
-    RecompStackPop();
-      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x0b9ff7u);  /* RTL dispatch */ }
   RecompStackPop();
   return RECOMP_RETURN_NORMAL;
 }
@@ -8958,6 +8802,163 @@ RecompReturn bank_0B_9FF8_M0X0(CpuState *cpu) {
   return RECOMP_RETURN_NORMAL;
 }
 
+RecompReturn bank_0B_9EEA_M0X0(CpuState *cpu) {
+  extern const char *g_last_recomp_func;
+  g_last_recomp_func = "bank_0B_9EEA_M0X0";
+  RecompStackPush("bank_0B_9EEA_M0X0");
+  cpu_dbg_funcname("bank_0B_9EEA_M0X0");
+  cpu_trace_func_entry(cpu, 0x0B9EEA, "bank_0B_9EEA_M0X0");
+  if (interp_bridge_lle_master_deadline_reached(cpu)) {
+    RecompStackPop();
+    return interp_bridge_lle_yield_unwind(cpu, 0x0B9EEAu);
+  }
+  RecompReturn _pending_skip = RECOMP_RETURN_NORMAL;
+  (void)_pending_skip;  /* unused if no NLR site in this fn */
+  uint16 _entry_s = cpu->S;
+  uint8 _hrv = cpu->host_return_valid;
+  if (cpu_take_tailcall_return_context(&_entry_s, &_hrv)) {
+    cpu->host_return_valid = _hrv;
+  }
+  uint32 _host_return_pc24 = 0xFFFFFFFFu;
+  if (_hrv == 2 || _hrv == 3) {
+    uint16 _host_rpcl = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 1u));
+    uint16 _host_rpch = cpu_read8(cpu, 0x00, (uint16)(_entry_s + 2u));
+    uint8 _host_rpb = (_hrv == 3) ? cpu_read8(cpu, 0x00, (uint16)(_entry_s + 3u)) : cpu->PB;
+    _host_return_pc24 = ((uint32)_host_rpb << 16) |
+        (uint16)((((_host_rpch << 8) | _host_rpcl) + 1u) & 0xFFFFu);
+  }
+  (void)_entry_s;  /* used by trampoline balance check */
+  (void)_hrv;
+  (void)_host_return_pc24;
+  if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  L_9EEA_M0X0:
+    cpu_trace_block(cpu, 0x0B9EEA);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9EEAu);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 8;
+    cpu->master_cycles += 64;
+    if (cpu->x_flag) {
+      uint8 _v = (uint8)(cpu->A & 0xFF);
+      cpu->Y = (uint16)((_v) & 0xFF);  /* x=1 zeros high byte (hw contract) */
+      cpu->_flag_Z = ((_v) == 0) ? 1 : 0;
+      cpu->_flag_N = (((_v) & 0x80) != 0) ? 1 : 0;
+    } else {
+      cpu->Y = (uint16)(cpu->A);
+      cpu->_flag_Z = ((cpu->Y) == 0) ? 1 : 0;
+      cpu->_flag_N = (((cpu->Y) & 0x8000) != 0) ? 1 : 0;
+    }
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    uint16 _v1 = 0xd983;
+    cpu_write_a_m(cpu, (uint16)(_v1));
+    cpu->_flag_Z = (((_v1 & 0xFFFF)) == 0) ? 1 : 0;
+    cpu->_flag_N = ((((_v1 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
+    goto L_9EE6_M0X0;
+  L_9EE6_M0X0:
+    cpu_trace_block(cpu, 0x0B9EE6);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9EE6u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    {
+      /* JSR return frame -> cpu->S (Option-1) */
+      cpu_write8(cpu, 0x00, cpu->S, 0x9e); cpu->S = (uint16)(cpu->S - 1);
+      cpu_write8(cpu, 0x00, cpu->S, 0xe8); cpu->S = (uint16)(cpu->S - 1);
+      cpu->host_return_valid = 2;  /* paired host caller, JSR frame */
+      RecompReturn _r;
+      switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+        case 0: _r = bank_0B_9DB2_M0X0(cpu); break;
+        case 1: _r = interp_tier_run_call_frame(cpu, 0x0b9db2u, 0x0b9ee6u, 2, NULL); break;  /* exact M0X1 -> authoritative LLE */
+        case 2: _r = interp_tier_run_call_frame(cpu, 0x0b9db2u, 0x0b9ee6u, 2, NULL); break;  /* exact M1X0 -> authoritative LLE */
+        case 3: _r = interp_tier_run_call_frame(cpu, 0x0b9db2u, 0x0b9ee6u, 2, NULL); break;  /* exact M1X1 -> authoritative LLE */
+        default: _r = interp_tier_run_call_frame(cpu, 0x0b9db2u, 0x0b9ee6u, 2, NULL); break;  /* masked M/X index should make this unreachable */
+      }
+      if (_r != RECOMP_RETURN_NORMAL) {
+        cpu_trace_event(cpu, 0, CPU_TR_NLR_PROPAGATE, (uint8)_r, 0);
+        cpu_trace_mark_nlr_exit(BD_EXIT_KIND_SKIP_PROPAGATION);
+    RecompStackPop();
+        return (RecompReturn)((int)_r - 1);
+      }
+    }
+    goto L_9EE9_M0X0; /* implicit fall-through */
+  L_9EE9_M0X0:
+    cpu_trace_block(cpu, 0x0B9EE9);
+    WatchdogCheck();
+    if (interp_bridge_lle_master_deadline_reached(cpu)) {
+      RecompStackPop();
+      return interp_bridge_lle_yield_unwind(cpu, 0x0B9EE9u);
+    }
+    cpu->coprocessor_master_cycles = cpu->master_cycles;
+    cpu->cycles += 6;
+    cpu->master_cycles += 48;
+    { uint16 _ret_s = cpu->S;  /* RTS pop hardware return frame */
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      cpu->S = (uint16)(cpu->S + 1);
+      uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+      uint8 _rpb = cpu->PB;
+      uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+      uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    #if SNESRECOMP_TRACE
+      dbg_rts_trace(cpu, 0x0b9ee9u, _entry_s, _ret_s, _rpc24, (uint8)_hrv);
+    #endif
+      if (_hrv == 2 && _ret_s == _entry_s &&
+          _rpc24 != _host_return_pc24 && !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ee9u);
+      }
+      if (_hrv == 2 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+    RecompStackPop();
+        return RECOMP_RETURN_NORMAL;  /* RTS host return */ }
+      if (_ret_s != _entry_s) {
+        int _anc_skip = cpu_resolve_ancestor_skip(_ret_s);
+        if (_anc_skip >= 0) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return (RecompReturn)_anc_skip;  /* RTS return-to-ancestor */ }
+        if (interp_bridge_return_targets_owner(_ret_s, cpu->S)) {
+          cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+          return interp_bridge_lle_yield_unwind(cpu, _rpc24);  /* RTS return-to-interpreter-owner */ }
+        if ((uint16)(_ret_s - _entry_s) < 0x8000u &&
+            interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+          return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ee9u); }
+      }
+      if (_ret_s != _entry_s && cpu->S == _entry_s &&
+          interp_bridge_has_direct_paired_bounce()) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ee9u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          cpu->S != _entry_s &&
+          (uint16)(cpu->S - _entry_s) < 0x8000u) {
+    RecompStackPop();
+        return interp_tier_dispatch_rewritten_return(cpu, _rpc24, 0x0b9ee9u);
+      }
+      if (_ret_s != _entry_s &&
+          (uint16)(_entry_s - _ret_s) < 0x8000u &&
+          !cpu_dispatch_has_entry(cpu, _rpc24)) {
+    RecompStackPop();
+        return interp_tier_dispatch_popped_return(cpu, _rpc24, 0x0b9ee9u,
+            (uint16)(_entry_s + 2u));
+      }
+      cpu_trace_mark_nlr_exit(BD_EXIT_KIND_TRAMPOLINE);
+    RecompStackPop();
+      return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 2u), 0x0b9ee9u);  /* RTS dispatch */ }
+  RecompStackPop();
+  return RECOMP_RETURN_NORMAL;
+}
+
 void CODE_8B9984(CpuState *cpu) {
   RecompReturn _r;
   switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
@@ -9111,138 +9112,19 @@ void CODE_8B9FC3(CpuState *cpu) {
   }
 }
 
-void bank_0B_9D1C(CpuState *cpu) {
+void bank_0B_9DA9(CpuState *cpu) {
   RecompReturn _r;
   switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9d1cu); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9d1cu); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9d1cu); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9D1C_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9d1cu); break;
+    case 0: _r = bank_0B_9DA9_M0X0(cpu); break;
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9da9u); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9da9u); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9DA9_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9da9u); break;
   }
   if (_r != RECOMP_RETURN_NORMAL) {
     fprintf(stderr,
       "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9D1C");
-    abort();
-  }
-}
-
-void bank_0B_9D25(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9d25u); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9d25u); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9d25u); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9D25_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9d25u); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9D25");
-    abort();
-  }
-}
-
-void bank_0B_9D8B(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9d8bu); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9d8bu); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9d8bu); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9d8bu); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9D8B");
-    abort();
-  }
-}
-
-void bank_0B_9C2B(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9c2bu); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9c2bu); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9c2bu); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9C2B_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9c2bu); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9C2B");
-    abort();
-  }
-}
-
-void bank_0B_9C75(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9c75u); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9c75u); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9c75u); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9C75_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9c75u); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9C75");
-    abort();
-  }
-}
-
-void bank_0B_9F83(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = bank_0B_9F83_M0X0(cpu); break;
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9f83u); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9f83u); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9F83_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9f83u); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9F83");
-    abort();
-  }
-}
-
-void bank_0B_9CCA(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9ccau); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9ccau); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9ccau); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9CCA_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9ccau); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9CCA");
-    abort();
-  }
-}
-
-void bank_0B_9DAF(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9dafu); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9dafu); break; /* exact M0X1 LLE */
-    case 2: _r = bank_0B_9DAF_M1X0(cpu); break;
-    case 3: _r = bank_0B_9DAF_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9dafu); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9DAF");
+      (int)_r, "bank_0B_9DA9");
     abort();
   }
 }
@@ -9264,70 +9146,19 @@ void bank_0B_9C7B(CpuState *cpu) {
   }
 }
 
-void bank_0B_9B9C(CpuState *cpu) {
+void bank_0B_9D1C(CpuState *cpu) {
   RecompReturn _r;
   switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9b9cu); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9b9cu); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9b9cu); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9B9C_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9b9cu); break;
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9d1cu); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9d1cu); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9d1cu); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9D1C_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9d1cu); break;
   }
   if (_r != RECOMP_RETURN_NORMAL) {
     fprintf(stderr,
       "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9B9C");
-    abort();
-  }
-}
-
-void bank_0B_9D54(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9d54u); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9d54u); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9d54u); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9D54_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9d54u); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9D54");
-    abort();
-  }
-}
-
-void bank_0B_9E34(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = interp_tier_dispatch(cpu, 0x0b9e34u); break; /* exact M0X0 LLE */
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9e34u); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9e34u); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9E34_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9e34u); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9E34");
-    abort();
-  }
-}
-
-void bank_0B_9DA9(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = bank_0B_9DA9_M0X0(cpu); break;
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9da9u); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9da9u); break; /* exact M1X0 LLE */
-    case 3: _r = bank_0B_9DA9_M1X1(cpu); break;
-    default: _r = interp_tier_dispatch(cpu, 0x0b9da9u); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9DA9");
+      (int)_r, "bank_0B_9D1C");
     abort();
   }
 }
@@ -9362,6 +9193,40 @@ void bank_0B_9D0E(CpuState *cpu) {
     fprintf(stderr,
       "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
       (int)_r, "bank_0B_9D0E");
+    abort();
+  }
+}
+
+void bank_0B_9D25(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9d25u); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9d25u); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9d25u); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9D25_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9d25u); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9D25");
+    abort();
+  }
+}
+
+void bank_0B_9D8B(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9d8bu); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9d8bu); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9d8bu); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9D8B_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9d8bu); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9D8B");
     abort();
   }
 }
@@ -9434,6 +9299,57 @@ void bank_0B_9BD1(CpuState *cpu) {
   }
 }
 
+void bank_0B_9C19(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = bank_0B_9C19_M0X0(cpu); break;
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9c19u); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9c19u); break; /* exact M1X0 LLE */
+    case 3: _r = interp_tier_dispatch(cpu, 0x0b9c19u); break; /* exact M1X1 LLE */
+    default: _r = interp_tier_dispatch(cpu, 0x0b9c19u); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9C19");
+    abort();
+  }
+}
+
+void bank_0B_9B9C(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9b9cu); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9b9cu); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9b9cu); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9B9C_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9b9cu); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9B9C");
+    abort();
+  }
+}
+
+void bank_0B_9D54(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9d54u); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9d54u); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9d54u); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9D54_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9d54u); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9D54");
+    abort();
+  }
+}
+
 void bank_0B_9F19(CpuState *cpu) {
   RecompReturn _r;
   switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
@@ -9468,6 +9384,57 @@ void bank_0B_9EC8(CpuState *cpu) {
   }
 }
 
+void bank_0B_9C2B(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9c2bu); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9c2bu); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9c2bu); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9C2B_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9c2bu); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9C2B");
+    abort();
+  }
+}
+
+void bank_0B_9E34(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9e34u); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9e34u); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9e34u); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9E34_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9e34u); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9E34");
+    abort();
+  }
+}
+
+void bank_0B_9DAF(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9dafu); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9dafu); break; /* exact M0X1 LLE */
+    case 2: _r = bank_0B_9DAF_M1X0(cpu); break;
+    case 3: _r = bank_0B_9DAF_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9dafu); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9DAF");
+    abort();
+  }
+}
+
 void bank_0B_9C1A(CpuState *cpu) {
   RecompReturn _r;
   switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
@@ -9481,6 +9448,57 @@ void bank_0B_9C1A(CpuState *cpu) {
     fprintf(stderr,
       "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
       (int)_r, "bank_0B_9C1A");
+    abort();
+  }
+}
+
+void bank_0B_9F83(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = bank_0B_9F83_M0X0(cpu); break;
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9f83u); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9f83u); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9F83_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9f83u); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9F83");
+    abort();
+  }
+}
+
+void bank_0B_9CCA(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9ccau); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9ccau); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9ccau); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9CCA_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9ccau); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9CCA");
+    abort();
+  }
+}
+
+void bank_0B_9C75(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = interp_tier_dispatch(cpu, 0x0b9c75u); break; /* exact M0X0 LLE */
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9c75u); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9c75u); break; /* exact M1X0 LLE */
+    case 3: _r = bank_0B_9C75_M1X1(cpu); break;
+    default: _r = interp_tier_dispatch(cpu, 0x0b9c75u); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9C75");
     abort();
   }
 }
@@ -9536,23 +9554,6 @@ void bank_0B_9ED7(CpuState *cpu) {
   }
 }
 
-void bank_0B_9C19(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = bank_0B_9C19_M0X0(cpu); break;
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9c19u); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9c19u); break; /* exact M1X0 LLE */
-    case 3: _r = interp_tier_dispatch(cpu, 0x0b9c19u); break; /* exact M1X1 LLE */
-    default: _r = interp_tier_dispatch(cpu, 0x0b9c19u); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9C19");
-    abort();
-  }
-}
-
 void bank_0B_9DB2(CpuState *cpu) {
   RecompReturn _r;
   switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
@@ -9570,23 +9571,6 @@ void bank_0B_9DB2(CpuState *cpu) {
   }
 }
 
-void bank_0B_9EEA(CpuState *cpu) {
-  RecompReturn _r;
-  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
-    case 0: _r = bank_0B_9EEA_M0X0(cpu); break;
-    case 1: _r = interp_tier_dispatch(cpu, 0x0b9eeau); break; /* exact M0X1 LLE */
-    case 2: _r = interp_tier_dispatch(cpu, 0x0b9eeau); break; /* exact M1X0 LLE */
-    case 3: _r = interp_tier_dispatch(cpu, 0x0b9eeau); break; /* exact M1X1 LLE */
-    default: _r = interp_tier_dispatch(cpu, 0x0b9eeau); break;
-  }
-  if (_r != RECOMP_RETURN_NORMAL) {
-    fprintf(stderr,
-      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
-      (int)_r, "bank_0B_9EEA");
-    abort();
-  }
-}
-
 void bank_0B_9FF8(CpuState *cpu) {
   RecompReturn _r;
   switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
@@ -9600,6 +9584,23 @@ void bank_0B_9FF8(CpuState *cpu) {
     fprintf(stderr,
       "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
       (int)_r, "bank_0B_9FF8");
+    abort();
+  }
+}
+
+void bank_0B_9EEA(CpuState *cpu) {
+  RecompReturn _r;
+  switch (((cpu->m_flag & 1) << 1) | (cpu->x_flag & 1)) {
+    case 0: _r = bank_0B_9EEA_M0X0(cpu); break;
+    case 1: _r = interp_tier_dispatch(cpu, 0x0b9eeau); break; /* exact M0X1 LLE */
+    case 2: _r = interp_tier_dispatch(cpu, 0x0b9eeau); break; /* exact M1X0 LLE */
+    case 3: _r = interp_tier_dispatch(cpu, 0x0b9eeau); break; /* exact M1X1 LLE */
+    default: _r = interp_tier_dispatch(cpu, 0x0b9eeau); break;
+  }
+  if (_r != RECOMP_RETURN_NORMAL) {
+    fprintf(stderr,
+      "[recomp] non-local-return SKIP_%d leaked past void alias %s\n",
+      (int)_r, "bank_0B_9EEA");
     abort();
   }
 }

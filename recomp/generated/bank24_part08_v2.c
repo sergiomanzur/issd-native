@@ -11,6 +11,7 @@
 #include "cpu_state.h"
 #include "cpu_trace.h"
 #include "common_cpu_infra.h"
+#include "common_rtl.h"
 #include "funcs.h"
 
 /* Split translation unit: bank $24, part 08; entry PCs $C000-$C7FF. */

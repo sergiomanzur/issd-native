@@ -1,4 +1,4 @@
-﻿import re
+import re
 import os
 import sys
 
@@ -108,12 +108,8 @@ with open(os.path.join(out_cfg_dir, "funcs.h"), "w", encoding="utf-8") as f:
 #include "cpu_state.h"
 """)
 
-# Write docs/ROUTINE_MAP.md
-with open("docs/ROUTINE_MAP.md", "w", encoding="utf-8") as f:
-    f.write("# ISSD Routine Map\n\n")
-    f.write("| 24-bit Address | Routine / Label | Type | Confidence |\n")
-    f.write("| --- | --- | --- | --- |\n")
-    for addr24, name, rtype in sorted(routine_map_entries, key=lambda x: x[0]):
-        f.write(f"| `${addr24:06X}` | `{name}` | {rtype} | [CONFIRMED] |\n")
+# Run jump table extraction and populate rich docs/ROUTINE_MAP.md
+print("Extracting jump tables and updating bank configs with indirect_dispatch directives...")
+import subprocess
+subprocess.run([sys.executable, "tools/extract_jump_tables.py"], check=True)
 
-print("Wrote docs/ROUTINE_MAP.md")

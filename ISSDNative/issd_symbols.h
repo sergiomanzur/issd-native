@@ -267,6 +267,44 @@ typedef enum {
     ISSD_STREAMED_TITLE_DROP    = 0x000Cu /* "International Superstar Soccer Deluxe!" voice drop */
 } IssdStreamedSample;
 
+/* ----------------------------------------------------------------------------
+ * 7. CORE JUMP TABLE & DISPATCH STATE MACHINE BASES
+ * ----------------------------------------------------------------------------
+ * Addresses of key jump tables recovered via static AOT analysis.
+ * ---------------------------------------------------------------------------- */
+#define ISSD_TBL_PALETTE_ANIM_DISPATCH          0x80A476u /* Palette Animation Script Opcode Table (44 states) */
+#define ISSD_TBL_MATCH_PLAY_PHASE               0x83CF86u /* Match Phase State Machine (15 states: kickoff..PK) */
+#define ISSD_TBL_MATCH_COLLISION_MODE           0x83D77Fu /* Game Mode Collision & Ball Physics Handler (8 states) */
+#define ISSD_TBL_BALL_TRAJECTORY                0x83D9A5u /* Ball Trajectory & Woodwork/Net Interaction (6 states) */
+#define ISSD_TBL_GK_DIVE_SAVE                   0x83DCAAu /* Goalkeeper Low/High Dive Save State Machine (3 states) */
+#define ISSD_TBL_GK_CATCH_ANIM                  0x83DDA1u /* Goalkeeper Catch & Secure Ball Sequence (9 states) */
+#define ISSD_TBL_MATCH_PHASE_DISPATCH           0x83F375u /* Secondary Match Phase Dispatcher (15 states) */
+#define ISSD_TBL_PLAYER_ANIM_SEQUENCER          0x84A35Fu /* Player Animation Sequencer & Sprite Composer (7 states) */
+#define ISSD_TBL_REFEREE_WHISTLE_STATE          0x85835Bu /* Referee Decision AI & Whistle Sequence (7 states) */
+#define ISSD_TBL_REFEREE_CARD_DECISION          0x85ACD0u /* Card Issuance & Advantage Evaluation (13 states) */
+#define ISSD_TBL_MATCH_CORE_DISPATCH            0x868C86u /* Core Match Gameplay Loop & Player Action States (13 states) */
+#define ISSD_TBL_PLAYER_POSSESSION_STATE        0x868CC7u /* Player Control & Ball Possession State Machine (6 states) */
+#define ISSD_TBL_AI_TACTICAL_TREE               0x8AA38Cu /* CPU AI Decision Trees & Team Formations */
+#define ISSD_TBL_PITCH_STREAM_DISPATCH          0x8B85A0u /* Pitch Geometry & Metatile Video Streamer (11 tables) */
+#define ISSD_TBL_UI_MENU_DISPATCH               0xA49D80u /* User Interface & Menu Screen Navigation (16 tables) */
+
+/* Match Play Phase ($00C0) Values */
+typedef enum {
+    ISSD_PHASE_KICKOFF          = 0,
+    ISSD_PHASE_FREEPLAY         = 1,
+    ISSD_PHASE_THROW_IN         = 2,
+    ISSD_PHASE_GOAL_KICK        = 3,
+    ISSD_PHASE_CORNER_KICK      = 4,
+    ISSD_PHASE_FOUL_FREE_KICK   = 5,
+    ISSD_PHASE_PENALTY_KICK     = 6,
+    ISSD_PHASE_HALFTIME         = 7,
+    ISSD_PHASE_FULLTIME         = 8,
+    ISSD_PHASE_EXTRA_TIME       = 9,
+    ISSD_PHASE_GOLDEN_GOAL      = 10,
+    ISSD_PHASE_PENALTY_SHOOTOUT = 11,
+    ISSD_PHASE_MATCH_END_STATS  = 12
+} IssdMatchPlayPhase;
+
 #ifdef __cplusplus
 }
 #endif

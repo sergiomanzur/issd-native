@@ -63,17 +63,27 @@ class AtomicOutputDir:
             raise RuntimeError("generated-output workspace is not publishable")
         if self.previous.exists():
             shutil.rmtree(self.previous)
-        moved_live = False
         try:
             if self.target.exists():
-                os.replace(self.target, self.previous)
-                moved_live = True
+                try:
+                    os.replace(self.target, self.previous)
+                    moved_live = True
+                except OSError:
+                    # Windows directory replace fallback
+                    self._link_existing_tree(self.staging, self.target)
+                    shutil.rmtree(self.staging, ignore_errors=True)
+                    self.staging = None
+                    self.published = True
+                    return
             os.replace(self.staging, self.target)
             self.staging = None
             self.published = True
         except BaseException:
             if moved_live and not self.target.exists() and self.previous.exists():
-                os.replace(self.previous, self.target)
+                try:
+                    os.replace(self.previous, self.target)
+                except OSError:
+                    pass
             raise
         if self.previous.exists():
             shutil.rmtree(self.previous)

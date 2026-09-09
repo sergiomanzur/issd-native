@@ -987,23 +987,15 @@ RecompReturn bank_03_80B3_M1X1(CpuState *cpu);
 RecompReturn CODE_8380D9_M0X0(CpuState *cpu);
 RecompReturn CODE_8380D9_M1X1(CpuState *cpu);
 RecompReturn CODE_8380E0_M0X0(CpuState *cpu);
-RecompReturn CODE_8380E0_M0X1(CpuState *cpu);
 RecompReturn CODE_8380E0_M1X1(CpuState *cpu);
-RecompReturn CODE_8381BB_M0X0(CpuState *cpu);
 RecompReturn CODE_8381BB_M1X1(CpuState *cpu);
-RecompReturn CODE_8381CD_M0X0(CpuState *cpu);
 RecompReturn CODE_8381CD_M1X1(CpuState *cpu);
 RecompReturn CODE_838382_M0X0(CpuState *cpu);
 RecompReturn CODE_838382_M1X1(CpuState *cpu);
-RecompReturn CODE_838414_M0X0(CpuState *cpu);
 RecompReturn CODE_838414_M1X1(CpuState *cpu);
 RecompReturn bank_03_8500_M1X1(CpuState *cpu);
-RecompReturn CODE_83852D_M0X0(CpuState *cpu);
 RecompReturn CODE_83852D_M1X1(CpuState *cpu);
-RecompReturn bank_03_859F_M0X0(CpuState *cpu);
 RecompReturn bank_03_859F_M1X1(CpuState *cpu);
-RecompReturn bank_03_85B4_M0X0(CpuState *cpu);
-RecompReturn bank_03_85CD_M0X0(CpuState *cpu);
 RecompReturn bank_03_85F0_M0X0(CpuState *cpu);
 RecompReturn bank_03_85F0_M1X1(CpuState *cpu);
 RecompReturn CODE_838648_M0X0(CpuState *cpu);
@@ -1280,7 +1272,6 @@ RecompReturn bank_03_A8CA_M1X1(CpuState *cpu);
 RecompReturn bank_03_A8D4_M0X0(CpuState *cpu);
 RecompReturn bank_03_A900_M0X0(CpuState *cpu);
 RecompReturn bank_03_A900_M1X1(CpuState *cpu);
-RecompReturn bank_03_A90B_M1X1(CpuState *cpu);
 RecompReturn bank_03_A90E_M0X0(CpuState *cpu);
 RecompReturn bank_03_A91C_M0X0(CpuState *cpu);
 RecompReturn CODE_83A948_M1X1(CpuState *cpu);
@@ -1638,7 +1629,6 @@ RecompReturn bank_03_CFAA_M1X1(CpuState *cpu);
 RecompReturn CODE_83CFB7_M0X0(CpuState *cpu);
 RecompReturn CODE_83CFB7_M1X1(CpuState *cpu);
 RecompReturn CODE_83CFBD_M0X0(CpuState *cpu);
-RecompReturn CODE_83CFBD_M0X1(CpuState *cpu);
 RecompReturn CODE_83CFBD_M1X1(CpuState *cpu);
 RecompReturn CODE_83D0F2_M0X0(CpuState *cpu);
 RecompReturn CODE_83D0F2_M1X1(CpuState *cpu);
@@ -1672,13 +1662,10 @@ RecompReturn CODE_83D508_M1X1(CpuState *cpu);
 RecompReturn CODE_83D50D_M0X0(CpuState *cpu);
 RecompReturn CODE_83D50D_M0X1(CpuState *cpu);
 RecompReturn CODE_83D50D_M1X1(CpuState *cpu);
-RecompReturn CODE_83D5B4_M0X0(CpuState *cpu);
 RecompReturn CODE_83D5B4_M1X1(CpuState *cpu);
 RecompReturn CODE_83D5DB_M0X0(CpuState *cpu);
-RecompReturn CODE_83D5DB_M0X1(CpuState *cpu);
 RecompReturn CODE_83D5DB_M1X1(CpuState *cpu);
 RecompReturn CODE_83D664_M0X0(CpuState *cpu);
-RecompReturn CODE_83D664_M0X1(CpuState *cpu);
 RecompReturn CODE_83D664_M1X1(CpuState *cpu);
 RecompReturn CODE_83D774_M1X1(CpuState *cpu);
 RecompReturn bank_03_D78F_M1X1(CpuState *cpu);
@@ -1801,25 +1788,19 @@ RecompReturn bank_03_EA70_M0X0(CpuState *cpu);
 RecompReturn bank_03_EA83_M0X0(CpuState *cpu);
 RecompReturn bank_03_EAC1_M0X0(CpuState *cpu);
 RecompReturn bank_03_EACC_M0X0(CpuState *cpu);
-RecompReturn CODE_83EB2D_M0X0(CpuState *cpu);
 RecompReturn CODE_83EB2D_M1X1(CpuState *cpu);
 RecompReturn CODE_83EB59_M1X1(CpuState *cpu);
 RecompReturn CODE_83EB85_M1X1(CpuState *cpu);
 RecompReturn CODE_83EBC2_M1X1(CpuState *cpu);
-RecompReturn CODE_83EBE0_M0X0(CpuState *cpu);
 RecompReturn CODE_83EBE0_M1X1(CpuState *cpu);
-RecompReturn CODE_83EC1B_M0X0(CpuState *cpu);
 RecompReturn CODE_83EC1B_M1X1(CpuState *cpu);
 RecompReturn CODE_83EC26_M1X1(CpuState *cpu);
 RecompReturn CODE_83ECA0_M1X1(CpuState *cpu);
 RecompReturn bank_03_ECBA_M1X1(CpuState *cpu);
-RecompReturn CODE_83ED72_M0X0(CpuState *cpu);
 RecompReturn CODE_83ED72_M1X1(CpuState *cpu);
 RecompReturn CODE_83EDEF_M1X1(CpuState *cpu);
 RecompReturn CODE_83EE1F_M1X1(CpuState *cpu);
-RecompReturn CODE_83EE2E_M0X0(CpuState *cpu);
 RecompReturn CODE_83EE2E_M1X1(CpuState *cpu);
-RecompReturn CODE_83EE55_M0X0(CpuState *cpu);
 RecompReturn CODE_83EE55_M1X1(CpuState *cpu);
 RecompReturn CODE_83EEC6_M1X1(CpuState *cpu);
 RecompReturn CODE_83EF16_M1X1(CpuState *cpu);
@@ -1831,7 +1812,6 @@ RecompReturn CODE_83F021_M1X1(CpuState *cpu);
 RecompReturn CODE_83F04B_M1X1(CpuState *cpu);
 RecompReturn CODE_83F074_M1X1(CpuState *cpu);
 RecompReturn CODE_83F0DB_M1X1(CpuState *cpu);
-RecompReturn CODE_83F12B_M0X0(CpuState *cpu);
 RecompReturn CODE_83F12B_M1X1(CpuState *cpu);
 RecompReturn CODE_83F1C0_M1X1(CpuState *cpu);
 RecompReturn CODE_83F215_M1X1(CpuState *cpu);
@@ -1881,18 +1861,11 @@ RecompReturn CODE_83FD00_M1X1(CpuState *cpu);
 RecompReturn CODE_83FD6B_M0X0(CpuState *cpu);
 RecompReturn CODE_83FD6B_M1X1(CpuState *cpu);
 RecompReturn bank_03_FD6E_M0X0(CpuState *cpu);
-RecompReturn CODE_83FDE4_M0X0(CpuState *cpu);
 RecompReturn CODE_83FDE4_M1X1(CpuState *cpu);
-RecompReturn CODE_83FE94_M0X0(CpuState *cpu);
 RecompReturn CODE_83FE94_M1X1(CpuState *cpu);
 RecompReturn bank_03_FF29_M1X1(CpuState *cpu);
-RecompReturn CODE_83FF35_M0X0(CpuState *cpu);
 RecompReturn CODE_83FF35_M1X1(CpuState *cpu);
-RecompReturn CODE_83FF69_M0X0(CpuState *cpu);
 RecompReturn CODE_83FF69_M1X1(CpuState *cpu);
-RecompReturn bank_03_FFA0_M0X0(CpuState *cpu);
-RecompReturn bank_03_FFC5_M0X0(CpuState *cpu);
-RecompReturn bank_03_FFCC_M0X0(CpuState *cpu);
 RecompReturn CODE_848000_M0X0(CpuState *cpu);
 RecompReturn CODE_848000_M1X1(CpuState *cpu);
 RecompReturn bank_04_8288_M0X0(CpuState *cpu);
@@ -1911,9 +1884,7 @@ RecompReturn bank_04_8548_M0X0(CpuState *cpu);
 RecompReturn bank_04_854E_M0X0(CpuState *cpu);
 RecompReturn bank_04_854E_M0X1(CpuState *cpu);
 RecompReturn bank_04_854E_M1X1(CpuState *cpu);
-RecompReturn CODE_848566_M0X0(CpuState *cpu);
 RecompReturn CODE_848566_M1X1(CpuState *cpu);
-RecompReturn bank_04_856A_M0X0(CpuState *cpu);
 RecompReturn bank_04_856A_M1X1(CpuState *cpu);
 RecompReturn bank_04_8571_M0X0(CpuState *cpu);
 RecompReturn bank_04_9C7F_M0X0(CpuState *cpu);
@@ -1978,7 +1949,6 @@ RecompReturn bank_04_E6C2_M0X0(CpuState *cpu);
 RecompReturn bank_04_E6C2_M1X1(CpuState *cpu);
 RecompReturn bank_04_E6C6_M0X0(CpuState *cpu);
 RecompReturn bank_04_E6C6_M1X1(CpuState *cpu);
-RecompReturn CODE_84E884_M0X0(CpuState *cpu);
 RecompReturn CODE_84E884_M1X1(CpuState *cpu);
 RecompReturn CODE_84E888_M0X0(CpuState *cpu);
 RecompReturn CODE_84E888_M1X1(CpuState *cpu);
@@ -1996,7 +1966,6 @@ RecompReturn CODE_84E8A0_M0X0(CpuState *cpu);
 RecompReturn CODE_84E8A0_M1X1(CpuState *cpu);
 RecompReturn CODE_84E8A4_M0X0(CpuState *cpu);
 RecompReturn CODE_84E8A4_M1X1(CpuState *cpu);
-RecompReturn CODE_84E8A8_M0X0(CpuState *cpu);
 RecompReturn CODE_84E8A8_M1X1(CpuState *cpu);
 RecompReturn CODE_84E8AC_M0X0(CpuState *cpu);
 RecompReturn CODE_84E8AC_M1X1(CpuState *cpu);
@@ -2536,13 +2505,11 @@ RecompReturn CODE_85ED4A_M1X1(CpuState *cpu);
 RecompReturn CODE_85ED67_M1X1(CpuState *cpu);
 RecompReturn CODE_85EDB7_M1X1(CpuState *cpu);
 RecompReturn CODE_85EDC6_M1X1(CpuState *cpu);
-RecompReturn CODE_85EDD1_M0X0(CpuState *cpu);
 RecompReturn CODE_85EDD1_M1X1(CpuState *cpu);
 RecompReturn CODE_85EE00_M1X1(CpuState *cpu);
 RecompReturn CODE_85EE38_M1X1(CpuState *cpu);
 RecompReturn CODE_85EE57_M1X1(CpuState *cpu);
 RecompReturn CODE_85EEB9_M1X1(CpuState *cpu);
-RecompReturn CODE_85EEC3_M0X0(CpuState *cpu);
 RecompReturn CODE_85EEC3_M1X1(CpuState *cpu);
 RecompReturn CODE_85EECE_M0X0(CpuState *cpu);
 RecompReturn CODE_85EECE_M1X1(CpuState *cpu);
@@ -2550,17 +2517,13 @@ RecompReturn CODE_85EED9_M1X1(CpuState *cpu);
 RecompReturn CODE_85EEF2_M1X1(CpuState *cpu);
 RecompReturn CODE_85EF32_M1X1(CpuState *cpu);
 RecompReturn CODE_85EF51_M1X1(CpuState *cpu);
-RecompReturn CODE_85EFF0_M0X0(CpuState *cpu);
 RecompReturn CODE_85EFF0_M1X1(CpuState *cpu);
-RecompReturn CODE_85F00A_M0X0(CpuState *cpu);
 RecompReturn CODE_85F00A_M1X1(CpuState *cpu);
 RecompReturn CODE_85F05B_M1X1(CpuState *cpu);
-RecompReturn CODE_85F06E_M0X0(CpuState *cpu);
 RecompReturn CODE_85F06E_M1X1(CpuState *cpu);
 RecompReturn CODE_85F09A_M0X0(CpuState *cpu);
 RecompReturn CODE_85F09A_M1X1(CpuState *cpu);
 RecompReturn CODE_85F0D9_M1X1(CpuState *cpu);
-RecompReturn CODE_85F0E3_M0X0(CpuState *cpu);
 RecompReturn CODE_85F0E3_M1X1(CpuState *cpu);
 RecompReturn CODE_85F11A_M1X1(CpuState *cpu);
 RecompReturn CODE_85F125_M1X1(CpuState *cpu);
@@ -2571,9 +2534,7 @@ RecompReturn CODE_85F356_M1X1(CpuState *cpu);
 RecompReturn CODE_85F3A6_M1X1(CpuState *cpu);
 RecompReturn CODE_85F3AD_M1X1(CpuState *cpu);
 RecompReturn CODE_85F3BC_M1X1(CpuState *cpu);
-RecompReturn CODE_85F3CC_M0X0(CpuState *cpu);
 RecompReturn CODE_85F3CC_M1X1(CpuState *cpu);
-RecompReturn bank_05_F3E6_M0X0(CpuState *cpu);
 RecompReturn bank_05_F3E6_M1X1(CpuState *cpu);
 RecompReturn CODE_85F3FE_M1X1(CpuState *cpu);
 RecompReturn CODE_85F410_M0X0(CpuState *cpu);
@@ -2593,7 +2554,6 @@ RecompReturn CODE_85F8BF_M0X0(CpuState *cpu);
 RecompReturn CODE_85F8BF_M1X1(CpuState *cpu);
 RecompReturn CODE_85F8C5_M0X0(CpuState *cpu);
 RecompReturn CODE_85F8C5_M1X1(CpuState *cpu);
-RecompReturn CODE_85F91D_M0X0(CpuState *cpu);
 RecompReturn CODE_85F91D_M1X1(CpuState *cpu);
 RecompReturn CODE_85F92F_M1X1(CpuState *cpu);
 RecompReturn CODE_85F9C6_M0X0(CpuState *cpu);
@@ -2616,7 +2576,6 @@ RecompReturn CODE_85FB70_M1X1(CpuState *cpu);
 RecompReturn CODE_85FB7C_M1X1(CpuState *cpu);
 RecompReturn CODE_85FB8E_M1X1(CpuState *cpu);
 RecompReturn bank_05_FBCF_M1X1(CpuState *cpu);
-RecompReturn CODE_85FC3B_M0X0(CpuState *cpu);
 RecompReturn CODE_85FC3B_M1X1(CpuState *cpu);
 RecompReturn CODE_868000_M0X0(CpuState *cpu);
 RecompReturn CODE_868000_M1X1(CpuState *cpu);
@@ -2810,10 +2769,8 @@ RecompReturn CODE_86D46D_M0X0(CpuState *cpu);
 RecompReturn CODE_86D46D_M0X1(CpuState *cpu);
 RecompReturn CODE_86D46D_M1X1(CpuState *cpu);
 RecompReturn bank_06_D482_M0X0(CpuState *cpu);
-RecompReturn bank_06_D482_M0X1(CpuState *cpu);
 RecompReturn bank_06_D482_M1X1(CpuState *cpu);
 RecompReturn bank_06_D4A9_M0X0(CpuState *cpu);
-RecompReturn bank_06_D4A9_M0X1(CpuState *cpu);
 RecompReturn bank_06_D4A9_M1X1(CpuState *cpu);
 RecompReturn CODE_86D4B9_M0X0(CpuState *cpu);
 RecompReturn CODE_86D4B9_M0X1(CpuState *cpu);
@@ -2840,9 +2797,7 @@ RecompReturn CODE_86D656_M0X0(CpuState *cpu);
 RecompReturn CODE_86D656_M1X1(CpuState *cpu);
 RecompReturn CODE_86D65B_M0X0(CpuState *cpu);
 RecompReturn CODE_86D65B_M1X1(CpuState *cpu);
-RecompReturn CODE_86D660_M0X0(CpuState *cpu);
 RecompReturn CODE_86D660_M1X1(CpuState *cpu);
-RecompReturn CODE_86D679_M0X0(CpuState *cpu);
 RecompReturn CODE_86D679_M1X1(CpuState *cpu);
 RecompReturn CODE_86D69C_M0X0(CpuState *cpu);
 RecompReturn CODE_86D69C_M1X1(CpuState *cpu);
@@ -2851,13 +2806,10 @@ RecompReturn CODE_86D6EB_M0X0(CpuState *cpu);
 RecompReturn CODE_86D6EB_M1X1(CpuState *cpu);
 RecompReturn bank_06_D709_M0X0(CpuState *cpu);
 RecompReturn bank_06_D709_M1X1(CpuState *cpu);
-RecompReturn bank_06_D719_M0X0(CpuState *cpu);
 RecompReturn bank_06_D719_M1X1(CpuState *cpu);
-RecompReturn CODE_86D720_M0X0(CpuState *cpu);
 RecompReturn CODE_86D720_M1X1(CpuState *cpu);
 RecompReturn CODE_86D742_M0X0(CpuState *cpu);
 RecompReturn CODE_86D742_M1X1(CpuState *cpu);
-RecompReturn bank_06_D74D_M0X0(CpuState *cpu);
 RecompReturn bank_06_D74D_M1X1(CpuState *cpu);
 RecompReturn CODE_86D75B_M0X0(CpuState *cpu);
 RecompReturn CODE_86D75B_M1X1(CpuState *cpu);
@@ -2873,14 +2825,10 @@ RecompReturn bank_06_D795_M0X0(CpuState *cpu);
 RecompReturn bank_06_D7AB_M0X0(CpuState *cpu);
 RecompReturn bank_06_D7AB_M1X1(CpuState *cpu);
 RecompReturn CODE_86D7D7_M1X1(CpuState *cpu);
-RecompReturn CODE_86D7F0_M0X0(CpuState *cpu);
 RecompReturn CODE_86D7F0_M1X1(CpuState *cpu);
 RecompReturn CODE_86D7F5_M1X1(CpuState *cpu);
-RecompReturn CODE_86D7FA_M0X0(CpuState *cpu);
 RecompReturn CODE_86D7FA_M1X1(CpuState *cpu);
-RecompReturn CODE_86D803_M0X0(CpuState *cpu);
 RecompReturn CODE_86D803_M1X1(CpuState *cpu);
-RecompReturn CODE_86D81F_M0X0(CpuState *cpu);
 RecompReturn CODE_86D81F_M1X1(CpuState *cpu);
 RecompReturn CODE_86D83D_M0X0(CpuState *cpu);
 RecompReturn CODE_86D83D_M1X1(CpuState *cpu);
@@ -2905,10 +2853,8 @@ RecompReturn CODE_86D92E_M1X1(CpuState *cpu);
 RecompReturn CODE_86D94E_M0X0(CpuState *cpu);
 RecompReturn CODE_86D94E_M1X1(CpuState *cpu);
 RecompReturn CODE_86D962_M0X0(CpuState *cpu);
-RecompReturn CODE_86D962_M0X1(CpuState *cpu);
 RecompReturn CODE_86D962_M1X1(CpuState *cpu);
 RecompReturn CODE_86D972_M0X0(CpuState *cpu);
-RecompReturn CODE_86D972_M0X1(CpuState *cpu);
 RecompReturn CODE_86D972_M1X1(CpuState *cpu);
 RecompReturn CODE_86D985_M0X0(CpuState *cpu);
 RecompReturn CODE_86D985_M1X1(CpuState *cpu);
@@ -2936,13 +2882,10 @@ RecompReturn CODE_86DC03_M0X0(CpuState *cpu);
 RecompReturn CODE_86DC03_M1X1(CpuState *cpu);
 RecompReturn CODE_86DC46_M0X0(CpuState *cpu);
 RecompReturn CODE_86DC46_M1X1(CpuState *cpu);
-RecompReturn CODE_86DC5B_M0X0(CpuState *cpu);
 RecompReturn CODE_86DC5B_M1X1(CpuState *cpu);
 RecompReturn CODE_86DC7E_M0X0(CpuState *cpu);
-RecompReturn CODE_86DC7E_M0X1(CpuState *cpu);
 RecompReturn CODE_86DC7E_M1X1(CpuState *cpu);
 RecompReturn CODE_86DC8E_M0X0(CpuState *cpu);
-RecompReturn CODE_86DC8E_M0X1(CpuState *cpu);
 RecompReturn CODE_86DC8E_M1X1(CpuState *cpu);
 RecompReturn CODE_86DCDB_M0X0(CpuState *cpu);
 RecompReturn CODE_86DCDB_M1X1(CpuState *cpu);
@@ -2961,7 +2904,6 @@ RecompReturn bank_06_DDA9_M1X1(CpuState *cpu);
 RecompReturn CODE_86DDC6_M0X0(CpuState *cpu);
 RecompReturn CODE_86DDC6_M1X1(CpuState *cpu);
 RecompReturn CODE_86DDCB_M0X0(CpuState *cpu);
-RecompReturn CODE_86DDCB_M0X1(CpuState *cpu);
 RecompReturn CODE_86DDCB_M1X1(CpuState *cpu);
 RecompReturn CODE_86DE25_M0X1(CpuState *cpu);
 RecompReturn CODE_86DE25_M1X1(CpuState *cpu);
@@ -3205,7 +3147,6 @@ RecompReturn bank_0A_E100_M1X1(CpuState *cpu);
 RecompReturn CODE_8AE128_M0X0(CpuState *cpu);
 RecompReturn CODE_8AE128_M0X1(CpuState *cpu);
 RecompReturn CODE_8AE128_M1X1(CpuState *cpu);
-RecompReturn CODE_8AE148_M0X0(CpuState *cpu);
 RecompReturn CODE_8AE148_M1X1(CpuState *cpu);
 RecompReturn bank_0A_E168_M0X0(CpuState *cpu);
 RecompReturn bank_0A_E168_M1X1(CpuState *cpu);
@@ -3508,7 +3449,6 @@ RecompReturn bank_0B_A9B2_M0X0(CpuState *cpu);
 RecompReturn CODE_8BA9E2_M0X0(CpuState *cpu);
 RecompReturn CODE_8BA9E2_M1X1(CpuState *cpu);
 RecompReturn CODE_8BAA1B_M0X0(CpuState *cpu);
-RecompReturn CODE_8BAA1B_M0X1(CpuState *cpu);
 RecompReturn CODE_8BAA1B_M1X1(CpuState *cpu);
 RecompReturn bank_0B_AACE_M0X0(CpuState *cpu);
 RecompReturn bank_0B_AACE_M1X1(CpuState *cpu);
@@ -3683,11 +3623,9 @@ RecompReturn CODE_8BCFBB_M1X0(CpuState *cpu);
 RecompReturn CODE_8BCFBB_M1X1(CpuState *cpu);
 RecompReturn CODE_8BD0EF_M0X0(CpuState *cpu);
 RecompReturn CODE_8BD0EF_M1X1(CpuState *cpu);
-RecompReturn CODE_8BD0F6_M0X0(CpuState *cpu);
 RecompReturn CODE_8BD0F6_M1X1(CpuState *cpu);
 RecompReturn CODE_8BD0FF_M0X0(CpuState *cpu);
 RecompReturn CODE_8BD0FF_M1X1(CpuState *cpu);
-RecompReturn CODE_8BD110_M0X0(CpuState *cpu);
 RecompReturn CODE_8BD110_M1X1(CpuState *cpu);
 RecompReturn CODE_8BD151_M0X0(CpuState *cpu);
 RecompReturn CODE_8BD151_M1X1(CpuState *cpu);
@@ -3748,7 +3686,6 @@ RecompReturn bank_0B_E122_M0X0(CpuState *cpu);
 RecompReturn bank_0B_E122_M1X1(CpuState *cpu);
 RecompReturn bank_0B_F422_M0X0(CpuState *cpu);
 RecompReturn CODE_8C8000_M1X1(CpuState *cpu);
-RecompReturn bank_0C_8082_M0X0(CpuState *cpu);
 RecompReturn bank_0C_87E5_M1X1(CpuState *cpu);
 RecompReturn CODE_8C87F3_M1X1(CpuState *cpu);
 RecompReturn CODE_8C89AA_M1X1(CpuState *cpu);
@@ -3825,70 +3762,6 @@ RecompReturn bank_0C_B05A_M1X1(CpuState *cpu);
 RecompReturn CODE_8CB078_M0X0(CpuState *cpu);
 RecompReturn CODE_8CB078_M1X1(CpuState *cpu);
 RecompReturn CODE_8CB0A4_M1X1(CpuState *cpu);
-RecompReturn bank_0C_B158_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B1C1_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B205_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B210_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B236_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B26B_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B28B_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B292_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B295_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B2A3_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B2C6_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B2F6_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B31C_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B348_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B37F_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B399_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B3B3_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B3CD_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B3E7_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B401_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B436_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B482_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B4A8_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B4D1_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B50D_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B527_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B54D_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B576_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B5B4_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B5F6_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B61D_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B653_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B682_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B6A8_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B6D1_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B70B_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B728_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B745_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B762_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B77F_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B7A8_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B7BD_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B7E4_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B807_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B82D_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B84E_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B871_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B8A6_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B8BE_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B8D1_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B8DA_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B8E2_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B92F_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B983_M0X0(CpuState *cpu);
-RecompReturn bank_0C_B9EB_M0X0(CpuState *cpu);
-RecompReturn bank_0C_BA3E_M0X0(CpuState *cpu);
-RecompReturn bank_0C_BA5B_M0X0(CpuState *cpu);
-RecompReturn bank_0C_BA7C_M0X0(CpuState *cpu);
-RecompReturn bank_0C_BA98_M0X0(CpuState *cpu);
-RecompReturn bank_0C_BAB4_M0X0(CpuState *cpu);
-RecompReturn bank_0C_BAD0_M0X0(CpuState *cpu);
-RecompReturn bank_0C_BAEC_M0X0(CpuState *cpu);
-RecompReturn bank_0C_BB25_M0X0(CpuState *cpu);
-RecompReturn bank_0C_E022_M0X0(CpuState *cpu);
 RecompReturn CODE_98F1F8_M0X0(CpuState *cpu);
 RecompReturn CODE_98F1F8_M1X1(CpuState *cpu);
 RecompReturn CODE_98F24C_M0X0(CpuState *cpu);
@@ -4065,12 +3938,10 @@ RecompReturn bank_24_9057_M1X1(CpuState *cpu);
 RecompReturn CODE_A4907D_M0X0(CpuState *cpu);
 RecompReturn CODE_A4907D_M1X1(CpuState *cpu);
 RecompReturn CODE_A49096_M0X0(CpuState *cpu);
-RecompReturn CODE_A49096_M0X1(CpuState *cpu);
 RecompReturn CODE_A49096_M1X1(CpuState *cpu);
 RecompReturn CODE_A490AC_M0X0(CpuState *cpu);
 RecompReturn CODE_A490AC_M1X1(CpuState *cpu);
 RecompReturn CODE_A490C0_M0X0(CpuState *cpu);
-RecompReturn CODE_A490C0_M0X1(CpuState *cpu);
 RecompReturn CODE_A490C0_M1X1(CpuState *cpu);
 RecompReturn bank_24_911E_M0X0(CpuState *cpu);
 RecompReturn CODE_A49130_M0X0(CpuState *cpu);
@@ -4414,21 +4285,16 @@ RecompReturn CODE_A4B921_M0X0(CpuState *cpu);
 RecompReturn CODE_A4B921_M0X1(CpuState *cpu);
 RecompReturn CODE_A4B921_M1X1(CpuState *cpu);
 RecompReturn CODE_A4B92E_M0X0(CpuState *cpu);
-RecompReturn CODE_A4B92E_M0X1(CpuState *cpu);
 RecompReturn CODE_A4B92E_M1X1(CpuState *cpu);
 RecompReturn CODE_A4B97F_M0X0(CpuState *cpu);
 RecompReturn CODE_A4B97F_M1X1(CpuState *cpu);
 RecompReturn CODE_A4B9A3_M0X0(CpuState *cpu);
-RecompReturn CODE_A4B9A3_M0X1(CpuState *cpu);
 RecompReturn CODE_A4B9A3_M1X1(CpuState *cpu);
 RecompReturn CODE_A4BA81_M0X0(CpuState *cpu);
-RecompReturn CODE_A4BA81_M0X1(CpuState *cpu);
 RecompReturn CODE_A4BA81_M1X1(CpuState *cpu);
 RecompReturn CODE_A4BADC_M0X0(CpuState *cpu);
-RecompReturn CODE_A4BADC_M0X1(CpuState *cpu);
 RecompReturn CODE_A4BADC_M1X1(CpuState *cpu);
 RecompReturn CODE_A4BB0D_M0X0(CpuState *cpu);
-RecompReturn CODE_A4BB0D_M0X1(CpuState *cpu);
 RecompReturn CODE_A4BB0D_M1X1(CpuState *cpu);
 RecompReturn CODE_A4BC14_M1X1(CpuState *cpu);
 RecompReturn CODE_A4BC1B_M0X0(CpuState *cpu);
@@ -4530,7 +4396,6 @@ RecompReturn CODE_A4D3B5_M1X1(CpuState *cpu);
 RecompReturn CODE_A4D3C5_M0X0(CpuState *cpu);
 RecompReturn CODE_A4D3C5_M0X1(CpuState *cpu);
 RecompReturn CODE_A4D3C5_M1X1(CpuState *cpu);
-RecompReturn CODE_A4D3F3_M0X0(CpuState *cpu);
 RecompReturn CODE_A4D3F3_M1X1(CpuState *cpu);
 RecompReturn CODE_A4D405_M0X0(CpuState *cpu);
 RecompReturn CODE_A4D405_M1X1(CpuState *cpu);
@@ -4557,7 +4422,6 @@ RecompReturn CODE_A4D7B7_M0X0(CpuState *cpu);
 RecompReturn CODE_A4D7B7_M1X1(CpuState *cpu);
 RecompReturn CODE_A4D804_M0X0(CpuState *cpu);
 RecompReturn CODE_A4D804_M1X1(CpuState *cpu);
-RecompReturn bank_24_D827_M0X0(CpuState *cpu);
 RecompReturn bank_24_D827_M1X1(CpuState *cpu);
 RecompReturn bank_24_D845_M0X0(CpuState *cpu);
 RecompReturn bank_24_D845_M1X1(CpuState *cpu);
@@ -5204,16 +5068,14 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x038080u, { CODE_838080_M0X0, NULL, NULL, CODE_838080_M1X1 }, 0 },  /* CODE_838080 */
     { 0x0380B3u, { bank_03_80B3_M0X0, NULL, NULL, bank_03_80B3_M1X1 }, 0 },  /* bank_03_80B3 */
     { 0x0380D9u, { CODE_8380D9_M0X0, NULL, NULL, CODE_8380D9_M1X1 }, 0 },  /* CODE_8380D9 */
-    { 0x0380E0u, { CODE_8380E0_M0X0, CODE_8380E0_M0X1, NULL, CODE_8380E0_M1X1 }, 0 },  /* CODE_8380E0 */
-    { 0x0381BBu, { CODE_8381BB_M0X0, NULL, NULL, CODE_8381BB_M1X1 }, 0 },  /* CODE_8381BB */
-    { 0x0381CDu, { CODE_8381CD_M0X0, NULL, NULL, CODE_8381CD_M1X1 }, 0 },  /* CODE_8381CD */
+    { 0x0380E0u, { CODE_8380E0_M0X0, NULL, NULL, CODE_8380E0_M1X1 }, 0 },  /* CODE_8380E0 */
+    { 0x0381BBu, { NULL, NULL, NULL, CODE_8381BB_M1X1 }, 0 },  /* CODE_8381BB */
+    { 0x0381CDu, { NULL, NULL, NULL, CODE_8381CD_M1X1 }, 0 },  /* CODE_8381CD */
     { 0x038382u, { CODE_838382_M0X0, NULL, NULL, CODE_838382_M1X1 }, 0 },  /* CODE_838382 */
-    { 0x038414u, { CODE_838414_M0X0, NULL, NULL, CODE_838414_M1X1 }, 0 },  /* CODE_838414 */
+    { 0x038414u, { NULL, NULL, NULL, CODE_838414_M1X1 }, 0 },  /* CODE_838414 */
     { 0x038500u, { NULL, NULL, NULL, bank_03_8500_M1X1 }, 0 },  /* bank_03_8500 */
-    { 0x03852Du, { CODE_83852D_M0X0, NULL, NULL, CODE_83852D_M1X1 }, 0 },  /* CODE_83852D */
-    { 0x03859Fu, { bank_03_859F_M0X0, NULL, NULL, bank_03_859F_M1X1 }, 0 },  /* bank_03_859F */
-    { 0x0385B4u, { bank_03_85B4_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_85B4 */
-    { 0x0385CDu, { bank_03_85CD_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_85CD */
+    { 0x03852Du, { NULL, NULL, NULL, CODE_83852D_M1X1 }, 0 },  /* CODE_83852D */
+    { 0x03859Fu, { NULL, NULL, NULL, bank_03_859F_M1X1 }, 0 },  /* bank_03_859F */
     { 0x0385F0u, { bank_03_85F0_M0X0, NULL, NULL, bank_03_85F0_M1X1 }, 0 },  /* bank_03_85F0 */
     { 0x038648u, { CODE_838648_M0X0, NULL, NULL, CODE_838648_M1X1 }, 0 },  /* CODE_838648 */
     { 0x0386A1u, { CODE_8386A1_M0X0, NULL, NULL, CODE_8386A1_M1X1 }, 0 },  /* CODE_8386A1 */
@@ -5385,7 +5247,6 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x03A8CAu, { bank_03_A8CA_M0X0, NULL, NULL, bank_03_A8CA_M1X1 }, 0 },  /* bank_03_A8CA */
     { 0x03A8D4u, { bank_03_A8D4_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_A8D4 */
     { 0x03A900u, { bank_03_A900_M0X0, NULL, NULL, bank_03_A900_M1X1 }, 0 },  /* bank_03_A900 */
-    { 0x03A90Bu, { NULL, NULL, NULL, bank_03_A90B_M1X1 }, 0 },  /* bank_03_A90B */
     { 0x03A90Eu, { bank_03_A90E_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_A90E */
     { 0x03A91Cu, { bank_03_A91C_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_A91C */
     { 0x03A948u, { NULL, NULL, NULL, CODE_83A948_M1X1 }, 0 },  /* CODE_83A948 */
@@ -5582,7 +5443,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x03CFA4u, { bank_03_CFA4_M0X0, NULL, NULL, bank_03_CFA4_M1X1 }, 0 },  /* bank_03_CFA4 */
     { 0x03CFAAu, { bank_03_CFAA_M0X0, NULL, NULL, bank_03_CFAA_M1X1 }, 0 },  /* bank_03_CFAA */
     { 0x03CFB7u, { CODE_83CFB7_M0X0, NULL, NULL, CODE_83CFB7_M1X1 }, 0 },  /* CODE_83CFB7 */
-    { 0x03CFBDu, { CODE_83CFBD_M0X0, CODE_83CFBD_M0X1, NULL, CODE_83CFBD_M1X1 }, 0 },  /* CODE_83CFBD */
+    { 0x03CFBDu, { CODE_83CFBD_M0X0, NULL, NULL, CODE_83CFBD_M1X1 }, 0 },  /* CODE_83CFBD */
     { 0x03D0F2u, { CODE_83D0F2_M0X0, NULL, NULL, CODE_83D0F2_M1X1 }, 0 },  /* CODE_83D0F2 */
     { 0x03D103u, { NULL, NULL, NULL, CODE_83D103_M1X1 }, 0 },  /* CODE_83D103 */
     { 0x03D14Du, { CODE_83D14D_M0X0, NULL, NULL, CODE_83D14D_M1X1 }, 0 },  /* CODE_83D14D */
@@ -5602,9 +5463,9 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x03D4F2u, { CODE_83D4F2_M0X0, NULL, NULL, CODE_83D4F2_M1X1 }, 0 },  /* CODE_83D4F2 */
     { 0x03D508u, { CODE_83D508_M0X0, NULL, NULL, CODE_83D508_M1X1 }, 0 },  /* CODE_83D508 */
     { 0x03D50Du, { CODE_83D50D_M0X0, CODE_83D50D_M0X1, NULL, CODE_83D50D_M1X1 }, 0 },  /* CODE_83D50D */
-    { 0x03D5B4u, { CODE_83D5B4_M0X0, NULL, NULL, CODE_83D5B4_M1X1 }, 0 },  /* CODE_83D5B4 */
-    { 0x03D5DBu, { CODE_83D5DB_M0X0, CODE_83D5DB_M0X1, NULL, CODE_83D5DB_M1X1 }, 0 },  /* CODE_83D5DB */
-    { 0x03D664u, { CODE_83D664_M0X0, CODE_83D664_M0X1, NULL, CODE_83D664_M1X1 }, 0 },  /* CODE_83D664 */
+    { 0x03D5B4u, { NULL, NULL, NULL, CODE_83D5B4_M1X1 }, 0 },  /* CODE_83D5B4 */
+    { 0x03D5DBu, { CODE_83D5DB_M0X0, NULL, NULL, CODE_83D5DB_M1X1 }, 0 },  /* CODE_83D5DB */
+    { 0x03D664u, { CODE_83D664_M0X0, NULL, NULL, CODE_83D664_M1X1 }, 0 },  /* CODE_83D664 */
     { 0x03D774u, { NULL, NULL, NULL, CODE_83D774_M1X1 }, 0 },  /* CODE_83D774 */
     { 0x03D78Fu, { NULL, NULL, NULL, bank_03_D78F_M1X1 }, 0 },  /* bank_03_D78F */
     { 0x03D82Cu, { NULL, NULL, NULL, bank_03_D82C_M1X1 }, 0 },  /* bank_03_D82C */
@@ -5699,20 +5560,20 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x03EA83u, { bank_03_EA83_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_EA83 */
     { 0x03EAC1u, { bank_03_EAC1_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_EAC1 */
     { 0x03EACCu, { bank_03_EACC_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_EACC */
-    { 0x03EB2Du, { CODE_83EB2D_M0X0, NULL, NULL, CODE_83EB2D_M1X1 }, 0 },  /* CODE_83EB2D */
+    { 0x03EB2Du, { NULL, NULL, NULL, CODE_83EB2D_M1X1 }, 0 },  /* CODE_83EB2D */
     { 0x03EB59u, { NULL, NULL, NULL, CODE_83EB59_M1X1 }, 0 },  /* CODE_83EB59 */
     { 0x03EB85u, { NULL, NULL, NULL, CODE_83EB85_M1X1 }, 0 },  /* CODE_83EB85 */
     { 0x03EBC2u, { NULL, NULL, NULL, CODE_83EBC2_M1X1 }, 0 },  /* CODE_83EBC2 */
-    { 0x03EBE0u, { CODE_83EBE0_M0X0, NULL, NULL, CODE_83EBE0_M1X1 }, 0 },  /* CODE_83EBE0 */
-    { 0x03EC1Bu, { CODE_83EC1B_M0X0, NULL, NULL, CODE_83EC1B_M1X1 }, 0 },  /* CODE_83EC1B */
+    { 0x03EBE0u, { NULL, NULL, NULL, CODE_83EBE0_M1X1 }, 0 },  /* CODE_83EBE0 */
+    { 0x03EC1Bu, { NULL, NULL, NULL, CODE_83EC1B_M1X1 }, 0 },  /* CODE_83EC1B */
     { 0x03EC26u, { NULL, NULL, NULL, CODE_83EC26_M1X1 }, 0 },  /* CODE_83EC26 */
     { 0x03ECA0u, { NULL, NULL, NULL, CODE_83ECA0_M1X1 }, 0 },  /* CODE_83ECA0 */
     { 0x03ECBAu, { NULL, NULL, NULL, bank_03_ECBA_M1X1 }, 0 },  /* bank_03_ECBA */
-    { 0x03ED72u, { CODE_83ED72_M0X0, NULL, NULL, CODE_83ED72_M1X1 }, 0 },  /* CODE_83ED72 */
+    { 0x03ED72u, { NULL, NULL, NULL, CODE_83ED72_M1X1 }, 0 },  /* CODE_83ED72 */
     { 0x03EDEFu, { NULL, NULL, NULL, CODE_83EDEF_M1X1 }, 0 },  /* CODE_83EDEF */
     { 0x03EE1Fu, { NULL, NULL, NULL, CODE_83EE1F_M1X1 }, 0 },  /* CODE_83EE1F */
-    { 0x03EE2Eu, { CODE_83EE2E_M0X0, NULL, NULL, CODE_83EE2E_M1X1 }, 0 },  /* CODE_83EE2E */
-    { 0x03EE55u, { CODE_83EE55_M0X0, NULL, NULL, CODE_83EE55_M1X1 }, 0 },  /* CODE_83EE55 */
+    { 0x03EE2Eu, { NULL, NULL, NULL, CODE_83EE2E_M1X1 }, 0 },  /* CODE_83EE2E */
+    { 0x03EE55u, { NULL, NULL, NULL, CODE_83EE55_M1X1 }, 0 },  /* CODE_83EE55 */
     { 0x03EEC6u, { NULL, NULL, NULL, CODE_83EEC6_M1X1 }, 0 },  /* CODE_83EEC6 */
     { 0x03EF16u, { NULL, NULL, NULL, CODE_83EF16_M1X1 }, 0 },  /* CODE_83EF16 */
     { 0x03EF42u, { NULL, NULL, NULL, CODE_83EF42_M1X1 }, 0 },  /* CODE_83EF42 */
@@ -5723,7 +5584,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x03F04Bu, { NULL, NULL, NULL, CODE_83F04B_M1X1 }, 0 },  /* CODE_83F04B */
     { 0x03F074u, { NULL, NULL, NULL, CODE_83F074_M1X1 }, 0 },  /* CODE_83F074 */
     { 0x03F0DBu, { NULL, NULL, NULL, CODE_83F0DB_M1X1 }, 0 },  /* CODE_83F0DB */
-    { 0x03F12Bu, { CODE_83F12B_M0X0, NULL, NULL, CODE_83F12B_M1X1 }, 0 },  /* CODE_83F12B */
+    { 0x03F12Bu, { NULL, NULL, NULL, CODE_83F12B_M1X1 }, 0 },  /* CODE_83F12B */
     { 0x03F1C0u, { NULL, NULL, NULL, CODE_83F1C0_M1X1 }, 0 },  /* CODE_83F1C0 */
     { 0x03F215u, { NULL, NULL, NULL, CODE_83F215_M1X1 }, 0 },  /* CODE_83F215 */
     { 0x03F222u, { CODE_83F222_M0X0, NULL, NULL, CODE_83F222_M1X1 }, 0 },  /* CODE_83F222 */
@@ -5754,14 +5615,11 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x03FD00u, { CODE_83FD00_M0X0, NULL, NULL, CODE_83FD00_M1X1 }, 0 },  /* CODE_83FD00 */
     { 0x03FD6Bu, { CODE_83FD6B_M0X0, NULL, NULL, CODE_83FD6B_M1X1 }, 0 },  /* CODE_83FD6B */
     { 0x03FD6Eu, { bank_03_FD6E_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_FD6E */
-    { 0x03FDE4u, { CODE_83FDE4_M0X0, NULL, NULL, CODE_83FDE4_M1X1 }, 0 },  /* CODE_83FDE4 */
-    { 0x03FE94u, { CODE_83FE94_M0X0, NULL, NULL, CODE_83FE94_M1X1 }, 0 },  /* CODE_83FE94 */
+    { 0x03FDE4u, { NULL, NULL, NULL, CODE_83FDE4_M1X1 }, 0 },  /* CODE_83FDE4 */
+    { 0x03FE94u, { NULL, NULL, NULL, CODE_83FE94_M1X1 }, 0 },  /* CODE_83FE94 */
     { 0x03FF29u, { NULL, NULL, NULL, bank_03_FF29_M1X1 }, 0 },  /* bank_03_FF29 */
-    { 0x03FF35u, { CODE_83FF35_M0X0, NULL, NULL, CODE_83FF35_M1X1 }, 0 },  /* CODE_83FF35 */
-    { 0x03FF69u, { CODE_83FF69_M0X0, NULL, NULL, CODE_83FF69_M1X1 }, 0 },  /* CODE_83FF69 */
-    { 0x03FFA0u, { bank_03_FFA0_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_FFA0 */
-    { 0x03FFC5u, { bank_03_FFC5_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_FFC5 */
-    { 0x03FFCCu, { bank_03_FFCC_M0X0, NULL, NULL, NULL }, 0 },  /* bank_03_FFCC */
+    { 0x03FF35u, { NULL, NULL, NULL, CODE_83FF35_M1X1 }, 0 },  /* CODE_83FF35 */
+    { 0x03FF69u, { NULL, NULL, NULL, CODE_83FF69_M1X1 }, 0 },  /* CODE_83FF69 */
     { 0x048000u, { CODE_848000_M0X0, NULL, NULL, CODE_848000_M1X1 }, 0 },  /* CODE_848000 */
     { 0x048288u, { bank_04_8288_M0X0, NULL, NULL, NULL }, 0 },  /* bank_04_8288 */
     { 0x0482D5u, { bank_04_82D5_M0X0, NULL, NULL, NULL }, 0 },  /* bank_04_82D5 */
@@ -5775,8 +5633,8 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x048544u, { CODE_848544_M0X0, CODE_848544_M0X1, NULL, CODE_848544_M1X1 }, 0 },  /* CODE_848544 */
     { 0x048548u, { bank_04_8548_M0X0, NULL, NULL, NULL }, 0 },  /* bank_04_8548 */
     { 0x04854Eu, { bank_04_854E_M0X0, bank_04_854E_M0X1, NULL, bank_04_854E_M1X1 }, 0 },  /* bank_04_854E */
-    { 0x048566u, { CODE_848566_M0X0, NULL, NULL, CODE_848566_M1X1 }, 0 },  /* CODE_848566 */
-    { 0x04856Au, { bank_04_856A_M0X0, NULL, NULL, bank_04_856A_M1X1 }, 0 },  /* bank_04_856A */
+    { 0x048566u, { NULL, NULL, NULL, CODE_848566_M1X1 }, 0 },  /* CODE_848566 */
+    { 0x04856Au, { NULL, NULL, NULL, bank_04_856A_M1X1 }, 0 },  /* bank_04_856A */
     { 0x048571u, { bank_04_8571_M0X0, NULL, NULL, NULL }, 0 },  /* bank_04_8571 */
     { 0x049C7Fu, { bank_04_9C7F_M0X0, NULL, NULL, NULL }, 0 },  /* bank_04_9C7F */
     { 0x04A36Du, { bank_04_A36D_M0X0, NULL, NULL, NULL }, 0 },  /* bank_04_A36D */
@@ -5828,7 +5686,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x04E6ACu, { bank_04_E6AC_M0X0, NULL, NULL, bank_04_E6AC_M1X1 }, 0 },  /* bank_04_E6AC */
     { 0x04E6C2u, { bank_04_E6C2_M0X0, NULL, NULL, bank_04_E6C2_M1X1 }, 0 },  /* bank_04_E6C2 */
     { 0x04E6C6u, { bank_04_E6C6_M0X0, NULL, NULL, bank_04_E6C6_M1X1 }, 0 },  /* bank_04_E6C6 */
-    { 0x04E884u, { CODE_84E884_M0X0, NULL, NULL, CODE_84E884_M1X1 }, 0 },  /* CODE_84E884 */
+    { 0x04E884u, { NULL, NULL, NULL, CODE_84E884_M1X1 }, 0 },  /* CODE_84E884 */
     { 0x04E888u, { CODE_84E888_M0X0, NULL, NULL, CODE_84E888_M1X1 }, 0 },  /* CODE_84E888 */
     { 0x04E88Cu, { CODE_84E88C_M0X0, NULL, NULL, CODE_84E88C_M1X1 }, 0 },  /* CODE_84E88C */
     { 0x04E890u, { CODE_84E890_M0X0, NULL, NULL, CODE_84E890_M1X1 }, 0 },  /* CODE_84E890 */
@@ -5837,7 +5695,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x04E89Cu, { CODE_84E89C_M0X0, NULL, NULL, CODE_84E89C_M1X1 }, 0 },  /* CODE_84E89C */
     { 0x04E8A0u, { CODE_84E8A0_M0X0, NULL, NULL, CODE_84E8A0_M1X1 }, 0 },  /* CODE_84E8A0 */
     { 0x04E8A4u, { CODE_84E8A4_M0X0, NULL, NULL, CODE_84E8A4_M1X1 }, 0 },  /* CODE_84E8A4 */
-    { 0x04E8A8u, { CODE_84E8A8_M0X0, NULL, NULL, CODE_84E8A8_M1X1 }, 0 },  /* CODE_84E8A8 */
+    { 0x04E8A8u, { NULL, NULL, NULL, CODE_84E8A8_M1X1 }, 0 },  /* CODE_84E8A8 */
     { 0x04E8ACu, { CODE_84E8AC_M0X0, NULL, NULL, CODE_84E8AC_M1X1 }, 0 },  /* CODE_84E8AC */
     { 0x04E8B0u, { bank_04_E8B0_M0X0, NULL, NULL, NULL }, 0 },  /* bank_04_E8B0 */
     { 0x04E921u, { CODE_84E921_M0X0, NULL, NULL, CODE_84E921_M1X1 }, 0 },  /* CODE_84E921 */
@@ -6276,24 +6134,24 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x05ED67u, { NULL, NULL, NULL, CODE_85ED67_M1X1 }, 0 },  /* CODE_85ED67 */
     { 0x05EDB7u, { NULL, NULL, NULL, CODE_85EDB7_M1X1 }, 0 },  /* CODE_85EDB7 */
     { 0x05EDC6u, { NULL, NULL, NULL, CODE_85EDC6_M1X1 }, 0 },  /* CODE_85EDC6 */
-    { 0x05EDD1u, { CODE_85EDD1_M0X0, NULL, NULL, CODE_85EDD1_M1X1 }, 0 },  /* CODE_85EDD1 */
+    { 0x05EDD1u, { NULL, NULL, NULL, CODE_85EDD1_M1X1 }, 0 },  /* CODE_85EDD1 */
     { 0x05EE00u, { NULL, NULL, NULL, CODE_85EE00_M1X1 }, 0 },  /* CODE_85EE00 */
     { 0x05EE38u, { NULL, NULL, NULL, CODE_85EE38_M1X1 }, 0 },  /* CODE_85EE38 */
     { 0x05EE57u, { NULL, NULL, NULL, CODE_85EE57_M1X1 }, 0 },  /* CODE_85EE57 */
     { 0x05EEB9u, { NULL, NULL, NULL, CODE_85EEB9_M1X1 }, 0 },  /* CODE_85EEB9 */
-    { 0x05EEC3u, { CODE_85EEC3_M0X0, NULL, NULL, CODE_85EEC3_M1X1 }, 0 },  /* CODE_85EEC3 */
+    { 0x05EEC3u, { NULL, NULL, NULL, CODE_85EEC3_M1X1 }, 0 },  /* CODE_85EEC3 */
     { 0x05EECEu, { CODE_85EECE_M0X0, NULL, NULL, CODE_85EECE_M1X1 }, 0 },  /* CODE_85EECE */
     { 0x05EED9u, { NULL, NULL, NULL, CODE_85EED9_M1X1 }, 0 },  /* CODE_85EED9 */
     { 0x05EEF2u, { NULL, NULL, NULL, CODE_85EEF2_M1X1 }, 0 },  /* CODE_85EEF2 */
     { 0x05EF32u, { NULL, NULL, NULL, CODE_85EF32_M1X1 }, 0 },  /* CODE_85EF32 */
     { 0x05EF51u, { NULL, NULL, NULL, CODE_85EF51_M1X1 }, 0 },  /* CODE_85EF51 */
-    { 0x05EFF0u, { CODE_85EFF0_M0X0, NULL, NULL, CODE_85EFF0_M1X1 }, 0 },  /* CODE_85EFF0 */
-    { 0x05F00Au, { CODE_85F00A_M0X0, NULL, NULL, CODE_85F00A_M1X1 }, 0 },  /* CODE_85F00A */
+    { 0x05EFF0u, { NULL, NULL, NULL, CODE_85EFF0_M1X1 }, 0 },  /* CODE_85EFF0 */
+    { 0x05F00Au, { NULL, NULL, NULL, CODE_85F00A_M1X1 }, 0 },  /* CODE_85F00A */
     { 0x05F05Bu, { NULL, NULL, NULL, CODE_85F05B_M1X1 }, 0 },  /* CODE_85F05B */
-    { 0x05F06Eu, { CODE_85F06E_M0X0, NULL, NULL, CODE_85F06E_M1X1 }, 0 },  /* CODE_85F06E */
+    { 0x05F06Eu, { NULL, NULL, NULL, CODE_85F06E_M1X1 }, 0 },  /* CODE_85F06E */
     { 0x05F09Au, { CODE_85F09A_M0X0, NULL, NULL, CODE_85F09A_M1X1 }, 0 },  /* CODE_85F09A */
     { 0x05F0D9u, { NULL, NULL, NULL, CODE_85F0D9_M1X1 }, 0 },  /* CODE_85F0D9 */
-    { 0x05F0E3u, { CODE_85F0E3_M0X0, NULL, NULL, CODE_85F0E3_M1X1 }, 0 },  /* CODE_85F0E3 */
+    { 0x05F0E3u, { NULL, NULL, NULL, CODE_85F0E3_M1X1 }, 0 },  /* CODE_85F0E3 */
     { 0x05F11Au, { NULL, NULL, NULL, CODE_85F11A_M1X1 }, 0 },  /* CODE_85F11A */
     { 0x05F125u, { NULL, NULL, NULL, CODE_85F125_M1X1 }, 0 },  /* CODE_85F125 */
     { 0x05F1B2u, { NULL, NULL, NULL, CODE_85F1B2_M1X1 }, 0 },  /* CODE_85F1B2 */
@@ -6303,8 +6161,8 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x05F3A6u, { NULL, NULL, NULL, CODE_85F3A6_M1X1 }, 0 },  /* CODE_85F3A6 */
     { 0x05F3ADu, { NULL, NULL, NULL, CODE_85F3AD_M1X1 }, 0 },  /* CODE_85F3AD */
     { 0x05F3BCu, { NULL, NULL, NULL, CODE_85F3BC_M1X1 }, 0 },  /* CODE_85F3BC */
-    { 0x05F3CCu, { CODE_85F3CC_M0X0, NULL, NULL, CODE_85F3CC_M1X1 }, 0 },  /* CODE_85F3CC */
-    { 0x05F3E6u, { bank_05_F3E6_M0X0, NULL, NULL, bank_05_F3E6_M1X1 }, 0 },  /* bank_05_F3E6 */
+    { 0x05F3CCu, { NULL, NULL, NULL, CODE_85F3CC_M1X1 }, 0 },  /* CODE_85F3CC */
+    { 0x05F3E6u, { NULL, NULL, NULL, bank_05_F3E6_M1X1 }, 0 },  /* bank_05_F3E6 */
     { 0x05F3FEu, { NULL, NULL, NULL, CODE_85F3FE_M1X1 }, 0 },  /* CODE_85F3FE */
     { 0x05F410u, { CODE_85F410_M0X0, NULL, NULL, CODE_85F410_M1X1 }, 0 },  /* CODE_85F410 */
     { 0x05F42Au, { NULL, NULL, NULL, CODE_85F42A_M1X1 }, 0 },  /* CODE_85F42A */
@@ -6319,7 +6177,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x05F8B9u, { CODE_85F8B9_M0X0, NULL, NULL, CODE_85F8B9_M1X1 }, 0 },  /* CODE_85F8B9 */
     { 0x05F8BFu, { CODE_85F8BF_M0X0, NULL, NULL, CODE_85F8BF_M1X1 }, 0 },  /* CODE_85F8BF */
     { 0x05F8C5u, { CODE_85F8C5_M0X0, NULL, NULL, CODE_85F8C5_M1X1 }, 0 },  /* CODE_85F8C5 */
-    { 0x05F91Du, { CODE_85F91D_M0X0, NULL, NULL, CODE_85F91D_M1X1 }, 0 },  /* CODE_85F91D */
+    { 0x05F91Du, { NULL, NULL, NULL, CODE_85F91D_M1X1 }, 0 },  /* CODE_85F91D */
     { 0x05F92Fu, { NULL, NULL, NULL, CODE_85F92F_M1X1 }, 0 },  /* CODE_85F92F */
     { 0x05F9C6u, { CODE_85F9C6_M0X0, NULL, NULL, CODE_85F9C6_M1X1 }, 0 },  /* CODE_85F9C6 */
     { 0x05F9CEu, { CODE_85F9CE_M0X0, NULL, NULL, CODE_85F9CE_M1X1 }, 0 },  /* CODE_85F9CE */
@@ -6335,7 +6193,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x05FB7Cu, { NULL, NULL, NULL, CODE_85FB7C_M1X1 }, 0 },  /* CODE_85FB7C */
     { 0x05FB8Eu, { NULL, NULL, NULL, CODE_85FB8E_M1X1 }, 0 },  /* CODE_85FB8E */
     { 0x05FBCFu, { NULL, NULL, NULL, bank_05_FBCF_M1X1 }, 0 },  /* bank_05_FBCF */
-    { 0x05FC3Bu, { CODE_85FC3B_M0X0, NULL, NULL, CODE_85FC3B_M1X1 }, 0 },  /* CODE_85FC3B */
+    { 0x05FC3Bu, { NULL, NULL, NULL, CODE_85FC3B_M1X1 }, 0 },  /* CODE_85FC3B */
     { 0x068000u, { CODE_868000_M0X0, NULL, NULL, CODE_868000_M1X1 }, 0 },  /* CODE_868000 */
     { 0x068006u, { CODE_868006_M0X0, NULL, NULL, CODE_868006_M1X1 }, 0 },  /* CODE_868006 */
     { 0x068036u, { bank_06_8036_M0X0, NULL, NULL, NULL }, 0 },  /* bank_06_8036 */
@@ -6502,8 +6360,8 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x06D407u, { CODE_86D407_M0X0, CODE_86D407_M0X1, NULL, CODE_86D407_M1X1 }, 0 },  /* CODE_86D407 */
     { 0x06D464u, { CODE_86D464_M0X0, NULL, NULL, CODE_86D464_M1X1 }, 0 },  /* CODE_86D464 */
     { 0x06D46Du, { CODE_86D46D_M0X0, CODE_86D46D_M0X1, NULL, CODE_86D46D_M1X1 }, 0 },  /* CODE_86D46D */
-    { 0x06D482u, { bank_06_D482_M0X0, bank_06_D482_M0X1, NULL, bank_06_D482_M1X1 }, 0 },  /* bank_06_D482 */
-    { 0x06D4A9u, { bank_06_D4A9_M0X0, bank_06_D4A9_M0X1, NULL, bank_06_D4A9_M1X1 }, 0 },  /* bank_06_D4A9 */
+    { 0x06D482u, { bank_06_D482_M0X0, NULL, NULL, bank_06_D482_M1X1 }, 0 },  /* bank_06_D482 */
+    { 0x06D4A9u, { bank_06_D4A9_M0X0, NULL, NULL, bank_06_D4A9_M1X1 }, 0 },  /* bank_06_D4A9 */
     { 0x06D4B9u, { CODE_86D4B9_M0X0, CODE_86D4B9_M0X1, NULL, CODE_86D4B9_M1X1 }, 0 },  /* CODE_86D4B9 */
     { 0x06D4F3u, { CODE_86D4F3_M0X0, NULL, NULL, CODE_86D4F3_M1X1 }, 0 },  /* CODE_86D4F3 */
     { 0x06D50Du, { CODE_86D50D_M0X0, NULL, NULL, CODE_86D50D_M1X1 }, 0 },  /* CODE_86D50D */
@@ -6517,16 +6375,16 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x06D644u, { NULL, NULL, NULL, CODE_86D644_M1X1 }, 0 },  /* CODE_86D644 */
     { 0x06D656u, { CODE_86D656_M0X0, NULL, NULL, CODE_86D656_M1X1 }, 0 },  /* CODE_86D656 */
     { 0x06D65Bu, { CODE_86D65B_M0X0, NULL, NULL, CODE_86D65B_M1X1 }, 0 },  /* CODE_86D65B */
-    { 0x06D660u, { CODE_86D660_M0X0, NULL, NULL, CODE_86D660_M1X1 }, 0 },  /* CODE_86D660 */
-    { 0x06D679u, { CODE_86D679_M0X0, NULL, NULL, CODE_86D679_M1X1 }, 0 },  /* CODE_86D679 */
+    { 0x06D660u, { NULL, NULL, NULL, CODE_86D660_M1X1 }, 0 },  /* CODE_86D660 */
+    { 0x06D679u, { NULL, NULL, NULL, CODE_86D679_M1X1 }, 0 },  /* CODE_86D679 */
     { 0x06D69Cu, { CODE_86D69C_M0X0, NULL, NULL, CODE_86D69C_M1X1 }, 0 },  /* CODE_86D69C */
     { 0x06D6CBu, { NULL, NULL, NULL, CODE_86D6CB_M1X1 }, 0 },  /* CODE_86D6CB */
     { 0x06D6EBu, { CODE_86D6EB_M0X0, NULL, NULL, CODE_86D6EB_M1X1 }, 0 },  /* CODE_86D6EB */
     { 0x06D709u, { bank_06_D709_M0X0, NULL, NULL, bank_06_D709_M1X1 }, 0 },  /* bank_06_D709 */
-    { 0x06D719u, { bank_06_D719_M0X0, NULL, NULL, bank_06_D719_M1X1 }, 0 },  /* bank_06_D719 */
-    { 0x06D720u, { CODE_86D720_M0X0, NULL, NULL, CODE_86D720_M1X1 }, 0 },  /* CODE_86D720 */
+    { 0x06D719u, { NULL, NULL, NULL, bank_06_D719_M1X1 }, 0 },  /* bank_06_D719 */
+    { 0x06D720u, { NULL, NULL, NULL, CODE_86D720_M1X1 }, 0 },  /* CODE_86D720 */
     { 0x06D742u, { CODE_86D742_M0X0, NULL, NULL, CODE_86D742_M1X1 }, 0 },  /* CODE_86D742 */
-    { 0x06D74Du, { bank_06_D74D_M0X0, NULL, NULL, bank_06_D74D_M1X1 }, 0 },  /* bank_06_D74D */
+    { 0x06D74Du, { NULL, NULL, NULL, bank_06_D74D_M1X1 }, 0 },  /* bank_06_D74D */
     { 0x06D75Bu, { CODE_86D75B_M0X0, NULL, NULL, CODE_86D75B_M1X1 }, 0 },  /* CODE_86D75B */
     { 0x06D762u, { CODE_86D762_M0X0, NULL, NULL, CODE_86D762_M1X1 }, 0 },  /* CODE_86D762 */
     { 0x06D767u, { CODE_86D767_M0X0, NULL, NULL, CODE_86D767_M1X1 }, 0 },  /* CODE_86D767 */
@@ -6535,11 +6393,11 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x06D795u, { bank_06_D795_M0X0, NULL, NULL, NULL }, 0 },  /* bank_06_D795 */
     { 0x06D7ABu, { bank_06_D7AB_M0X0, NULL, NULL, bank_06_D7AB_M1X1 }, 0 },  /* bank_06_D7AB */
     { 0x06D7D7u, { NULL, NULL, NULL, CODE_86D7D7_M1X1 }, 0 },  /* CODE_86D7D7 */
-    { 0x06D7F0u, { CODE_86D7F0_M0X0, NULL, NULL, CODE_86D7F0_M1X1 }, 0 },  /* CODE_86D7F0 */
+    { 0x06D7F0u, { NULL, NULL, NULL, CODE_86D7F0_M1X1 }, 0 },  /* CODE_86D7F0 */
     { 0x06D7F5u, { NULL, NULL, NULL, CODE_86D7F5_M1X1 }, 0 },  /* CODE_86D7F5 */
-    { 0x06D7FAu, { CODE_86D7FA_M0X0, NULL, NULL, CODE_86D7FA_M1X1 }, 0 },  /* CODE_86D7FA */
-    { 0x06D803u, { CODE_86D803_M0X0, NULL, NULL, CODE_86D803_M1X1 }, 0 },  /* CODE_86D803 */
-    { 0x06D81Fu, { CODE_86D81F_M0X0, NULL, NULL, CODE_86D81F_M1X1 }, 0 },  /* CODE_86D81F */
+    { 0x06D7FAu, { NULL, NULL, NULL, CODE_86D7FA_M1X1 }, 0 },  /* CODE_86D7FA */
+    { 0x06D803u, { NULL, NULL, NULL, CODE_86D803_M1X1 }, 0 },  /* CODE_86D803 */
+    { 0x06D81Fu, { NULL, NULL, NULL, CODE_86D81F_M1X1 }, 0 },  /* CODE_86D81F */
     { 0x06D83Du, { CODE_86D83D_M0X0, NULL, NULL, CODE_86D83D_M1X1 }, 0 },  /* CODE_86D83D */
     { 0x06D84Du, { NULL, NULL, NULL, CODE_86D84D_M1X1 }, 0 },  /* CODE_86D84D */
     { 0x06D866u, { NULL, NULL, NULL, CODE_86D866_M1X1 }, 0 },  /* CODE_86D866 */
@@ -6555,8 +6413,8 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x06D920u, { CODE_86D920_M0X0, NULL, NULL, CODE_86D920_M1X1 }, 0 },  /* CODE_86D920 */
     { 0x06D92Eu, { CODE_86D92E_M0X0, NULL, NULL, CODE_86D92E_M1X1 }, 0 },  /* CODE_86D92E */
     { 0x06D94Eu, { CODE_86D94E_M0X0, NULL, NULL, CODE_86D94E_M1X1 }, 0 },  /* CODE_86D94E */
-    { 0x06D962u, { CODE_86D962_M0X0, CODE_86D962_M0X1, NULL, CODE_86D962_M1X1 }, 0 },  /* CODE_86D962 */
-    { 0x06D972u, { CODE_86D972_M0X0, CODE_86D972_M0X1, NULL, CODE_86D972_M1X1 }, 0 },  /* CODE_86D972 */
+    { 0x06D962u, { CODE_86D962_M0X0, NULL, NULL, CODE_86D962_M1X1 }, 0 },  /* CODE_86D962 */
+    { 0x06D972u, { CODE_86D972_M0X0, NULL, NULL, CODE_86D972_M1X1 }, 0 },  /* CODE_86D972 */
     { 0x06D985u, { CODE_86D985_M0X0, NULL, NULL, CODE_86D985_M1X1 }, 0 },  /* CODE_86D985 */
     { 0x06D98Cu, { CODE_86D98C_M0X0, NULL, NULL, CODE_86D98C_M1X1 }, 0 },  /* CODE_86D98C */
     { 0x06DA1Eu, { bank_06_DA1E_M0X0, NULL, NULL, NULL }, 0 },  /* bank_06_DA1E */
@@ -6572,9 +6430,9 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x06DBC0u, { bank_06_DBC0_M0X0, NULL, NULL, bank_06_DBC0_M1X1 }, 0 },  /* bank_06_DBC0 */
     { 0x06DC03u, { CODE_86DC03_M0X0, NULL, NULL, CODE_86DC03_M1X1 }, 0 },  /* CODE_86DC03 */
     { 0x06DC46u, { CODE_86DC46_M0X0, NULL, NULL, CODE_86DC46_M1X1 }, 0 },  /* CODE_86DC46 */
-    { 0x06DC5Bu, { CODE_86DC5B_M0X0, NULL, NULL, CODE_86DC5B_M1X1 }, 0 },  /* CODE_86DC5B */
-    { 0x06DC7Eu, { CODE_86DC7E_M0X0, CODE_86DC7E_M0X1, NULL, CODE_86DC7E_M1X1 }, 0 },  /* CODE_86DC7E */
-    { 0x06DC8Eu, { CODE_86DC8E_M0X0, CODE_86DC8E_M0X1, NULL, CODE_86DC8E_M1X1 }, 0 },  /* CODE_86DC8E */
+    { 0x06DC5Bu, { NULL, NULL, NULL, CODE_86DC5B_M1X1 }, 0 },  /* CODE_86DC5B */
+    { 0x06DC7Eu, { CODE_86DC7E_M0X0, NULL, NULL, CODE_86DC7E_M1X1 }, 0 },  /* CODE_86DC7E */
+    { 0x06DC8Eu, { CODE_86DC8E_M0X0, NULL, NULL, CODE_86DC8E_M1X1 }, 0 },  /* CODE_86DC8E */
     { 0x06DCDBu, { CODE_86DCDB_M0X0, NULL, NULL, CODE_86DCDB_M1X1 }, 0 },  /* CODE_86DCDB */
     { 0x06DCF1u, { bank_06_DCF1_M0X0, bank_06_DCF1_M0X1, NULL, NULL }, 0 },  /* bank_06_DCF1 */
     { 0x06DD03u, { NULL, NULL, NULL, CODE_86DD03_M1X1 }, 0 },  /* CODE_86DD03 */
@@ -6583,7 +6441,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x06DD8Eu, { bank_06_DD8E_M0X0, NULL, NULL, bank_06_DD8E_M1X1 }, 0 },  /* bank_06_DD8E */
     { 0x06DDA9u, { bank_06_DDA9_M0X0, NULL, NULL, bank_06_DDA9_M1X1 }, 0 },  /* bank_06_DDA9 */
     { 0x06DDC6u, { CODE_86DDC6_M0X0, NULL, NULL, CODE_86DDC6_M1X1 }, 0 },  /* CODE_86DDC6 */
-    { 0x06DDCBu, { CODE_86DDCB_M0X0, CODE_86DDCB_M0X1, NULL, CODE_86DDCB_M1X1 }, 0 },  /* CODE_86DDCB */
+    { 0x06DDCBu, { CODE_86DDCB_M0X0, NULL, NULL, CODE_86DDCB_M1X1 }, 0 },  /* CODE_86DDCB */
     { 0x06DE25u, { NULL, CODE_86DE25_M0X1, NULL, CODE_86DE25_M1X1 }, 0 },  /* CODE_86DE25 */
     { 0x06DE29u, { NULL, bank_06_DE29_M0X1, NULL, bank_06_DE29_M1X1 }, 0 },  /* bank_06_DE29 */
     { 0x06DED8u, { NULL, CODE_86DED8_M0X1, NULL, CODE_86DED8_M1X1 }, 0 },  /* CODE_86DED8 */
@@ -6749,7 +6607,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x0AE081u, { bank_0A_E081_M0X0, NULL, NULL, bank_0A_E081_M1X1 }, 0 },  /* bank_0A_E081 */
     { 0x0AE100u, { bank_0A_E100_M0X0, NULL, NULL, bank_0A_E100_M1X1 }, 0 },  /* bank_0A_E100 */
     { 0x0AE128u, { CODE_8AE128_M0X0, CODE_8AE128_M0X1, NULL, CODE_8AE128_M1X1 }, 0 },  /* CODE_8AE128 */
-    { 0x0AE148u, { CODE_8AE148_M0X0, NULL, NULL, CODE_8AE148_M1X1 }, 0 },  /* CODE_8AE148 */
+    { 0x0AE148u, { NULL, NULL, NULL, CODE_8AE148_M1X1 }, 0 },  /* CODE_8AE148 */
     { 0x0AE168u, { bank_0A_E168_M0X0, NULL, NULL, bank_0A_E168_M1X1 }, 0 },  /* bank_0A_E168 */
     { 0x0AE173u, { bank_0A_E173_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0A_E173 */
     { 0x0AE30Cu, { NULL, NULL, NULL, CODE_8AE30C_M1X1 }, 0 },  /* CODE_8AE30C */
@@ -6957,7 +6815,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x0BA997u, { CODE_8BA997_M0X0, NULL, NULL, CODE_8BA997_M1X1 }, 0 },  /* CODE_8BA997 */
     { 0x0BA9B2u, { bank_0B_A9B2_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0B_A9B2 */
     { 0x0BA9E2u, { CODE_8BA9E2_M0X0, NULL, NULL, CODE_8BA9E2_M1X1 }, 0 },  /* CODE_8BA9E2 */
-    { 0x0BAA1Bu, { CODE_8BAA1B_M0X0, CODE_8BAA1B_M0X1, NULL, CODE_8BAA1B_M1X1 }, 0 },  /* CODE_8BAA1B */
+    { 0x0BAA1Bu, { CODE_8BAA1B_M0X0, NULL, NULL, CODE_8BAA1B_M1X1 }, 0 },  /* CODE_8BAA1B */
     { 0x0BAACEu, { bank_0B_AACE_M0X0, NULL, NULL, bank_0B_AACE_M1X1 }, 0 },  /* bank_0B_AACE */
     { 0x0BAB42u, { CODE_8BAB42_M0X0, NULL, NULL, CODE_8BAB42_M1X1 }, 0 },  /* CODE_8BAB42 */
     { 0x0BAB77u, { bank_0B_AB77_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0B_AB77 */
@@ -7080,9 +6938,9 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x0BCFAFu, { CODE_8BCFAF_M0X0, NULL, CODE_8BCFAF_M1X0, CODE_8BCFAF_M1X1 }, 0 },  /* CODE_8BCFAF */
     { 0x0BCFBBu, { CODE_8BCFBB_M0X0, NULL, CODE_8BCFBB_M1X0, CODE_8BCFBB_M1X1 }, 0 },  /* CODE_8BCFBB */
     { 0x0BD0EFu, { CODE_8BD0EF_M0X0, NULL, NULL, CODE_8BD0EF_M1X1 }, 0 },  /* CODE_8BD0EF */
-    { 0x0BD0F6u, { CODE_8BD0F6_M0X0, NULL, NULL, CODE_8BD0F6_M1X1 }, 0 },  /* CODE_8BD0F6 */
+    { 0x0BD0F6u, { NULL, NULL, NULL, CODE_8BD0F6_M1X1 }, 0 },  /* CODE_8BD0F6 */
     { 0x0BD0FFu, { CODE_8BD0FF_M0X0, NULL, NULL, CODE_8BD0FF_M1X1 }, 0 },  /* CODE_8BD0FF */
-    { 0x0BD110u, { CODE_8BD110_M0X0, NULL, NULL, CODE_8BD110_M1X1 }, 0 },  /* CODE_8BD110 */
+    { 0x0BD110u, { NULL, NULL, NULL, CODE_8BD110_M1X1 }, 0 },  /* CODE_8BD110 */
     { 0x0BD151u, { CODE_8BD151_M0X0, NULL, NULL, CODE_8BD151_M1X1 }, 0 },  /* CODE_8BD151 */
     { 0x0BD176u, { CODE_8BD176_M0X0, NULL, NULL, CODE_8BD176_M1X1 }, 0 },  /* CODE_8BD176 */
     { 0x0BD1BDu, { bank_0B_D1BD_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0B_D1BD */
@@ -7130,7 +6988,6 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x0BE122u, { bank_0B_E122_M0X0, NULL, NULL, bank_0B_E122_M1X1 }, 0 },  /* bank_0B_E122 */
     { 0x0BF422u, { bank_0B_F422_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0B_F422 */
     { 0x0C8000u, { NULL, NULL, NULL, CODE_8C8000_M1X1 }, 0 },  /* CODE_8C8000 */
-    { 0x0C8082u, { bank_0C_8082_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_8082 */
     { 0x0C87E5u, { NULL, NULL, NULL, bank_0C_87E5_M1X1 }, 0 },  /* bank_0C_87E5 */
     { 0x0C87F3u, { NULL, NULL, NULL, CODE_8C87F3_M1X1 }, 0 },  /* CODE_8C87F3 */
     { 0x0C89AAu, { NULL, NULL, NULL, CODE_8C89AA_M1X1 }, 0 },  /* CODE_8C89AA */
@@ -7194,70 +7051,6 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x0CB05Au, { bank_0C_B05A_M0X0, NULL, NULL, bank_0C_B05A_M1X1 }, 0 },  /* bank_0C_B05A */
     { 0x0CB078u, { CODE_8CB078_M0X0, NULL, NULL, CODE_8CB078_M1X1 }, 0 },  /* CODE_8CB078 */
     { 0x0CB0A4u, { NULL, NULL, NULL, CODE_8CB0A4_M1X1 }, 0 },  /* CODE_8CB0A4 */
-    { 0x0CB158u, { bank_0C_B158_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B158 */
-    { 0x0CB1C1u, { bank_0C_B1C1_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B1C1 */
-    { 0x0CB205u, { bank_0C_B205_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B205 */
-    { 0x0CB210u, { bank_0C_B210_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B210 */
-    { 0x0CB236u, { bank_0C_B236_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B236 */
-    { 0x0CB26Bu, { bank_0C_B26B_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B26B */
-    { 0x0CB28Bu, { bank_0C_B28B_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B28B */
-    { 0x0CB292u, { bank_0C_B292_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B292 */
-    { 0x0CB295u, { bank_0C_B295_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B295 */
-    { 0x0CB2A3u, { bank_0C_B2A3_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B2A3 */
-    { 0x0CB2C6u, { bank_0C_B2C6_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B2C6 */
-    { 0x0CB2F6u, { bank_0C_B2F6_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B2F6 */
-    { 0x0CB31Cu, { bank_0C_B31C_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B31C */
-    { 0x0CB348u, { bank_0C_B348_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B348 */
-    { 0x0CB37Fu, { bank_0C_B37F_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B37F */
-    { 0x0CB399u, { bank_0C_B399_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B399 */
-    { 0x0CB3B3u, { bank_0C_B3B3_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B3B3 */
-    { 0x0CB3CDu, { bank_0C_B3CD_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B3CD */
-    { 0x0CB3E7u, { bank_0C_B3E7_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B3E7 */
-    { 0x0CB401u, { bank_0C_B401_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B401 */
-    { 0x0CB436u, { bank_0C_B436_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B436 */
-    { 0x0CB482u, { bank_0C_B482_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B482 */
-    { 0x0CB4A8u, { bank_0C_B4A8_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B4A8 */
-    { 0x0CB4D1u, { bank_0C_B4D1_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B4D1 */
-    { 0x0CB50Du, { bank_0C_B50D_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B50D */
-    { 0x0CB527u, { bank_0C_B527_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B527 */
-    { 0x0CB54Du, { bank_0C_B54D_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B54D */
-    { 0x0CB576u, { bank_0C_B576_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B576 */
-    { 0x0CB5B4u, { bank_0C_B5B4_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B5B4 */
-    { 0x0CB5F6u, { bank_0C_B5F6_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B5F6 */
-    { 0x0CB61Du, { bank_0C_B61D_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B61D */
-    { 0x0CB653u, { bank_0C_B653_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B653 */
-    { 0x0CB682u, { bank_0C_B682_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B682 */
-    { 0x0CB6A8u, { bank_0C_B6A8_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B6A8 */
-    { 0x0CB6D1u, { bank_0C_B6D1_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B6D1 */
-    { 0x0CB70Bu, { bank_0C_B70B_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B70B */
-    { 0x0CB728u, { bank_0C_B728_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B728 */
-    { 0x0CB745u, { bank_0C_B745_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B745 */
-    { 0x0CB762u, { bank_0C_B762_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B762 */
-    { 0x0CB77Fu, { bank_0C_B77F_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B77F */
-    { 0x0CB7A8u, { bank_0C_B7A8_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B7A8 */
-    { 0x0CB7BDu, { bank_0C_B7BD_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B7BD */
-    { 0x0CB7E4u, { bank_0C_B7E4_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B7E4 */
-    { 0x0CB807u, { bank_0C_B807_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B807 */
-    { 0x0CB82Du, { bank_0C_B82D_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B82D */
-    { 0x0CB84Eu, { bank_0C_B84E_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B84E */
-    { 0x0CB871u, { bank_0C_B871_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B871 */
-    { 0x0CB8A6u, { bank_0C_B8A6_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B8A6 */
-    { 0x0CB8BEu, { bank_0C_B8BE_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B8BE */
-    { 0x0CB8D1u, { bank_0C_B8D1_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B8D1 */
-    { 0x0CB8DAu, { bank_0C_B8DA_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B8DA */
-    { 0x0CB8E2u, { bank_0C_B8E2_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B8E2 */
-    { 0x0CB92Fu, { bank_0C_B92F_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B92F */
-    { 0x0CB983u, { bank_0C_B983_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B983 */
-    { 0x0CB9EBu, { bank_0C_B9EB_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_B9EB */
-    { 0x0CBA3Eu, { bank_0C_BA3E_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_BA3E */
-    { 0x0CBA5Bu, { bank_0C_BA5B_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_BA5B */
-    { 0x0CBA7Cu, { bank_0C_BA7C_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_BA7C */
-    { 0x0CBA98u, { bank_0C_BA98_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_BA98 */
-    { 0x0CBAB4u, { bank_0C_BAB4_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_BAB4 */
-    { 0x0CBAD0u, { bank_0C_BAD0_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_BAD0 */
-    { 0x0CBAECu, { bank_0C_BAEC_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_BAEC */
-    { 0x0CBB25u, { bank_0C_BB25_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_BB25 */
-    { 0x0CE022u, { bank_0C_E022_M0X0, NULL, NULL, NULL }, 0 },  /* bank_0C_E022 */
     { 0x18F1F8u, { CODE_98F1F8_M0X0, NULL, NULL, CODE_98F1F8_M1X1 }, 0 },  /* CODE_98F1F8 */
     { 0x18F24Cu, { CODE_98F24C_M0X0, NULL, NULL, CODE_98F24C_M1X1 }, 0 },  /* CODE_98F24C */
     { 0x18F34Bu, { bank_18_F34B_M0X0, NULL, NULL, NULL }, 0 },  /* bank_18_F34B */
@@ -7368,9 +7161,9 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x249038u, { CODE_A49038_M0X0, NULL, NULL, CODE_A49038_M1X1 }, 0 },  /* CODE_A49038 */
     { 0x249057u, { bank_24_9057_M0X0, NULL, NULL, bank_24_9057_M1X1 }, 0 },  /* bank_24_9057 */
     { 0x24907Du, { CODE_A4907D_M0X0, NULL, NULL, CODE_A4907D_M1X1 }, 0 },  /* CODE_A4907D */
-    { 0x249096u, { CODE_A49096_M0X0, CODE_A49096_M0X1, NULL, CODE_A49096_M1X1 }, 0 },  /* CODE_A49096 */
+    { 0x249096u, { CODE_A49096_M0X0, NULL, NULL, CODE_A49096_M1X1 }, 0 },  /* CODE_A49096 */
     { 0x2490ACu, { CODE_A490AC_M0X0, NULL, NULL, CODE_A490AC_M1X1 }, 0 },  /* CODE_A490AC */
-    { 0x2490C0u, { CODE_A490C0_M0X0, CODE_A490C0_M0X1, NULL, CODE_A490C0_M1X1 }, 0 },  /* CODE_A490C0 */
+    { 0x2490C0u, { CODE_A490C0_M0X0, NULL, NULL, CODE_A490C0_M1X1 }, 0 },  /* CODE_A490C0 */
     { 0x24911Eu, { bank_24_911E_M0X0, NULL, NULL, NULL }, 0 },  /* bank_24_911E */
     { 0x249130u, { CODE_A49130_M0X0, NULL, NULL, CODE_A49130_M1X1 }, 0 },  /* CODE_A49130 */
     { 0x2491CBu, { CODE_A491CB_M0X0, NULL, NULL, CODE_A491CB_M1X1 }, 0 },  /* CODE_A491CB */
@@ -7580,12 +7373,12 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x24B8D8u, { CODE_A4B8D8_M0X0, NULL, NULL, CODE_A4B8D8_M1X1 }, 0 },  /* CODE_A4B8D8 */
     { 0x24B911u, { bank_24_B911_M0X0, NULL, NULL, bank_24_B911_M1X1 }, 0 },  /* bank_24_B911 */
     { 0x24B921u, { CODE_A4B921_M0X0, CODE_A4B921_M0X1, NULL, CODE_A4B921_M1X1 }, 0 },  /* CODE_A4B921 */
-    { 0x24B92Eu, { CODE_A4B92E_M0X0, CODE_A4B92E_M0X1, NULL, CODE_A4B92E_M1X1 }, 0 },  /* CODE_A4B92E */
+    { 0x24B92Eu, { CODE_A4B92E_M0X0, NULL, NULL, CODE_A4B92E_M1X1 }, 0 },  /* CODE_A4B92E */
     { 0x24B97Fu, { CODE_A4B97F_M0X0, NULL, NULL, CODE_A4B97F_M1X1 }, 0 },  /* CODE_A4B97F */
-    { 0x24B9A3u, { CODE_A4B9A3_M0X0, CODE_A4B9A3_M0X1, NULL, CODE_A4B9A3_M1X1 }, 0 },  /* CODE_A4B9A3 */
-    { 0x24BA81u, { CODE_A4BA81_M0X0, CODE_A4BA81_M0X1, NULL, CODE_A4BA81_M1X1 }, 0 },  /* CODE_A4BA81 */
-    { 0x24BADCu, { CODE_A4BADC_M0X0, CODE_A4BADC_M0X1, NULL, CODE_A4BADC_M1X1 }, 0 },  /* CODE_A4BADC */
-    { 0x24BB0Du, { CODE_A4BB0D_M0X0, CODE_A4BB0D_M0X1, NULL, CODE_A4BB0D_M1X1 }, 0 },  /* CODE_A4BB0D */
+    { 0x24B9A3u, { CODE_A4B9A3_M0X0, NULL, NULL, CODE_A4B9A3_M1X1 }, 0 },  /* CODE_A4B9A3 */
+    { 0x24BA81u, { CODE_A4BA81_M0X0, NULL, NULL, CODE_A4BA81_M1X1 }, 0 },  /* CODE_A4BA81 */
+    { 0x24BADCu, { CODE_A4BADC_M0X0, NULL, NULL, CODE_A4BADC_M1X1 }, 0 },  /* CODE_A4BADC */
+    { 0x24BB0Du, { CODE_A4BB0D_M0X0, NULL, NULL, CODE_A4BB0D_M1X1 }, 0 },  /* CODE_A4BB0D */
     { 0x24BC14u, { NULL, NULL, NULL, CODE_A4BC14_M1X1 }, 0 },  /* CODE_A4BC14 */
     { 0x24BC1Bu, { CODE_A4BC1B_M0X0, CODE_A4BC1B_M0X1, NULL, CODE_A4BC1B_M1X1 }, 0 },  /* CODE_A4BC1B */
     { 0x24BC28u, { bank_24_BC28_M0X0, bank_24_BC28_M0X1, NULL, NULL }, 0 },  /* bank_24_BC28 */
@@ -7668,7 +7461,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x24D373u, { CODE_A4D373_M0X0, NULL, NULL, CODE_A4D373_M1X1 }, 0 },  /* CODE_A4D373 */
     { 0x24D3B5u, { NULL, NULL, NULL, CODE_A4D3B5_M1X1 }, 0 },  /* CODE_A4D3B5 */
     { 0x24D3C5u, { CODE_A4D3C5_M0X0, CODE_A4D3C5_M0X1, NULL, CODE_A4D3C5_M1X1 }, 0 },  /* CODE_A4D3C5 */
-    { 0x24D3F3u, { CODE_A4D3F3_M0X0, NULL, NULL, CODE_A4D3F3_M1X1 }, 0 },  /* CODE_A4D3F3 */
+    { 0x24D3F3u, { NULL, NULL, NULL, CODE_A4D3F3_M1X1 }, 0 },  /* CODE_A4D3F3 */
     { 0x24D405u, { CODE_A4D405_M0X0, NULL, NULL, CODE_A4D405_M1X1 }, 0 },  /* CODE_A4D405 */
     { 0x24D465u, { NULL, CODE_A4D465_M0X1, NULL, CODE_A4D465_M1X1 }, 0 },  /* CODE_A4D465 */
     { 0x24D47Eu, { bank_24_D47E_M0X0, NULL, NULL, bank_24_D47E_M1X1 }, 0 },  /* bank_24_D47E */
@@ -7686,7 +7479,7 @@ const DispatchEntry g_dispatch_table[] = {
     { 0x24D6C5u, { bank_24_D6C5_M0X0, NULL, NULL, NULL }, 0 },  /* bank_24_D6C5 */
     { 0x24D7B7u, { CODE_A4D7B7_M0X0, NULL, NULL, CODE_A4D7B7_M1X1 }, 0 },  /* CODE_A4D7B7 */
     { 0x24D804u, { CODE_A4D804_M0X0, NULL, NULL, CODE_A4D804_M1X1 }, 0 },  /* CODE_A4D804 */
-    { 0x24D827u, { bank_24_D827_M0X0, NULL, NULL, bank_24_D827_M1X1 }, 0 },  /* bank_24_D827 */
+    { 0x24D827u, { NULL, NULL, NULL, bank_24_D827_M1X1 }, 0 },  /* bank_24_D827 */
     { 0x24D845u, { bank_24_D845_M0X0, NULL, NULL, bank_24_D845_M1X1 }, 0 },  /* bank_24_D845 */
     { 0x24D84Bu, { bank_24_D84B_M0X0, NULL, NULL, bank_24_D84B_M1X1 }, 0 },  /* bank_24_D84B */
     { 0x24D868u, { bank_24_D868_M0X0, NULL, NULL, bank_24_D868_M1X1 }, 0 },  /* bank_24_D868 */
