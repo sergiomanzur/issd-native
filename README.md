@@ -26,6 +26,7 @@ The project translates the original 65816 machine code and SNES hardware interac
 | **Compiled AOT Function Variants** | **16,951 variants** | Full control-flow graph coverage across all 65816 M/X flag configurations (M0X0, M0X1, M1X0, M1X1). |
 | **Statically Dispatched Jump Tables** | **153 / 153 (100.0%)** | All `JMP (abs,X)` indirect dispatch sites across Banks $83–$A4 mapped to direct C static switches. |
 | **Native Asset Decompression HLE** | **100% Native C** | Custom Konami 5-mode LZSS/RLE decompressor reimplemented in native C ([`ISSDNative/issd_decompress.c`](ISSDNative/issd_decompress.c)), replacing slow 65816 bitstream loops and the WRAM MVN trampoline. |
+| **Native Audio Fast-Path HLE** | **100% Native C** | Konami SPC700 audio command protocol fast-pathed in C ([`ISSDNative/issd_audio.c`](ISSDNative/issd_audio.c)), eliminating 262k cycle spin-waits with 74 voice/sfx telemetry mappings. |
 | **Match Simulation Throughput** | **~270 – 440 FPS** | Headless match simulation runs at up to 7× real-time speed on modern x86-64 CPUs. |
 | **Core Systems Understanding** | **~95% Reversed** | Decompression, palette DMA, camera metatile streaming, APU protocol, and HDMA rasterization fully documented in [`docs/`](docs/). |
 | **Routine Directory Index** | **2,582 documentation lines** | Full cross-referenced disassembly symbol map in [`docs/ROUTINE_MAP.md`](docs/ROUTINE_MAP.md). |
@@ -59,10 +60,14 @@ The project translates the original 65816 machine code and SNES hardware interac
 - **Sprite Uncapping:** Hardware sprite limits unlocked via `kPpuRenderFlags_NoSpriteLimits` to eliminate sprite flickering during multi-player scrums.
 - **CRT Scanline Filter:** Built-in retro scanline shader for authentic CRT display aesthetics.
 
-### 🔊 Audio & Commentary Engine (100% Functional)
-- **Voice Shouts & Announcer:** *"International Superstar Soccer... DELUXE!"* voice drop and in-game match announcer voice lines (fouls, goals, cards, throw-ins, corner kicks) fully operational.
-- **BGM Sequencing:** Menu and stadium background music stream smoothly with zero APU port timeouts.
-- **SPC Handshake Settling:** Eliminated command port race conditions with an APU settling loop and generous timeout budget.
+### 🔊 Native C Audio Subsystem & APU Fast-Path HLE (Priority 3)
+- **Fast-Path Command Dispatches ([`ISSDNative/issd_audio.c`](ISSDNative/issd_audio.c)):**
+  - Replaces translated 65816 spin-waiting loops (`CODE_80BE95`, `CODE_80BEEC`, `CODE_80BFAE`) with direct native C APU port writes.
+  - Instantly drains the `$7EE680` sound effect FIFO queue and sends voice trigger commands without polling cycles or watchdog pauses.
+- **74-Voice Announcer Telemetry Dictionary:**
+  - Full reverse-engineered dictionary mapping every Konami announcer voice line (Goal, Foul, Yellow/Red Card, Corner Kick, Throw In, Penalty, Extra Time, etc.) and sound effect IDs for human-readable logging and telemetry.
+- **Hardware-Accurate 65816 RTL Stack Unwinding:**
+  - Emulates 3-byte hardware `RTL` stack frame popping and 24-bit return PC resolution with zero stack leaks.
 
 ### 🕹️ Controls & Enhancements
 - **Gamepad Auto-Detection:** Direct support for modern Xbox, PlayStation, and generic SDL2 gamepads.
@@ -82,9 +87,10 @@ The project translates the original 65816 machine code and SNES hardware interac
   - Complete 5-mode Konami LZSS/RLE decompression engine in C ([`ISSDNative/issd_decompress.c`](ISSDNative/issd_decompress.c)).
   - Multi-mode VRAM writing and Map32 stride-2 WRAM tilemap streamer.
   - Eliminated WRAM MVN trampoline and stack frame desyncs (0 watchdog pauses).
-- [ ] **Priority 3: Native Audio Streaming / APU Fast-Path**
-  - Replace cycle-stepped APU port polling with high-level ring buffer audio command dispatch.
-  - Directly synthesize or cache decoded BRR voice samples for zero-latency announcer commentary.
+- [x] **Priority 3: Native Audio Streaming / APU Fast-Path HLE**
+  - Fast-pathed Konami SPC700 communication protocols in native C ([`ISSDNative/issd_audio.c`](ISSDNative/issd_audio.c)).
+  - Direct sound queue draining and announcer commentary triggering without 262k cycle spin-waits.
+  - Reverse-engineered complete 74-item voice commentary dictionary from `DATA_829D9B`.
 - [ ] **Priority 4: Widescreen Metatile Streaming Overhaul**
   - Native C expansion of camera boundary calculations (`CODE_8B8CEC`) to feed 16:9 viewports without clipping.
 - [ ] **Cross-Platform Native Port:** Expand CMake build targets to Linux (x86-64 / ARM64) and macOS (Apple Silicon via Metal/OpenGL).

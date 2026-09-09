@@ -5457,6 +5457,24 @@ RecompReturn CODE_80BFAE_M0X0(CpuState *cpu) {
   (void)_hrv;
   (void)_host_return_pc24;
   if (g_recomp_stack_top >= 1) g_cpu_entry_s[g_recomp_stack_top - 1] = _entry_s;
+  extern bool Issd_HlePlayVoice(CpuState *cpu);
+  if (Issd_HlePlayVoice(cpu)) {
+    uint16 _ret_s = cpu->S;
+    cpu->S = (uint16)(cpu->S + 1);
+    uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+    cpu->S = (uint16)(cpu->S + 1);
+    uint16 _rpch = (uint16)cpu_read8(cpu, 0x00, cpu->S);
+    cpu->S = (uint16)(cpu->S + 1);
+    uint8 _rpb = cpu_read8(cpu, 0x00, cpu->S);
+    uint32 _rpc = (uint32)((((_rpch << 8) | _rpcl) + 1) & 0xFFFFu);
+    uint32 _rpc24 = ((uint32)_rpb << 16) | _rpc;
+    if (_hrv == 3 && _ret_s == _entry_s && _rpc24 == _host_return_pc24) {
+      RecompStackPop();
+      return RECOMP_RETURN_NORMAL;
+    }
+    RecompStackPop();
+    return cpu_dispatch_pc_from(cpu, _rpc24, (uint16)(_entry_s + 3u), 0x00BFAEu);
+  }
   L_BFAE_M0X0:
     cpu_trace_block(cpu, 0x00BFAE);
     WatchdogCheck();
