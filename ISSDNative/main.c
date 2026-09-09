@@ -25,6 +25,7 @@
 #include "widescreen.h"
 #include "issd_widescreen.h"
 #include "issd_frame_pacing.h"
+#include "issd_symbols.h"
 
 #define DEFAULT_ROM_PATH "International Superstar Soccer Deluxe (USA).sfc"
 #define DEFAULT_WINDOW_WIDTH  768

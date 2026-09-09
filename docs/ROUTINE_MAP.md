@@ -1,4 +1,35 @@
-# ISSD Routine Map
+## Key Subsystem Routines & Semantic Aliases
+
+The table below lists the primary reverse-engineered engine routines with human-readable semantic aliases (defined in `ISSDNative/issd_symbols.h`):
+
+| Address | Recompiled Symbol | Semantic Alias | Subsystem / Functionality |
+| :--- | :--- | :--- | :--- |
+| `$80:8000` | `CODE_808000` | `ISSD_ADDR_RESET_VECTOR` | Hardware Reset Vector: Clears WRAM, initializes registers, starts engine |
+| `$80:80E0` | `CODE_8080E0` | `ISSD_ADDR_NMI_HANDLER` | V-Blank NMI Interrupt: DMA execution, OAM copy, palette upload, timers |
+| `$80:81A4` | `CODE_8081A4` | `ISSD_ADDR_IRQ_HANDLER` | Raster IRQ Handler: Scanline-triggered interrupts and effects |
+| `$80:844C` | `CODE_80844C` | `ISSD_ADDR_MAIN_GAME_LOOP` | Main Game Loop: Master dispatcher for Mode 1 and Mode 2 states |
+| `$80:A976` | `CODE_80A976` | `ISSD_ADDR_COPY_PALETTE_TO_MIRROR` | Palette Transfer Engine: Synthesizes DP `$000008` MVN trampoline to copy palettes |
+| `$80:A9CA` | `CODE_80A9CA` | `ISSD_ADDR_COPY_PALETTE_MULTI_TO_MIRROR` | Multi-chunk Palette Transfer: Iterates through palette animation sequences |
+| `$80:AF94` | `CODE_80AF94` | `ISSD_ADDR_MAIN_MENU_INIT` | Main Menu Scene Dispatcher: Sets up 8-option menu when Mode 1 = 6 |
+| `$80:B062` | `CODE_80B062` | `ISSD_ADDR_SCENARIO_MENU_INIT` | Scenario Mode Selection Initializer |
+| `$80:B527` | `CODE_80B527` | `ISSD_ADDR_DECOMPRESS_VRAM_ASSET` | Asset Decompression Engine: Decompresses graphics/tilemaps via `$001E40` |
+| `$80:B969` | `CODE_80B969` | `ISSD_ADDR_DECOMPRESS_SETUP_VRAM` | Prepares VRAM destination addresses and calls `$001E40` |
+| `$80:BBA6` | `CODE_80BBA6` | `ISSD_ADDR_DECOMPRESS_BLOCK_LOOP` | Inner decompression loop configuring source bank and calling `$001E40` |
+| `$80:BD05` | `CODE_80BD05` | `ISSD_ADDR_DECOMPRESS_TAIL` | Decompression block completion and next-packet sequencer |
+| `$80:BE68` | `CODE_80BE68` | `ISSD_ADDR_SYNTHESIZE_RAM_TRAMPOLINE` | Synthesizes the dynamic `MVN $7E, src; RTL` code stub at `$001E40` |
+| `$80:BF05` | `CODE_80BF05` | `ISSD_ADDR_PLAY_BGM_TRACK` | Music Dispatcher: Writes BGM track command to APU register `$2140` |
+| `$80:BF76` | `CODE_80BF76` | `ISSD_ADDR_STREAM_VOICE_SAMPLE` | Announcer Sample Streamer: Uploads BRR voice samples to SPC-700 |
+| `$80:8DE8` | `CODE_808DE8` | `ISSD_ADDR_PLAY_SFX` | Sound Effects Dispatcher: Queues sound effects via APU register `$2142` |
+| `$8B:85E3` | `CODE_8B85E3` | `ISSD_ADDR_PITCH_STREAM_ROW` | Pitch Metatile Row Streamer: Updates wrapping rows during camera panning |
+| `$8B:86E9` | `CODE_8B86E9` | `ISSD_ADDR_PITCH_STREAM_COL` | Pitch Metatile Column Streamer: Updates wrapping columns with lookahead |
+| `$8B:87E7` | `CODE_8B87E7` | `ISSD_ADDR_CONVERT_WORLD_TO_METATILE` | Metatile Offset Calculator: Converts (X, Y) world pixels to metatile byte |
+| `$8B:8838` | `CODE_8B8838` | `ISSD_ADDR_SELECT_PPU_QUADRANT` | Nametable Quadrant Selector: Maps pitch tiles to 512x512 PPU ring quadrants |
+| `$8B:D295` | `CODE_8BD295` | `ISSD_ADDR_TITLE_SCREEN_INIT` | Title Screen Initializer: Golden soccer ball, logo graphics, and audio drop |
+| `$A4:A946` | `CODE_A4A946` | `ISSD_ADDR_MAIN_MENU_LOAD_ICONS` | Menu Icons Decompressor: Loads active button graphics from `DATA_81E98F` |
+
+---
+
+## Complete Disassembly Routine Index
 
 | 24-bit Address | Routine / Label | Type | Confidence |
 | --- | --- | --- | --- |
