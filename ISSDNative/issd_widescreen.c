@@ -31,12 +31,33 @@ static bool world_tile(const uint8_t *ram, unsigned layer,
                        int x, int y, uint16_t *tile) {
   unsigned stride = word(ram, 0x1ffcc);
   /* $8B87E7: each 256x256 world page is an 8x8 byte block.
-   * Every world row contains stride/64 pages. Never wrap out of the map. */
-  if (x < 0 || y < 0 || (unsigned)(x >> 8) >= stride / 64) return false;
-  unsigned index = (unsigned)(y >> 8) * stride +
-                   ((y & 0xe0) >> 2) + (unsigned)(x >> 8) * 64 +
-                   ((x & 0xff) >> 5);
-  if (index >= 0x1000) return false;
+   * Every world row contains stride/64 pages.
+   * Clamp view coordinates into valid world stadium map bounds so
+   * viewports extending past sidelines or penalty areas sample the valid
+   * stadium boundary metatiles (outer grandstands, hoardings, walls)
+   * instead of failing and creating black void margins. */
+  if (stride < 64 || (stride & 63) != 0) return false;
+  int max_pages_x = (int)(stride / 64);
+  int max_x = max_pages_x * 256 - 1;
+  if (x < 0) x = 0;
+  else if (x > max_x) x = max_x;
+
+  if (y < 0) y = 0;
+  unsigned page_y = (unsigned)y >> 8;
+  unsigned index = page_y * stride +
+                   ((y & 0xe0) >> 2) + ((unsigned)x >> 8) * 64 +
+                   ((x & 255) >> 5);
+  if (index >= 0x1000) {
+    /* Clamp y within the 4096-byte metatile page budget */
+    unsigned max_pages_y = 0x1000 / stride;
+    if (max_pages_y > 0) {
+      y = (int)(max_pages_y * 256) - 1;
+      index = ((unsigned)y >> 8) * stride +
+              ((y & 0xe0) >> 2) + ((unsigned)x >> 8) * 64 +
+              ((x & 255) >> 5);
+    }
+    if (index >= 0x1000) index = 0x0FFF;
+  }
   unsigned metatile = ram[0x1d000 + layer * 0x1000 + index];
   unsigned definition = 0x18000 + layer * 0x2000 + metatile * 32;
   *tile = word(ram, definition + ((y & 31) >> 3) * 8 + ((x & 31) >> 3) * 2);

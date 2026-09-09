@@ -56,7 +56,7 @@ The project translates the original 65816 machine code and SNES hardware interac
 ### 🖼️ Video & Presentation (100% Functional)
 - **Pristine Pitch & Stadium Rendering:** Pixel-perfect field grass mowing patterns, stadium crowd graphics, and white pitch line markings.
 - **Title Screen HDMA Mode 3 Split:** Per-scanline HDMA engine switches PPU from Mode 1 to Mode 3 (8bpp direct color) on scanline 112, cleanly displaying all 5 real-life player portraits without white cutout boxes or corrupted tiles.
-- **16:9 Widescreen Field Streaming:** Synthesizes new pitch and stadium columns in real-time from world space without seam tears.
+- **16:9 & Ultrawide Field Streaming (Priority 4):** Synthesizes new pitch and stadium columns in real-time from world metatiles with continuous boundary clamping, eliminating black margin voids near penalty boxes and sidelines across 16:10, 16:9, and 21:9 viewports.
 - **Sprite Uncapping:** Hardware sprite limits unlocked via `kPpuRenderFlags_NoSpriteLimits` to eliminate sprite flickering during multi-player scrums.
 - **CRT Scanline Filter:** Built-in retro scanline shader for authentic CRT display aesthetics.
 
@@ -91,8 +91,9 @@ The project translates the original 65816 machine code and SNES hardware interac
   - Fast-pathed Konami SPC700 communication protocols in native C ([`ISSDNative/issd_audio.c`](ISSDNative/issd_audio.c)).
   - Direct sound queue draining and announcer commentary triggering without 262k cycle spin-waits.
   - Reverse-engineered complete 74-item voice commentary dictionary from `DATA_829D9B`.
-- [ ] **Priority 4: Widescreen Metatile Streaming Overhaul**
-  - Native C expansion of camera boundary calculations (`CODE_8B8CEC`) to feed 16:9 viewports without clipping.
+- [x] **Priority 4: Widescreen Metatile Streaming Overhaul**
+  - Continuous stadium boundary metatile clamping in [`ISSDNative/issd_widescreen.c`](ISSDNative/issd_widescreen.c) eliminating black margin voids near penalty boxes and sidelines.
+  - Multi-aspect ratio regression verified across 4:3 (256x224), 16:10 (358x224), 16:9 (398x224), and 21:9 (446x224) viewports.
 - [ ] **Cross-Platform Native Port:** Expand CMake build targets to Linux (x86-64 / ARM64) and macOS (Apple Silicon via Metal/OpenGL).
 - [ ] **Rollback Netplay:** Integrate `recomp-net` / `retcomm-rbengine` for peer-to-peer rollback multiplayer over LAN and Internet.
 - [ ] **HD Asset Replacement Packs:** Custom hook system for loading high-resolution team badges, modernized UI textures, and CD-quality audio commentary packs.
