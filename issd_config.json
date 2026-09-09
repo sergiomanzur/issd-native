@@ -1,20 +1,33 @@
-{
-  "window_width": 1280,
-  "window_height": 720,
-  "fullscreen": 0,
-  "vsync": 1,
-  "target_fps": 60,
-  "integer_scaling": 0,
-  "scanlines": 0,
-  "aspect_ratio": 2,
-  "internal_res": 0,
-  "scaling_filter": 0,
-  "true_widescreen": 1,
-  "audio_freq": 48000,
-  "master_volume": 100,
-  "music_volume": 100,
-  "sfx_volume": 100,
-  "engine_mode": 1,
-  "skip_intro": 0,
-  "fast_menus": 0
-}
+# ISSD Native configuration
+# ROM files are not distributed with this project. Select or provide your own valid cartridge dump.
+rom_path=
+window_width=1280
+window_height=720
+fullscreen=0
+vsync=1
+target_fps=60
+integer_scaling=0
+scanlines=0
+aspect_ratio=2
+internal_res=0
+scaling_filter=0
+true_widescreen=1
+audio_freq=48000
+master_volume=100
+music_volume=100
+sfx_volume=100
+engine_mode=1
+skip_intro=0
+fast_menus=0
+key_p1_up=26
+key_p1_down=22
+key_p1_left=4
+key_p1_right=7
+key_p1_a=27
+key_p1_b=29
+key_p1_x=25
+key_p1_y=6
+key_p1_l=20
+key_p1_r=8
+key_p1_start=40
+key_p1_select=44

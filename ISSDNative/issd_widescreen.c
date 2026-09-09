@@ -54,11 +54,14 @@ static void fill_pitch(Ppu *ppu, const uint8_t *ram, int left, int right) {
       for (int x = first_x; x <= last_x; x += 8) {
         /* Shared partial edge tiles already belong to the original view. */
         if (x + 7 >= sx && x < sx + 256) continue;
-        uint16_t tile;
-        if (!world_tile(ram, layer, x, y, &tile)) continue;
         unsigned tx = ((unsigned)x >> 3) & 63, ty = ((unsigned)y >> 3) & 63;
         unsigned address = layer * 0x1000 + (ty & 31) * 32 +
                            (tx & 31) + (tx >> 5) * 0x400 + (ty >> 5) * 0x800;
+        uint16_t tile;
+        if (!world_tile(ram, layer, x, y, &tile)) {
+          ppu->vram[address] = 0;
+          continue;
+        }
         ppu->vram[address] = tile;
       }
     }
@@ -218,19 +221,16 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   memcpy(frame.oam,ppu->oam,sizeof(frame.oam));
   memcpy(frame.high_oam,ppu->highOam,sizeof(frame.high_oam));
   PpuSetExtraSpace(ppu,(uint16_t)extra);
-  /* The actual world ends at its map edges. Exposing beyond it would read
-   * unrelated WRAM as stadium tiles. Keep the widest valid camera view. */
-  int left=extra,right=extra;
-  int world_width=(word(ram,0x1ffcc)/64)*256;
-  for (unsigned layer=0;layer<2;layer++) {
-    int sx=(word(ram,0x13a0+layer*32)&~1023)|ppu->hScroll[layer];
-    if (left>sx) left=sx;
-    if (right>world_width-sx-256) right=world_width-sx-256;
-  }
-  PpuSetExtraSideSpace(ppu,left>0?left:0,right>0?right:0,0);
-  PpuSetWidescreenLayerClamp(ppu,4); /* BG3 carries score, clock, map and names. */
-  fill_pitch(ppu,ram,left>0?left:0,right>0?right:0);
-  fill_objects(ppu,ram,rom,rom_size,left>0?left:0,right>0?right:0);
+  PpuSetExtraSideSpace(ppu, extra, extra, 0);
+  /* The pitch lives on BG1/BG2. BG3 carries score, clock, radar and player
+   * labels; leaving it eligible for side-margin rendering repeats the 4:3 HUD
+   * into the widened field. Keep only BG1/BG2 in the expanded columns and
+   * widen pitch-layer windows so box/goal-area line masks follow the new view. */
+  PpuSetWidescreenLayerMask(ppu, 3);
+  PpuSetWidescreenWindowExpansion(ppu, 3, 3);
+  PpuSetWidescreenLayerClamp(ppu, 4);
+  fill_pitch(ppu, ram, extra, extra);
+  fill_objects(ppu, ram, rom, rom_size, extra, extra);
   return true;
 }
 

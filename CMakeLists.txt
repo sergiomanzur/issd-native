@@ -59,6 +59,15 @@ endif()
 
 snesrecomp_target_sdl(ISSDNative)
 
+# Without this deny set the SPC700 handshake wedges the reset vector and no
+# window is created, so it has to travel with the executable, not just live in
+# the source tree. See ApplyDefaultAotBootDenySet in ISSDNative/main.c.
+add_custom_command(TARGET ISSDNative POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/recomp/aot_boot_deny.txt"
+        $<TARGET_FILE_DIR:ISSDNative>
+)
+
 if(WIN32)
     target_link_libraries(ISSDNative PRIVATE winmm ws2_32 comdlg32)
     # Copy SDL2.dll next to the target executable

@@ -272,11 +272,11 @@ int cpu_resolve_post_return_skip(uint16_t post_s) {
    * host ancestors so the generated call chain skips every guest frame the
    * interpreter already consumed. */
   int top = g_recomp_stack_top;
-  if (top < 2 || top > RECOMP_STACK_DEPTH) return -1;
-  for (int i = top - 2; i >= 0; i--) {
+  if (top < 1 || top > RECOMP_STACK_DEPTH) return -1;
+  for (int i = top - 1; i >= 0; i--) {
     uint16_t expected = (uint16_t)(g_cpu_entry_s[i] +
                                    g_cpu_entry_return_frame[i]);
-    if (expected == post_s) return (top - 1) - i;
+    if (expected == post_s) return top - i;
   }
   return -1;
 }
@@ -728,6 +728,9 @@ void WatchdogCheck(void) {
     fflush(stderr);
     g_watchdog_enabled = 0;
     g_watchdog_tripped = 1;
+    g_ram[0x3c] = 0;
+    g_ram[0x3d] = 0;
+    g_cpu.S = 0x01AF;
     { extern int snes_frame_counter;
       debug_server_profile_latch(snes_frame_counter); }
     longjmp(g_watchdog_jmp, 1);

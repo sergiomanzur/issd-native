@@ -32,6 +32,15 @@ typedef struct {
 
     /* Full SNES WRAM snapshot (128 KB) */
     uint8_t  wram[0x20000];
+
+    /* PPU snapshot region. WRAM alone describes the simulation but not the
+     * picture: palettes, sprites and tiles are streamed by the game as it
+     * walks its menus, so a slot restored at boot would render garbage
+     * without them. Mirrors the snapshot block delimited in snes/ppu.h. */
+    uint16_t cgram[0x100];
+    uint16_t oam[0x100];
+    uint8_t  high_oam[0x20];
+    uint16_t vram[0x8000];
 } IssdSaveSlot;
 
 bool issd_save_init(void);

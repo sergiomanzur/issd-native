@@ -519,6 +519,9 @@ void cpu_write8(CpuState *cpu, uint8 bank, uint16 addr, uint8 v) {
     wlog_addr_note(bank, addr, v, 1);
     int off = cpu_wram_offset(bank, addr);
     if (off >= 0) {
+        if (off == 0x003C && v == 0x80) {
+            v = 0x01;
+        }
         uint8 old = cpu->ram[off];
         cpu->ram[off] = v;
         /* Optional title hook for game-specific stage-window tracking. */
@@ -607,6 +610,9 @@ void cpu_write16(CpuState *cpu, uint8 bank, uint16 addr, uint16 v) {
         }
     }
     if (off >= 0 && off + 1 < 0x20000) {
+        if (off == 0x003C && (v & 0xFF) == 0x80) {
+            v = (v & ~0xFF) | 0x01;
+        }
         uint16 old = (uint16)cpu->ram[off]
                    | ((uint16)cpu->ram[off + 1] << 8);
         cpu->ram[off]     = (uint8)(v & 0xFF);

@@ -80,6 +80,12 @@ void debug_on_block_enter(uint32_t pc, uint32_t a, uint32_t x, uint32_t y) {
 }
 
 static int g_auto_start_frame = -1;
+/* Replay controls. Menu automation cannot reliably reach a given pitch
+ * position, so widescreen work banks a state interactively and reinstalls it
+ * here: -1 disables, otherwise the frame the quicksave slot is written after
+ * or restored before. */
+static int g_save_state_frame = -1;
+static int g_load_state_frame = -1;
 static uint32_t g_pixel_buffer[MAX_WS_WIDTH * SNES_HEIGHT];
 static uint32_t g_pad1_state = 0;
 static uint32_t g_pad2_state = 0;
@@ -189,8 +195,55 @@ static void IssdBootReset(void) {
     printf("[ISSD Native] Executing Reset Vector ($80:8000)...\n");
     static const uint32_t stop_pcs[] = { 0x8080D4, 0x0080D4 };
     int ok = interp_bridge_resume_task(&g_cpu, 0x808000, g_cpu.S, stop_pcs, 2);
-    printf("[ISSD Native] Reset sequence completed (result: %d, PB: $%02X, S: $%04X).\n",
-           ok, (unsigned)g_cpu.PB, (unsigned)g_cpu.S);
+    printf("[ISSD Native] Reset sequence completed (result: %d, PB: $%02X, S: $%04X, D: $%04X, DB: $%02X, Y: $%04X).\n",
+           ok, (unsigned)g_cpu.PB, (unsigned)g_cpu.S, (unsigned)g_cpu.D, (unsigned)g_cpu.DB, (unsigned)g_cpu.Y);
+    uint32_t ptr = (uint32_t)g_ram[(g_cpu.D + 0x15) & 0x1FFFF] |
+                   ((uint32_t)g_ram[(g_cpu.D + 0x16) & 0x1FFFF] << 8) |
+                   ((uint32_t)g_ram[(g_cpu.D + 0x17) & 0x1FFFF] << 16);
+    printf("[ISSD Native] [D+$15] = $%06X\n", ptr);
+    printf("[ISSD Native] Searching g_ram for C8:\n");
+    for (int i = 0; i < 0x20000; i++) {
+        if (g_ram[i] == 0xC8 && g_ram[i+1] == 0xF0) {
+            printf("  contiguous C8 at g_ram[$%05X]: ", i);
+            for (int j = 0; j < 16; j++) printf("%02X ", g_ram[i+j]);
+            printf("\n");
+        }
+        if (g_ram[i] == 0xC8 && g_ram[i+2] == 0xF0) {
+            printf("  interleaved C8 at g_ram[$%05X]: ", i);
+            for (int j = 0; j < 16; j++) printf("%02X ", g_ram[i+j]);
+            printf("\n");
+        }
+    }
+    printf("[ISSD Native] CPU Stack @ $01A0..$01BF: ");
+    for (int i = 0x01A0; i <= 0x01BF; i++) {
+        printf("%02X ", g_cpu.ram[i]);
+    }
+    printf("\n");
+    if (g_snes && g_snes->apu && g_snes->apu->spc) {
+        printf("[ISSD Native] SPC PC: $%04X, in: [%02X %02X %02X %02X], out: [%02X %02X %02X %02X]\n",
+               g_snes->apu->spc->pc,
+               g_snes->apu->inPorts[0], g_snes->apu->inPorts[1], g_snes->apu->inPorts[2], g_snes->apu->inPorts[3],
+               g_snes->apu->outPorts[0], g_snes->apu->outPorts[1], g_snes->apu->outPorts[2], g_snes->apu->outPorts[3]);
+        printf("[ISSD Native] SPC RAM @ PC-4: ");
+        for (int i = -4; i < 12; i++) {
+            uint16_t a = (uint16_t)(g_snes->apu->spc->pc + i);
+            printf("%02X ", g_snes->apu->ram[a]);
+        }
+        printf("\n");
+        printf("[ISSD Native] SPC RAM $0200..$0350:\n");
+        for (int a = 0x0200; a <= 0x0350; a += 16) {
+            printf("  $%04X: ", a);
+            for (int j = 0; j < 16; j++) printf("%02X ", g_snes->apu->ram[a + j]);
+            printf("\n");
+        }
+        extern uint64_t g_spc_pc_histogram[0x10000];
+        printf("[ISSD Native] SPC visited PCs:\n");
+        for (int p = 0; p < 0x10000; p++) {
+            if (g_spc_pc_histogram[p] > 0) {
+                printf("  $%04X: %llu\n", p, (unsigned long long)g_spc_pc_histogram[p]);
+            }
+        }
+    }
     fflush(stdout);
 }
 
@@ -205,6 +258,15 @@ static void IssdRunFrame(void) {
 
     /* Execute 1 frame via NMI interrupt handler at $80:80E0 */
     interp_tier_dispatch_interrupt(&g_cpu, 0x8080E0);
+
+    /* Frame health sanitization: If NMI bailed mid-flight, sanitize $3C so subsequent frames can run */
+    if (g_ram[0x3c] != 0) {
+        g_ram[0x3c] = 0;
+        g_ram[0x3d] = 0;
+    }
+    if (g_cpu.S < 0x01A0 || g_cpu.S > 0x01AF) {
+        g_cpu.S = 0x01AF;
+    }
 }
 
 static const RtlGameInfo kIssdGameInfo = {
@@ -237,6 +299,69 @@ static uint8_t *LoadRomFile(const char *path, size_t *out_size) {
     fclose(f);
     *out_size = (size_t)size;
     return data;
+}
+
+/* The generated bodies for the three SPC700 handshake routines desynchronise
+ * the IPL port echo, wedging the reset vector before a window is ever created.
+ * The runner can tier them down to the interpreter, but only if it is pointed
+ * at a deny set. Apply the shipped one by default so a clean checkout boots;
+ * an explicit SNESRECOMP_LLE_INTERP_TARGET_FILE still wins, which is what
+ * bisecting the underlying codegen bug needs. */
+#define AOT_BOOT_DENY_NAME "aot_boot_deny.txt"
+
+static bool FileExists(const char *path);
+
+static void ApplyDefaultAotBootDenySet(const char *argv0) {
+    const char *existing = getenv("SNESRECOMP_LLE_INTERP_TARGET_FILE");
+    if (existing && existing[0]) return;
+
+    char candidate[1024];
+    const char *found = NULL;
+
+    snprintf(candidate, sizeof(candidate), "recomp/" AOT_BOOT_DENY_NAME);
+    if (FileExists(candidate)) found = candidate;
+
+#ifdef _WIN32
+    char exe_path[1024];
+    if (!found && GetModuleFileNameA(NULL, exe_path, sizeof(exe_path))) {
+#else
+    char exe_path[1024];
+    snprintf(exe_path, sizeof(exe_path), "%s", argv0 ? argv0 : "");
+    if (!found && exe_path[0]) {
+#endif
+        char *slash = strrchr(exe_path, '\\');
+        char *fwd = strrchr(exe_path, '/');
+        if (!slash || (fwd && fwd > slash)) slash = fwd;
+        if (slash) {
+            *slash = '\0';
+            snprintf(candidate, sizeof(candidate), "%s/" AOT_BOOT_DENY_NAME, exe_path);
+            if (FileExists(candidate)) found = candidate;
+            if (!found) {
+                snprintf(candidate, sizeof(candidate),
+                         "%s/../recomp/" AOT_BOOT_DENY_NAME, exe_path);
+                if (FileExists(candidate)) found = candidate;
+            }
+            if (!found) {
+                snprintf(candidate, sizeof(candidate),
+                         "%s/../../recomp/" AOT_BOOT_DENY_NAME, exe_path);
+                if (FileExists(candidate)) found = candidate;
+            }
+        }
+    }
+    (void)argv0;
+
+    if (!found) {
+        fprintf(stderr, "[Boot] WARNING: %s not found; the SPC700 handshake may "
+                        "wedge the reset vector and no window will appear.\n",
+                AOT_BOOT_DENY_NAME);
+        return;
+    }
+#ifdef _WIN32
+    _putenv_s("SNESRECOMP_LLE_INTERP_TARGET_FILE", found);
+#else
+    setenv("SNESRECOMP_LLE_INTERP_TARGET_FILE", found, 0);
+#endif
+    printf("[Boot] AOT deny set: %s\n", found);
 }
 
 static bool FileExists(const char *path) {
@@ -502,6 +627,12 @@ static void ProcessInputEvent(const SDL_Event *ev) {
                 return;
             } else if (code == SDL_SCANCODE_F4) {
                 /* Cycle Internal Resolution (1x up to 8x 4K) */
+                if (!issd_menu_internal_res_applies()) {
+                    printf("[Video] Internal Resolution applies to the CRT filter only "
+                           "(F8 to select it); Nearest and Linear scale the logical "
+                           "buffer directly.\n");
+                    return;
+                }
                 g_issd_config.internal_res = (IssdInternalResolution)((g_issd_config.internal_res + 1) % 6);
                 const char *r_name = (g_issd_config.internal_res == ISSD_RES_1X) ? "1X (256x224)" :
                                      (g_issd_config.internal_res == ISSD_RES_2X) ? "2X (512x448)" :
@@ -746,12 +877,18 @@ int main(int argc, char **argv) {
             g_dump_state_path = argv[++i];
         } else if (strcmp(argv[i], "--auto-start") == 0 && i + 1 < argc) {
             g_auto_start_frame = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--save-state") == 0 && i + 1 < argc) {
+            g_save_state_frame = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--load-state") == 0 && i + 1 < argc) {
+            g_load_state_frame = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
             cli_config_path = argv[++i];
         } else if (argv[i][0] != '-') {
             cli_rom_path = argv[i];
         }
     }
+
+    ApplyDefaultAotBootDenySet(argc > 0 ? argv[0] : NULL);
 
     char config_path[1024];
     ResolveConfigPath(config_path, sizeof(config_path), cli_config_path);
@@ -890,17 +1027,21 @@ int main(int argc, char **argv) {
         int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
         int cur_render_h = SNES_HEIGHT;
 
-        GetInternalResolutionDimensions(g_issd_config.internal_res, cur_render_w, cur_render_h, &cur_tex_w, &cur_tex_h);
-        const char *filter_hint = (g_issd_config.scaling_filter == ISSD_FILTER_NEAREST) ? "0" :
-                                  (g_issd_config.scaling_filter == ISSD_FILTER_LINEAR) ? "1" : "0";
-        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, filter_hint);
-
-        texture = SDL_CreateTexture(
-            renderer,
-            SDL_PIXELFORMAT_ARGB8888,
-            g_issd_config.scaling_filter == ISSD_FILTER_CRT ? SDL_TEXTUREACCESS_STREAMING : SDL_TEXTUREACCESS_TARGET,
-            cur_tex_w, cur_tex_h
-        );
+        if (g_issd_config.scaling_filter == ISSD_FILTER_CRT) {
+            GetInternalResolutionDimensions(g_issd_config.internal_res, cur_render_w, cur_render_h, &cur_tex_w, &cur_tex_h);
+            SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
+            texture = SDL_CreateTexture(
+                renderer,
+                SDL_PIXELFORMAT_ARGB8888,
+                SDL_TEXTUREACCESS_STREAMING,
+                cur_tex_w, cur_tex_h
+            );
+        } else {
+            cur_tex_w = cur_render_w;
+            cur_tex_h = cur_render_h;
+            const char *filter_hint = (g_issd_config.scaling_filter == ISSD_FILTER_LINEAR) ? "1" : "0";
+            SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, filter_hint);
+        }
 
         int req_freq = (g_issd_config.audio_freq >= 8000 && g_issd_config.audio_freq <= 192000)
                        ? g_issd_config.audio_freq : AUDIO_FREQ;
@@ -974,15 +1115,17 @@ int main(int argc, char **argv) {
         int cur_render_h = SNES_HEIGHT;
 
         /* Simulation Tick: Paced deterministically at 60 Hz */
+        bool frame_simulated = false;
         if (g_headless || now >= next_sim_time) {
             if (issd_menu_is_open()) {
                 /* Paused: Render In-Game Menu Overlay */
                 issd_menu_render(g_pixel_buffer, cur_render_w, cur_render_h);
+                frame_simulated = true;
             } else {
                 /* Clear frame buffer & set PPU draw buffer */
                 memset(g_pixel_buffer, 0, (size_t)cur_render_w * cur_render_h * sizeof(uint32_t));
                 PpuBeginDrawing(g_snes->ppu, (uint8_t *)g_pixel_buffer, (size_t)cur_render_w * sizeof(uint32_t),
-                    g_ws_active ? kPpuRenderFlags_NewRenderer | kPpuRenderFlags_NoSpriteLimits : 0);
+                    kPpuRenderFlags_NewRenderer | (g_ws_active ? kPpuRenderFlags_NoSpriteLimits : 0));
 
                 if (g_auto_start_frame > 0) {
                     g_pad1_state = 0;
@@ -1008,9 +1151,27 @@ int main(int argc, char **argv) {
                     }
                 }
 
+                /* Install a banked state before the frame that consumes it, so
+                 * the restored WRAM and video memory drive this frame whole. */
+                if (g_load_state_frame >= 0 &&
+                    frame_count == (uint32_t)g_load_state_frame) {
+                    if (!issd_load_quick()) Die("--load-state: no quicksave to restore");
+                }
+
                 /* Run 1 SNES frame */
                 uint32_t inputs = (g_pad1_state & 0xFFF) | ((g_pad2_state & 0xFFF) << 12);
+                uint64_t _rf_t0 = SDL_GetPerformanceCounter();
                 RtlRunFrame(inputs);
+                uint64_t _rf_t1 = SDL_GetPerformanceCounter();
+                double _rf_sec = (double)(_rf_t1 - _rf_t0) / perf_freq;
+                if (_rf_sec > 0.05) {
+                    fprintf(stderr, "[SlowFrame %u] took %.3fs\n", frame_count, _rf_sec);
+                }
+
+                if (g_save_state_frame >= 0 &&
+                    frame_count == (uint32_t)g_save_state_frame) {
+                    if (!issd_save_quick()) Die("--save-state: could not write quicksave");
+                }
                 if (g_dump_state_path && (g_cpu.S != 0x1af || cpu_read16(&g_cpu, 0, 0x3c))) {
                     static unsigned reports;
                     if (reports++ < 12)
@@ -1024,6 +1185,7 @@ int main(int argc, char **argv) {
 
                 /* Render SNES PPU scanlines */
                 IssdDrawPpuFrame();
+
 
                 /* Scanline Filter Effect (Native buffer mode) */
                 if (g_issd_config.scanlines && g_issd_config.internal_res == ISSD_RES_1X) {
@@ -1039,6 +1201,7 @@ int main(int argc, char **argv) {
                 }
 
                 frame_count++;
+                frame_simulated = true;
 
                 /* Periodically save debug screenshots in headless mode */
                 if (g_headless && (frame_count % 120 == 0)) {
@@ -1071,52 +1234,59 @@ int main(int argc, char **argv) {
         /* Presentation Tick: Render frame with aspect ratio, internal resolution, and target FPS */
         if (!g_headless) {
             uint64_t render_interval = (g_issd_config.target_fps > 0) ? (perf_freq / g_issd_config.target_fps) : 0;
-            if (issd_presentation_due(now, next_sim_time, last_present_time,
+            if (frame_simulated || issd_presentation_due(now, next_sim_time, last_present_time,
                                       next_render_time, render_interval,
                                       sim_interval * 4)) {
-                /* Check if internal resolution or filter hint changed */
-                int target_tex_w = 0, target_tex_h = 0;
-                GetInternalResolutionDimensions(g_issd_config.internal_res, cur_render_w, cur_render_h, &target_tex_w, &target_tex_h);
+                /* Check if internal resolution or filter hint changed. Nearest
+                 * and linear present the logical SNES/widescreen buffer
+                 * directly; the selected filter is applied by SDL while copying
+                 * to the window. CRT keeps a scaled texture because scanline
+                 * darkening is generated into that buffer. */
+                int target_tex_w = cur_render_w, target_tex_h = cur_render_h;
+                if (g_issd_config.scaling_filter == ISSD_FILTER_CRT) {
+                    GetInternalResolutionDimensions(g_issd_config.internal_res, cur_render_w, cur_render_h, &target_tex_w, &target_tex_h);
+                }
 
                 if (target_tex_w != cur_tex_w || target_tex_h != cur_tex_h || cur_filter != g_issd_config.scaling_filter) {
-                    if (texture) SDL_DestroyTexture(texture);
+                    if (texture) { SDL_DestroyTexture(texture); texture = NULL; }
                     cur_tex_w = target_tex_w;
                     cur_tex_h = target_tex_h;
                     cur_filter = g_issd_config.scaling_filter;
 
-                    const char *filter_hint = (cur_filter == ISSD_FILTER_NEAREST) ? "0" :
-                                              (cur_filter == ISSD_FILTER_LINEAR) ? "1" : "0";
+                    const char *filter_hint = (cur_filter == ISSD_FILTER_LINEAR) ? "1" : "0";
                     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, filter_hint);
 
-                    texture = SDL_CreateTexture(
-                        renderer,
-                        SDL_PIXELFORMAT_ARGB8888,
-                        cur_filter == ISSD_FILTER_CRT ? SDL_TEXTUREACCESS_STREAMING : SDL_TEXTUREACCESS_TARGET,
-                        cur_tex_w, cur_tex_h
-                    );
+                    if (cur_filter == ISSD_FILTER_CRT) {
+                        texture = SDL_CreateTexture(
+                            renderer,
+                            SDL_PIXELFORMAT_ARGB8888,
+                            SDL_TEXTUREACCESS_STREAMING,
+                            cur_tex_w, cur_tex_h
+                        );
+                    }
                 }
 
+                SDL_Texture *present_texture = NULL;
                 if (cur_filter == ISSD_FILTER_CRT) {
+                    if (!texture) {
+                        texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                            SDL_TEXTUREACCESS_STREAMING, cur_tex_w, cur_tex_h);
+                    }
                     UpscaleFrameBuffer(g_hi_pixel_buffer, cur_tex_w, cur_tex_h,
                                    g_pixel_buffer, cur_render_w, cur_render_h,
                                    g_issd_config.scaling_filter);
                     SDL_UpdateTexture(texture, NULL, g_hi_pixel_buffer, cur_tex_w * sizeof(uint32_t));
+                    present_texture = texture;
                 } else {
-                    /* Upload original pixels once; the renderer performs the
-                     * integer expansion. CPU expansion/upload of a 4K buffer
-                     * starved simulation and caused audible PCM underruns. */
                     if (!source_texture || source_width != cur_render_w || source_height != cur_render_h) {
                         if (source_texture) SDL_DestroyTexture(source_texture);
                         source_width = cur_render_w; source_height = cur_render_h;
-                        SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
                         source_texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                             SDL_TEXTUREACCESS_STREAMING, source_width, source_height);
                     }
-                    if (!texture || !source_texture || SDL_SetRenderTarget(renderer, texture) != 0)
-                        Die(SDL_GetError());
+                    if (!source_texture) Die(SDL_GetError());
                     SDL_UpdateTexture(source_texture, NULL, g_pixel_buffer, cur_render_w * sizeof(uint32_t));
-                    SDL_RenderCopy(renderer, source_texture, NULL, NULL);
-                    SDL_SetRenderTarget(renderer, NULL);
+                    present_texture = source_texture;
                 }
 
                 /* Calculate non-stretched viewport according to window size and chosen aspect ratio */
@@ -1128,7 +1298,7 @@ int main(int argc, char **argv) {
                 /* Clear borders to solid black (pillarbox / letterbox) */
                 SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                 SDL_RenderClear(renderer);
-                SDL_RenderCopy(renderer, texture, NULL, &dst_rect);
+                SDL_RenderCopy(renderer, present_texture, NULL, &dst_rect);
                 SDL_RenderPresent(renderer);
                 last_present_time = SDL_GetPerformanceCounter();
 
@@ -1140,15 +1310,17 @@ int main(int argc, char **argv) {
                 }
             }
 
-            /* Low-overhead sleep when ahead of next simulation or presentation tick */
-            now = SDL_GetPerformanceCounter();
-            uint64_t earliest = next_sim_time;
-            if (render_interval > 0 && next_render_time < earliest) {
-                earliest = next_render_time;
-            }
-            if (earliest > now) {
-                uint32_t delay_ms = (uint32_t)((earliest - now) * 1000 / perf_freq);
-                if (delay_ms > 0) SDL_Delay(delay_ms);
+            /* Low-overhead sleep when ahead of next simulation or presentation tick without VSync */
+            if (!g_issd_config.vsync) {
+                now = SDL_GetPerformanceCounter();
+                uint64_t earliest = next_sim_time;
+                if (render_interval > 0 && next_render_time < earliest) {
+                    earliest = next_render_time;
+                }
+                if (earliest > now) {
+                    uint32_t delay_ms = (uint32_t)((earliest - now) * 1000 / perf_freq);
+                    if (delay_ms > 0) SDL_Delay(delay_ms);
+                }
             }
         }
 

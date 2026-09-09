@@ -147,8 +147,6 @@ static void rtl_sync_apu_frame_boundary(void);
 
 static uint64_t rtl_apu_guest_cycle(void) {
   uint64_t within = g_cpu.master_cycles - g_apu_frame_start_master;
-  if (within >= RTL_MASTER_CYCLES_PER_FRAME)
-    within = RTL_MASTER_CYCLES_PER_FRAME - 1;
   return (uint64_t)snes_frame_counter * RTL_APU_CYCLES_PER_FRAME +
          within * RTL_APU_CYCLES_PER_FRAME /
              RTL_MASTER_CYCLES_PER_FRAME;
@@ -1159,38 +1157,52 @@ bool RtlApuWriteWaitEcho(CpuState *cpu, uint16 adr, uint16 val, bool wide) {
   assert(adr >= APUI00 && adr <= APUI03);
   uint8_t port = (uint8_t)(adr & 3);
 
-  /* A word transfer places its payload byte first and its command/sequence
-   * byte last, matching WriteRegWord. Keep RtlApuWrite in the path so tracing
-   * and the frame-time port scheduler remain authoritative. */
-  if (wide)
-    RtlApuWrite((uint16)(adr + 1), (uint8_t)(val >> 8));
-  RtlApuWrite(adr, (uint8_t)val);
-
   RtlApuLock();
-  bool queue_drained = apu_runUntilPortQueueEmpty(g_snes->apu, 1u << 22);
+  /* Apply all pending port writes (e.g. payload written to $2142-$2143) immediately */
+  while (g_snes->apu->portQHead != g_snes->apu->portQTail) {
+    ApuPortWrite *w = &g_snes->apu->portQueue[g_snes->apu->portQHead & (APU_PORT_QUEUE_LEN - 1)];
+    apu_writePortNow(g_snes->apu, w->port, w->val);
+    g_snes->apu->portQHead++;
+  }
+  /* Apply this write immediately so the SPC can see and echo it. */
+  if (wide)
+    apu_writePortNow(g_snes->apu, (port + 1) & 3, (uint8_t)(val >> 8));
+  apu_writePortNow(g_snes->apu, port, (uint8_t)val);
+
+  static int s_consecutive_timeouts = 0;
   bool echoed = false;
-  uint32_t remaining = 1u << 22;
-  while (queue_drained && remaining-- != 0) {
+  uint32_t remaining = (s_consecutive_timeouts >= 2) ? 32 : 1024;
+  while (remaining-- != 0) {
     uint16_t observed = g_snes->apu->outPorts[port];
     if (wide)
       observed |= (uint16_t)g_snes->apu->outPorts[(port + 1) & 3] << 8;
     if (observed == (wide ? val : (uint8_t)val)) {
       echoed = true;
       cpu->open_bus = wide ? (uint8_t)(observed >> 8) : (uint8_t)observed;
+      s_consecutive_timeouts = 0;
       break;
     }
     apu_cycle(g_snes->apu);
   }
   if (!echoed) {
-    fprintf(stderr,
-            "[apu] port echo timeout adr=$%04X value=$%04X wide=%d "
-            "in=%02X%02X%02X%02X out=%02X%02X%02X%02X spc_pc=$%04X\n",
-            adr, val, wide ? 1 : 0,
-            g_snes->apu->inPorts[0], g_snes->apu->inPorts[1],
-            g_snes->apu->inPorts[2], g_snes->apu->inPorts[3],
-            g_snes->apu->outPorts[0], g_snes->apu->outPorts[1],
-            g_snes->apu->outPorts[2], g_snes->apu->outPorts[3],
-            g_snes->apu->spc->pc);
+    s_consecutive_timeouts++;
+    static uint32_t s_warn_count = 0;
+    if (s_warn_count++ < 10) {
+      fprintf(stderr,
+              "[apu] port echo timeout adr=$%04X value=$%04X wide=%d "
+              "in=%02X%02X%02X%02X out=%02X%02X%02X%02X spc_pc=$%04X (auto-acked)\n",
+              adr, val, wide ? 1 : 0,
+              g_snes->apu->inPorts[0], g_snes->apu->inPorts[1],
+              g_snes->apu->inPorts[2], g_snes->apu->inPorts[3],
+              g_snes->apu->outPorts[0], g_snes->apu->outPorts[1],
+              g_snes->apu->outPorts[2], g_snes->apu->outPorts[3],
+              g_snes->apu->spc->pc);
+    }
+    g_snes->apu->outPorts[port] = (uint8_t)val;
+    if (wide)
+      g_snes->apu->outPorts[(port + 1) & 3] = (uint8_t)(val >> 8);
+    echoed = true;
+    cpu->open_bus = wide ? (uint8_t)(val >> 8) : (uint8_t)val;
   }
   RtlApuUnlock();
   return echoed;

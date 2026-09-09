@@ -1824,7 +1824,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
              * coroutine switch. SNESRECOMP_LLE_BOUNCE=0 restores the
              * interpret-everything behavior (A/B differential lever). */
             const int bounce_ok =
-                (!yield_pc || lle_yield_bounce_enabled()) &&
+                lle_yield_bounce_enabled() &&
                 !lle_bounce_target_excluded(target);
             const int has_body  = cpu_dispatch_has_entry(cpu, target);
             if (bounce_ok && has_body) {
@@ -1921,10 +1921,11 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                         fprintf(stderr,
                                 "[interp_bridge] contained malformed NORMAL "
                                 "return target=$%06X sp_pre=$%04X "
-                                "expected=$%04X actual=$%04X owner=$%04X\n",
+                                "expected=$%04X actual=$%04X owner=$%04X depth=%d entry=$%06X\n",
                                 (unsigned)target, (unsigned)_sp_pre,
                                 (unsigned)_expected_post_s, (unsigned)in.sp,
-                                (unsigned)s_enter);
+                                (unsigned)s_enter, s_interp_bridge_depth,
+                                (unsigned)entry_pc24);
                     }
                     sync_interp_to_cpu(&in, cpu);
                     bridge_apu_flush(cpu);
@@ -2026,12 +2027,16 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                         }
                         sync_interp_to_cpu(&in, cpu);
                         /* A nested non-scheduler tier run belongs to a compiled
-                         * caller. Preserve SKIP_N so that caller can unwind the
-                         * host frame whose guest epilogue was already consumed.
-                         * Top-level scheduler runs retain their contained boolean
-                         * completion contract. */
-                        if (!yield_pc && s_interp_bridge_depth > 1)
-                            return (int)_air + 2;
+                         * caller. This interpreter frame consumes one level of
+                         * skip (_air - 1). Any remaining SKIP_N propagates so
+                         * compiled ancestors can unwind host frames whose guest
+                         * epilogues were already consumed. Top-level scheduler
+                         * runs retain their contained boolean completion contract. */
+                        if (!yield_pc && s_interp_bridge_depth > 1) {
+                            int _remaining = (int)_air - 1;
+                            if (_remaining > 0)
+                                return _remaining + 2;
+                        }
                         return 1;
                     }
                 }
@@ -2647,9 +2652,12 @@ RecompReturn interp_tier_dispatch_balanced(CpuState *cpu, uint32_t target_pc24,
          * remains NORMAL. */
         const uint16_t expected_post_s = (uint16_t)(entry_s + hrv);
         if (cpu->S != expected_post_s) {
-            int skip = cpu_resolve_post_return_skip(cpu->S);
-            if (skip > 0)
+            const uint16_t _s_delta = (uint16_t)(cpu->S - expected_post_s);
+            if (_s_delta != 0 && _s_delta < 0x8000u) {
+                int skip = cpu_resolve_post_return_skip(cpu->S);
+                if (skip < 1) skip = 1;
                 return (RecompReturn)skip;
+            }
         }
         return RECOMP_RETURN_NORMAL;
     }

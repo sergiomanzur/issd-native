@@ -13,7 +13,11 @@ def run_suite():
     config_path = 'issd_config.json'
     assert os.path.exists(config_path), 'issd_config.json missing!'
     with open(config_path, 'r') as f:
-        cfg = json.load(f)
+        try:
+            cfg = json.load(f)
+        except Exception:
+            f.seek(0)
+            cfg = dict(line.strip().split('=', 1) for line in f if '=' in line and not line.startswith('#'))
     print(f"  [OK] Config verified: Aspect={cfg.get('aspect_ratio')}, TargetFPS={cfg.get('target_fps')}, InternalRes={cfg.get('internal_res')}")
 
     # 2. Test Mod Packs

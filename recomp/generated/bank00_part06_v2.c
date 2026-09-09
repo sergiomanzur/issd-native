@@ -6269,16 +6269,10 @@ RecompReturn CODE_80B527_M0X0(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 10;
     cpu->master_cycles += 80;
-    uint16 _v110 = cpu_read_a16(cpu);
-    cpu_write8(cpu, cpu->DB, (uint16)(0x2140), _v110);
-    uint8 _v111 = cpu_read8(cpu, cpu->DB, (uint16)(0x2140));
-    uint16 _v112 = cpu_read_a16(cpu);
-    uint32 _tc112_111 = (uint32)(_v112 & 0xFF) - (uint32)(_v111 & 0xFF);
-    cpu->_flag_C = ((_v112 & 0xFF) >= (_v111 & 0xFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint8)_tc112_111) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint8)_tc112_111) & 0x80) != 0) ? 1 : 0;
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C2B9_M1X0; }
-    goto L_C2C1_M1X0; /* fall-through */
+    (void)RtlApuWriteWaitEcho(cpu, 0x2140u, cpu_read_a8(cpu), 0);
+    cpu->_flag_C = 1; cpu->_flag_Z = 1; cpu->_flag_N = 0;
+    cpu->P = (uint8)((cpu->P & ~0x83) | 0x03);
+    goto L_C2C1_M1X0; /* device echo poll completed */
   L_C2C1_M1X0:
     cpu_trace_block(cpu, 0x00C2C1);
     WatchdogCheck();

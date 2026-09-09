@@ -12,6 +12,8 @@ void PpuSetExtraSpace(Ppu *p, uint16_t n) { p->extraLeftRight = p->extraLeftCur 
 void PpuSetExtraSpaceCentered(Ppu *p, uint16_t n) { p->extraLeftRight = n; p->extraLeftCur = p->extraRightCur = 0; }
 void PpuSetExtraSideSpace(Ppu *p,int l,int r,int b) { p->extraLeftCur=l;p->extraRightCur=r;p->extraBottomCur=b; }
 void PpuSetWidescreenLayerClamp(Ppu *p, uint8_t n) { p->wsLayerClamp = n; }
+void PpuSetWidescreenLayerMask(Ppu *p, uint8_t n) { p->wsLayerWidenMask = n; }
+void PpuSetWidescreenWindowExpansion(Ppu *p, uint8_t l, uint8_t w) { p->wsWindowExpandLayers = l; p->wsWindowExpandWindows = w; }
 void PpuSetWidescreenLayerClampBand(Ppu *p, uint8_t l, uint8_t a, uint8_t b) { p->wsClampY0[l] = a; p->wsClampY1[l] = b; }
 void PpuWsSetOamLeftHints(Ppu *p, const uint8_t *h) { p->wsOamLeftHintStrict = h != NULL; if(h) memcpy(p->wsOamLeftHint,h,16); }
 void PpuWsSetOamRightHints(Ppu *p, const uint8_t *h) { p->wsOamRightHintStrict = h != NULL; if(h) memcpy(p->wsOamRightHint,h,16); }
@@ -39,6 +41,9 @@ int main(void) {
   /* Center is never rewritten by presentation tile streaming. */
   assert(ppu.vram[0x1c00] == 0xdead);
   assert(ppu.wsLayerClamp & 4);
+  assert(ppu.wsLayerWidenMask == 3);
+  assert(ppu.wsWindowExpandLayers == 3);
+  assert(ppu.wsWindowExpandWindows == 3);
   issd_widescreen_end(&ppu);
   assert(ppu.vram[0x1800+31] == 0xdead);
   assert(!issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),0));
@@ -101,7 +106,7 @@ int main(void) {
 
   fixture();ppu.hScroll[0]=16;ppu.hScroll[1]=0;
   issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),95);
-  assert(ppu.extraLeftCur==0 && ppu.extraRightCur==95);
+  assert(ppu.extraLeftCur==95 && ppu.extraRightCur==95);
   issd_widescreen_end(&ppu);
   puts("widescreen native tests passed");
 }

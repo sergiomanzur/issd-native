@@ -15,6 +15,26 @@
 
 /* Split translation unit: bank $00, part 05; entry PCs $A800-$AFFF. */
 
+static inline void snes_execute_dp_mvn_trampoline(CpuState *cpu) {
+  cpu->Y = cpu_read16(cpu, 0x00, (uint16)(cpu->D + 9));
+  uint8 _dst_b = cpu_read8(cpu, 0x00, (uint16)(cpu->D + 12));
+  uint8 _src_b = cpu_read8(cpu, 0x00, (uint16)(cpu->D + 13));
+  cpu->DB = _dst_b;
+  do {
+    uint8 _b = cpu_read8(cpu, _src_b, cpu->X);
+    cpu_write8(cpu, _dst_b, cpu->Y, _b);
+    cpu->X = (uint16)(cpu->X + 1);
+    cpu->Y = (uint16)(cpu->Y + 1);
+    if (cpu->x_flag) {
+      cpu->X &= 0x00FFu;
+      cpu->Y &= 0x00FFu;
+    }
+    cpu->A = (uint16)(cpu->A - 1);
+    cpu->cycles += 7;
+    cpu->master_cycles += 56;
+  } while (cpu->A != 0xFFFF);
+}
+
 RecompReturn CODE_808A5E_M0X0(CpuState *cpu);
 RecompReturn CODE_808AA3_M0X0(CpuState *cpu);
 RecompReturn CODE_808AA3_M1X1(CpuState *cpu);
@@ -27136,7 +27156,7 @@ RecompReturn bank_00_A9B4_M0X0(CpuState *cpu) {
       cpu->_flag_Z = ((cpu->A) == 0) ? 1 : 0;
       cpu->_flag_N = (((cpu->A) & 0x8000) != 0) ? 1 : 0;
     }
-    /* Call: target $000008 not a valid LoROM code address and no cfg name — skipped (decoder followed garbage operand past an RTS) */
+    snes_execute_dp_mvn_trampoline(cpu);
     goto L_AA0D_M0X0; /* implicit fall-through */
   L_AA0D_M0X0:
     cpu_trace_block(cpu, 0x00AA0D);
@@ -36449,7 +36469,7 @@ RecompReturn bank_00_A976_M0X0(CpuState *cpu) {
       cpu->_flag_Z = ((cpu->X) == 0) ? 1 : 0;
       cpu->_flag_N = (((cpu->X) & 0x8000) != 0) ? 1 : 0;
     }
-    /* Call: target $000008 not a valid LoROM code address and no cfg name — skipped (decoder followed garbage operand past an RTS) */
+    snes_execute_dp_mvn_trampoline(cpu);
     goto L_A9AC_M0X0; /* implicit fall-through */
   L_A9AC_M0X0:
     cpu_trace_block(cpu, 0x00A9AC);

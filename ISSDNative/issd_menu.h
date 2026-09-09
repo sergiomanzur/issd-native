@@ -32,6 +32,9 @@ void issd_menu_open(void);
 void issd_menu_close(void);
 bool issd_menu_is_open(void);
 
+/* True when internal resolution actually reaches the screen (CRT filter). */
+bool issd_menu_internal_res_applies(void);
+
 /* Navigation: returns true if handled */
 bool issd_menu_navigate_up(void);
 bool issd_menu_navigate_down(void);

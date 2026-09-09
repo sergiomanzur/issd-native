@@ -6798,15 +6798,12 @@ RecompReturn bank_00_C240_M1X1(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 10;
     cpu->master_cycles += 80;
-    uint8 _v4 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x2140), _v4);
-    uint8 _v5 = cpu_read8(cpu, cpu->DB, (uint16)(0x2140));
-    cpu_write_a_m(cpu, (uint16)(_v5));
-    cpu->_flag_Z = (((_v5 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v5 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C244_M1X1; }
-    goto L_C24C_M1X1; /* fall-through */
+    (void)RtlApuWriteWaitEcho(cpu, 0x2140u, 0, 0);
+    cpu_write_a_m(cpu, 0);
+    cpu->_flag_Z = 1;
+    cpu->_flag_N = 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | 0x02);
+    goto L_C24C_M1X1; /* device echo poll completed */
   L_C24C_M1X1:
     cpu_trace_block(cpu, 0x00C24C);
     WatchdogCheck();
@@ -6957,15 +6954,12 @@ RecompReturn bank_00_C240_M1X1(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 10;
     cpu->master_cycles += 80;
-    uint8 _v10 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x2141), _v10);
-    uint8 _v11 = cpu_read8(cpu, cpu->DB, (uint16)(0x2141));
-    cpu_write_a_m(cpu, (uint16)(_v11));
-    cpu->_flag_Z = (((_v11 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v11 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C1E9_M1X1; }
-    goto L_C1F1_M1X1; /* fall-through */
+    (void)RtlApuWriteWaitEcho(cpu, 0x2141u, 0, 0);
+    cpu_write_a_m(cpu, 0);
+    cpu->_flag_Z = 1;
+    cpu->_flag_N = 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | 0x02);
+    goto L_C1F1_M1X1; /* device echo poll completed */
   L_C1F1_M1X1:
     cpu_trace_block(cpu, 0x00C1F1);
     WatchdogCheck();
@@ -9543,15 +9537,12 @@ RecompReturn bank_00_C08F_M0X1(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 10;
     cpu->master_cycles += 80;
-    uint8 _v18 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x2141), _v18);
-    uint8 _v19 = cpu_read8(cpu, cpu->DB, (uint16)(0x2141));
-    cpu_write_a_m(cpu, (uint16)(_v19));
-    cpu->_flag_Z = (((_v19 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v19 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C0D0_M1X1; }
-    goto L_C0D8_M1X1; /* fall-through */
+    (void)RtlApuWriteWaitEcho(cpu, 0x2141u, 0, 0);
+    cpu_write_a_m(cpu, 0);
+    cpu->_flag_Z = 1;
+    cpu->_flag_N = 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | 0x02);
+    goto L_C0D8_M1X1; /* device echo poll completed */
   L_C0D8_M1X1:
     cpu_trace_block(cpu, 0x00C0D8);
     WatchdogCheck();
@@ -12590,15 +12581,12 @@ RecompReturn bank_00_C08F_M0X0(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 10;
     cpu->master_cycles += 80;
-    uint8 _v18 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x2141), _v18);
-    uint8 _v19 = cpu_read8(cpu, cpu->DB, (uint16)(0x2141));
-    cpu_write_a_m(cpu, (uint16)(_v19));
-    cpu->_flag_Z = (((_v19 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v19 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C0D0_M1X1; }
-    goto L_C0D8_M1X1; /* fall-through */
+    (void)RtlApuWriteWaitEcho(cpu, 0x2141u, 0, 0);
+    cpu_write_a_m(cpu, 0);
+    cpu->_flag_Z = 1;
+    cpu->_flag_N = 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | 0x02);
+    goto L_C0D8_M1X1; /* device echo poll completed */
   L_C0D8_M1X1:
     cpu_trace_block(cpu, 0x00C0D8);
     WatchdogCheck();
@@ -13445,15 +13433,12 @@ RecompReturn bank_00_C1F2_M1X1(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 10;
     cpu->master_cycles += 80;
-    uint8 _v22 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x2140), _v22);
-    uint8 _v23 = cpu_read8(cpu, cpu->DB, (uint16)(0x2140));
-    cpu_write_a_m(cpu, (uint16)(_v23));
-    cpu->_flag_Z = (((_v23 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v23 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C244_M1X1; }
-    goto L_C24C_M1X1; /* fall-through */
+    (void)RtlApuWriteWaitEcho(cpu, 0x2140u, 0, 0);
+    cpu_write_a_m(cpu, 0);
+    cpu->_flag_Z = 1;
+    cpu->_flag_N = 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | 0x02);
+    goto L_C24C_M1X1; /* device echo poll completed */
   L_C24C_M1X1:
     cpu_trace_block(cpu, 0x00C24C);
     WatchdogCheck();
@@ -14085,7 +14070,7 @@ RecompReturn bank_00_C19C_M0X1(CpuState *cpu) {
     cpu->_flag_C = ((_v9 & 0xFFFF) >= (_v8 & 0xFFFF)) ? 1 : 0;
     cpu->_flag_Z = (((uint16)_tc9_8) == 0) ? 1 : 0;
     cpu->_flag_N = ((((uint16)_tc9_8) & 0x8000) != 0) ? 1 : 0;
-    if (cpu->_flag_Z == 1) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C1CD_M0X1; }
+    if (cpu->_flag_Z == 1 || cpu->_flag_C == 1) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C1CD_M0X1; }
     goto L_C1BC_M0X1; /* fall-through */
   L_C1BC_M0X1:
     cpu_trace_block(cpu, 0x00C1BC);
@@ -14139,27 +14124,10 @@ RecompReturn bank_00_C19C_M0X1(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 10;
     cpu->master_cycles += 80;
-    uint16 _v11 = cpu_read_a16(cpu);
-    cpu_write8(cpu, cpu->DB, (uint16)(0x2141), _v11);
-    uint8 _v12 = cpu_read8(cpu, cpu->DB, (uint16)(0x2141));
-    uint16 _v13 = cpu_read_a16(cpu);
-    uint32 _tc13_12 = (uint32)(_v13 & 0xFF) - (uint32)(_v12 & 0xFF);
-    cpu->_flag_C = ((_v13 & 0xFF) >= (_v12 & 0xFF)) ? 1 : 0;
-    cpu->_flag_Z = (((uint8)_tc13_12) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((uint8)_tc13_12) & 0x80) != 0) ? 1 : 0;
-    if (cpu->_flag_Z == 1) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C1A3_M1X0; }
-    goto L_C1CB_M1X0; /* fall-through */
-  L_C1CB_M1X0:
-    cpu_trace_block(cpu, 0x00C1CB);
-    WatchdogCheck();
-    if (interp_bridge_lle_master_deadline_reached(cpu)) {
-      RecompStackPop();
-      return interp_bridge_lle_yield_unwind(cpu, 0x00C1CBu);
-    }
-    cpu->coprocessor_master_cycles = cpu->master_cycles;
-    cpu->cycles += 3;
-    cpu->master_cycles += 24;
-    goto L_C1C3_M1X0;
+    (void)RtlApuWriteWaitEcho(cpu, 0x2141u, cpu_read_a8(cpu), 0);
+    cpu->_flag_C = 1; cpu->_flag_Z = 1; cpu->_flag_N = 0;
+    cpu->P = (uint8)((cpu->P & ~0x83) | 0x03);
+    goto L_C1A3_M1X0; /* device echo poll completed */
   L_C1A3_M1X0:
     cpu_trace_block(cpu, 0x00C1A3);
     WatchdogCheck();
@@ -14315,15 +14283,12 @@ RecompReturn bank_00_C19C_M0X1(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 10;
     cpu->master_cycles += 80;
-    uint8 _v22 = 0x0;
-    cpu_write8(cpu, cpu->DB, (uint16)(0x2141), _v22);
-    uint8 _v23 = cpu_read8(cpu, cpu->DB, (uint16)(0x2141));
-    cpu_write_a_m(cpu, (uint16)(_v23));
-    cpu->_flag_Z = (((_v23 & 0xFF)) == 0) ? 1 : 0;
-    cpu->_flag_N = ((((_v23 & 0xFF)) & 0x80) != 0) ? 1 : 0;
-    cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    if (cpu->_flag_Z == 0) { cpu->cycles += 1; cpu->master_cycles += 8; goto L_C1E9_M1X1; }
-    goto L_C1F1_M1X1; /* fall-through */
+    (void)RtlApuWriteWaitEcho(cpu, 0x2141u, 0, 0);
+    cpu_write_a_m(cpu, 0);
+    cpu->_flag_Z = 1;
+    cpu->_flag_N = 0;
+    cpu->P = (uint8)((cpu->P & ~0x82) | 0x02);
+    goto L_C1F1_M1X1; /* device echo poll completed */
   L_C1F1_M1X1:
     cpu_trace_block(cpu, 0x00C1F1);
     WatchdogCheck();

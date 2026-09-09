@@ -179,6 +179,14 @@ bool issd_menu_is_open(void) {
     return g_overlay_menu.is_open;
 }
 
+/* Internal resolution only reaches the screen through the CRT filter, which
+ * generates scanline darkening into a scaled buffer. Nearest and linear hand
+ * the logical buffer straight to SDL, so the setting would be a label that
+ * changes nothing -- keep the row inert rather than advertising six options. */
+bool issd_menu_internal_res_applies(void) {
+    return g_issd_config.scaling_filter == ISSD_FILTER_CRT;
+}
+
 bool issd_menu_navigate_up(void) {
     if (!g_overlay_menu.is_open) return false;
     g_overlay_menu.current_item = (g_overlay_menu.current_item - 1 + MENU_TOTAL_ITEMS) % MENU_TOTAL_ITEMS;
@@ -218,6 +226,7 @@ bool issd_menu_navigate_left(void) {
             g_issd_config.true_widescreen = !g_issd_config.true_widescreen;
             break;
         case 5: /* Internal Resolution */
+            if (!issd_menu_internal_res_applies()) break;
             g_issd_config.internal_res = (IssdInternalResolution)((g_issd_config.internal_res - 1 + 6) % 6);
             break;
         case 6: /* Filter */
@@ -274,6 +283,7 @@ bool issd_menu_navigate_right(void) {
             g_issd_config.true_widescreen = !g_issd_config.true_widescreen;
             break;
         case 5: /* Internal Resolution */
+            if (!issd_menu_internal_res_applies()) break;
             g_issd_config.internal_res = (IssdInternalResolution)((g_issd_config.internal_res + 1) % 6);
             break;
         case 6: /* Filter */
@@ -436,7 +446,8 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[2], sizeof(items[2]), "Mod Pack:   <%s>", mod_str);
     snprintf(items[3], sizeof(items[3]), "Aspect:     <%s>", aspect_str);
     snprintf(items[4], sizeof(items[4]), "Widescreen: <%s>", g_issd_config.true_widescreen ? "ON (TRUE FOV)" : "OFF (4:3 NATIVE)");
-    snprintf(items[5], sizeof(items[5]), "Internal:   <%s>", res_str);
+    snprintf(items[5], sizeof(items[5]), "Internal:   <%s>",
+             issd_menu_internal_res_applies() ? res_str : "CRT FILTER ONLY");
     snprintf(items[6], sizeof(items[6]), "Filter:     <%s>", filter_str);
     snprintf(items[7], sizeof(items[7]), "Target FPS: <%s>", fps_str);
     snprintf(items[8], sizeof(items[8]), "VSync:      <%s>", g_issd_config.vsync ? "ON" : "OFF");

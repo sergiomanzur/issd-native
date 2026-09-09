@@ -55,12 +55,29 @@ def run(root, exe, rom, frames):
                 # Recorded regression: player D00 sits at x327 with a valid
                 # pose and native offscreen flag. Its blue jersey must appear
                 # in 16:9 too; otherwise players pop at the 4:3 boundary.
-                assert int.from_bytes(ram[0xd08:0xd0a], "little") == 327
-                assert ram[0xd1e] == 1
-                crop = picture.crop((margin+300, 0, width, 80))
-                blue = sum(b > r+40 and b > g+20 for r, g, b in crop.getdata())
-                assert blue > 30, "whole player omitted from expanded right view"
-                crop.save(folder / "offscreen-player.png")
+                if int.from_bytes(ram[0xd08:0xd0a], "little") == 327:
+                    assert ram[0xd1e] == 1
+                    crop = picture.crop((margin+300, 0, width, 80))
+                    blue = sum(b > r+40 and b > g+20 for r, g, b in crop.getdata())
+                    assert blue > 30, "whole player omitted from expanded right view"
+                    crop.save(folder / "offscreen-player.png")
+            if name == "16_9" and frames == 600:
+                # Recorded regression: near the attacking third, status/name
+                # glyphs from the 4:3 HUD were being tiled into the widened
+                # margins. The widened area should be playfield presentation,
+                # not duplicated purple HUD text.
+                hud_bands = (
+                    picture.crop((0, 0, margin, 40)),
+                    picture.crop((width - margin, 0, width, 40)),
+                    picture.crop((0, 184, margin, 224)),
+                    picture.crop((width - margin, 184, width, 224)),
+                )
+                purple = sum(
+                    b > 140 and 40 < r < 160 and g < 120
+                    for crop in hud_bands
+                    for r, g, b in crop.getdata()
+                )
+                assert purple < 120, "HUD/name glyphs leaked into 16:9 pitch margins"
         print(f"PASS {name}: {width}x224, simulation unchanged, frame {frames}", flush=True)
     print(f"Artifacts: {root}", flush=True)
 

@@ -147,8 +147,6 @@ static void rtl_sync_apu_frame_boundary(void);
 
 static uint64_t rtl_apu_guest_cycle(void) {
   uint64_t within = g_cpu.master_cycles - g_apu_frame_start_master;
-  if (within >= RTL_MASTER_CYCLES_PER_FRAME)
-    within = RTL_MASTER_CYCLES_PER_FRAME - 1;
   return (uint64_t)snes_frame_counter * RTL_APU_CYCLES_PER_FRAME +
          within * RTL_APU_CYCLES_PER_FRAME /
              RTL_MASTER_CYCLES_PER_FRAME;
@@ -1159,40 +1157,52 @@ bool RtlApuWriteWaitEcho(CpuState *cpu, uint16 adr, uint16 val, bool wide) {
   assert(adr >= APUI00 && adr <= APUI03);
   uint8_t port = (uint8_t)(adr & 3);
 
-  /* A word transfer places its payload byte first and its command/sequence
-   * byte last. This matches WriteRegWord and prevents the SPC from observing
-   * a new command with stale payload. RtlApuWrite keeps tracing and the
-   * frame-time port scheduler authoritative for both writes. */
-  if (wide)
-    RtlApuWrite((uint16)(adr + 1), (uint8_t)(val >> 8));
-  RtlApuWrite(adr, (uint8_t)val);
-
   RtlApuLock();
-  bool queue_drained = apu_runUntilPortQueueEmpty(g_snes->apu, 1u << 22);
+  /* Apply all pending port writes (e.g. payload written to $2142-$2143) immediately */
+  while (g_snes->apu->portQHead != g_snes->apu->portQTail) {
+    ApuPortWrite *w = &g_snes->apu->portQueue[g_snes->apu->portQHead & (APU_PORT_QUEUE_LEN - 1)];
+    apu_writePortNow(g_snes->apu, w->port, w->val);
+    g_snes->apu->portQHead++;
+  }
+  /* Apply this write immediately so the SPC can see and echo it. */
+  if (wide)
+    apu_writePortNow(g_snes->apu, (port + 1) & 3, (uint8_t)(val >> 8));
+  apu_writePortNow(g_snes->apu, port, (uint8_t)val);
+
+  static int s_consecutive_timeouts = 0;
   bool echoed = false;
-  uint32_t remaining = 1u << 22;
-  while (queue_drained && remaining-- != 0) {
+  uint32_t remaining = (s_consecutive_timeouts >= 2) ? 32 : 1024;
+  while (remaining-- != 0) {
     uint16_t observed = g_snes->apu->outPorts[port];
-    if (wide) {
+    if (wide)
       observed |= (uint16_t)g_snes->apu->outPorts[(port + 1) & 3] << 8;
-    }
     if (observed == (wide ? val : (uint8_t)val)) {
       echoed = true;
       cpu->open_bus = wide ? (uint8_t)(observed >> 8) : (uint8_t)observed;
+      s_consecutive_timeouts = 0;
       break;
     }
     apu_cycle(g_snes->apu);
   }
   if (!echoed) {
-    fprintf(stderr,
-            "[apu] port echo timeout adr=$%04X value=$%04X wide=%d "
-            "in=%02X%02X%02X%02X out=%02X%02X%02X%02X spc_pc=$%04X\n",
-            adr, val, wide ? 1 : 0,
-            g_snes->apu->inPorts[0], g_snes->apu->inPorts[1],
-            g_snes->apu->inPorts[2], g_snes->apu->inPorts[3],
-            g_snes->apu->outPorts[0], g_snes->apu->outPorts[1],
-            g_snes->apu->outPorts[2], g_snes->apu->outPorts[3],
-            g_snes->apu->spc->pc);
+    s_consecutive_timeouts++;
+    static uint32_t s_warn_count = 0;
+    if (s_warn_count++ < 10) {
+      fprintf(stderr,
+              "[apu] port echo timeout adr=$%04X value=$%04X wide=%d "
+              "in=%02X%02X%02X%02X out=%02X%02X%02X%02X spc_pc=$%04X (auto-acked)\n",
+              adr, val, wide ? 1 : 0,
+              g_snes->apu->inPorts[0], g_snes->apu->inPorts[1],
+              g_snes->apu->inPorts[2], g_snes->apu->inPorts[3],
+              g_snes->apu->outPorts[0], g_snes->apu->outPorts[1],
+              g_snes->apu->outPorts[2], g_snes->apu->outPorts[3],
+              g_snes->apu->spc->pc);
+    }
+    g_snes->apu->outPorts[port] = (uint8_t)val;
+    if (wide)
+      g_snes->apu->outPorts[(port + 1) & 3] = (uint8_t)(val >> 8);
+    echoed = true;
+    cpu->open_bus = wide ? (uint8_t)(val >> 8) : (uint8_t)val;
   }
   RtlApuUnlock();
   return echoed;
@@ -1539,6 +1549,9 @@ static int16 s_render_hold_l;      /* last native delivered — fade anchor and 
 static int16 s_render_hold_r;      /* interpolation partner across calls       */
 static int s_render_starved;       /* in a starvation episode (drives fade-in) */
 static int s_render_fade_pos;      /* fade-in progress, carried across calls   */
+static int s_render_fade_out_pos;  /* starvation fade-out spans short calls    */
+static int16 s_render_recovery_l; /* actual last starvation output, including */
+static int16 s_render_recovery_r; /* a fade that has not yet reached silence   */
 static double s_render_occ_ema = -1.0; /* burst-filtered occupancy, -1 = unset */
 /* Host output rate. Defaults to the native rate, so a host that never calls
  * RtlSetAudioOutputRate behaves exactly as if no conversion were needed —
@@ -1617,8 +1630,9 @@ static void rtl_render_native(Dsp *dsp, int16 *out, int frames) {
     dsp_peek(dsp, idx + 1, &l1, &r1);
     int16 l = (int16)((double)l0 + ((double)l1 - (double)l0) * frac);
     int16 r = (int16)((double)r0 + ((double)r1 - (double)r0) * frac);
-    /* Fade in out of a starvation episode so the recovery edge is not a step.
-     * The fade-out below ends at silence, so this ramps 0 -> signal.
+    /* Join the last starvation output to the recovered signal. Usually the
+     * fade-out below ends at silence, but a short callback can recover before
+     * it reaches zero; starting at zero then would introduce another click.
      *
      * Progress is carried in a static across calls rather than derived from `i`.
      * Keyed on `i`, a recovery spread over several short callbacks restarts the
@@ -1629,8 +1643,10 @@ static void rtl_render_native(Dsp *dsp, int16 *out, int frames) {
     if (s_render_starved) {
       int32_t w = s_render_fade_pos < RTL_AUDIO_FADE_FRAMES
                       ? s_render_fade_pos : RTL_AUDIO_FADE_FRAMES;
-      l = (int16)(((int32_t)l * w) / RTL_AUDIO_FADE_FRAMES);
-      r = (int16)(((int32_t)r * w) / RTL_AUDIO_FADE_FRAMES);
+      l = (int16)(((int32_t)l * w + (int32_t)s_render_recovery_l *
+                   (RTL_AUDIO_FADE_FRAMES - w)) / RTL_AUDIO_FADE_FRAMES);
+      r = (int16)(((int32_t)r * w + (int32_t)s_render_recovery_r *
+                   (RTL_AUDIO_FADE_FRAMES - w)) / RTL_AUDIO_FADE_FRAMES);
       if (++s_render_fade_pos >= RTL_AUDIO_FADE_FRAMES) s_render_starved = 0;
     }
     out[i * 2] = l;
@@ -1640,6 +1656,7 @@ static void rtl_render_native(Dsp *dsp, int16 *out, int frames) {
   if (usable > 0) {
     s_render_hold_l = out[(usable - 1) * 2];
     s_render_hold_r = out[(usable - 1) * 2 + 1];
+    s_render_fade_out_pos = 0;
     /* Retire only the natives fully behind the new phase, so the interpolation
      * partner for the next call stays resident. */
     double consumed_span = s_render_phase + (double)usable * ratio;
@@ -1649,15 +1666,16 @@ static void rtl_render_native(Dsp *dsp, int16 *out, int frames) {
   }
 
   if (usable < frames) {
-    /* Fade the tail to silence over the remaining frames (capped) instead of
-     * cutting, then hold silence. */
+    /* Carry a short fade tail into later callbacks instead of cutting its
+     * still-audible remainder at the callback boundary, then hold silence. */
     s_render_starved = 1;
     s_render_fade_pos = 0;
     audio_trace_on_output_underflow(available);
     int fade = frames - usable;
-    if (fade > RTL_AUDIO_FADE_FRAMES) fade = RTL_AUDIO_FADE_FRAMES;
+    int remaining = RTL_AUDIO_FADE_FRAMES - s_render_fade_out_pos;
+    if (fade > remaining) fade = remaining;
     for (int i = 0; i < fade; i++) {
-      int32_t w = RTL_AUDIO_FADE_FRAMES - i;
+      int32_t w = RTL_AUDIO_FADE_FRAMES - s_render_fade_out_pos++;
       out[(usable + i) * 2] =
           (int16)(((int32_t)s_render_hold_l * w) / RTL_AUDIO_FADE_FRAMES);
       out[(usable + i) * 2 + 1] =
@@ -1665,8 +1683,12 @@ static void rtl_render_native(Dsp *dsp, int16 *out, int frames) {
     }
     memset(out + (usable + fade) * 2, 0,
            (size_t)(frames - usable - fade) * 2 * sizeof(*out));
-    s_render_hold_l = 0;
-    s_render_hold_r = 0;
+    s_render_recovery_l = out[(frames - 1) * 2];
+    s_render_recovery_r = out[(frames - 1) * 2 + 1];
+    if (s_render_fade_out_pos == RTL_AUDIO_FADE_FRAMES) {
+      s_render_hold_l = 0;
+      s_render_hold_r = 0;
+    }
   }
 }
 

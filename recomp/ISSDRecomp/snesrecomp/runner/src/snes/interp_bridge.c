@@ -860,16 +860,22 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
         static int _iw_init = 0;
         static int _iw_has_range = 0;
         static unsigned long _iw_lo = 0, _iw_hi = 0;
-        static long _iw_frame = -1;
+        static long _iw_frame_lo = -1, _iw_frame_hi = -1;
         if (!_iw_init) { _iw_init = 1;
             const char *_e = getenv("SNESRECOMP_IBRWATCH");
             const char *_f = getenv("SNESRECOMP_IBRWATCH_FRAME");
             if (_e) _iw_has_range = sscanf(_e, "%lx-%lx", &_iw_lo, &_iw_hi) == 2;
-            if (_f && *_f) _iw_frame = strtol(_f, NULL, 0);
+            if (_f && *_f) {
+                if (sscanf(_f, "%ld-%ld", &_iw_frame_lo,
+                           &_iw_frame_hi) != 2)
+                    _iw_frame_hi = _iw_frame_lo = strtol(_f, NULL, 0);
+            }
         }
         if (_iw_has_range && (unsigned long)entry_pc24 >= _iw_lo &&
             (unsigned long)entry_pc24 <= _iw_hi &&
-            (_iw_frame < 0 || snes_frame_counter == _iw_frame)) {
+            (_iw_frame_lo < 0 ||
+             (snes_frame_counter >= _iw_frame_lo &&
+              snes_frame_counter <= _iw_frame_hi))) {
             _ibrw = 1;
             fprintf(stderr,
                     "[ibr] ENTER frame=%d pc=$%06X s_exit=$%04X cpu->S=$%04X\n",
@@ -1767,6 +1773,10 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
          * P/PC/PB here; host control flow deliberately discards guest PC/PB.
          * Do not continue interpreting at the placeholder return address. */
         if (stop_on_rti && op == 0x40) {
+            if (_ibrw)
+                fprintf(stderr,
+                        "[ibr] RTI boundary pc=$%06X sp=$%04X pb=$%02X\n",
+                        (unsigned)pc_before, (unsigned)in.sp, (unsigned)in.k);
             sync_interp_to_cpu(&in, cpu);
             bridge_apu_flush(cpu);
             return 1;
@@ -1788,6 +1798,12 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
          * JML [abs]=$DC. */
         if (op == 0x6C || op == 0x7C || op == 0xDC) {
             const uint32_t landing = ((uint32_t)in.k << 16) | in.pc;
+            if (_ibrw)
+                fprintf(stderr,
+                        "[ibr] goto op=$%02X pc=$%06X -> $%06X sp=$%04X "
+                        "d=$%04X db=$%02X\n",
+                        op, (unsigned)pc_before, (unsigned)landing,
+                        (unsigned)in.sp, (unsigned)in.dp, (unsigned)in.db);
             sync_interp_to_cpu(&in, cpu);   /* live (m,x) for the probe */
             if (!cpu_dispatch_has_entry(cpu, landing))
                 tier2_record(pc_before, landing, tier2_entry_mx(cpu),
@@ -1808,7 +1824,7 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
              * coroutine switch. SNESRECOMP_LLE_BOUNCE=0 restores the
              * interpret-everything behavior (A/B differential lever). */
             const int bounce_ok =
-                (!yield_pc || lle_yield_bounce_enabled()) &&
+                lle_yield_bounce_enabled() &&
                 !lle_bounce_target_excluded(target);
             const int has_body  = cpu_dispatch_has_entry(cpu, target);
             if (bounce_ok && has_body) {
@@ -1823,6 +1839,9 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                  * +2 leak. frame: JSL(0x22)=3, JSR/JSR(abs,X)=2. */
                 const uint8_t _fs = (op == 0x22) ? 3 : 2;
                 uint16_t _sp_pre = in.sp;
+                const uint8_t _m_pre = in.mf, _x_pre = in.xf;
+                const uint16_t _d_pre = in.dp;
+                const uint8_t _db_pre = in.db;
                 /* Compiled body paces its own APU (RtlApuRead/Write); un-suppress
                  * the per-touch catch-up for its duration, then restore the
                  * PRE-CALL value (not literal 1 — under the co-sim shared APU
@@ -1861,9 +1880,13 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                 sync_cpu_to_interp(cpu, &in);
                 if (_ibrw)
                     fprintf(stderr, "[ibr] call op=$%02X pc=$%06X -> $%06X "
-                            "sp_pre=$%04X aot_ret=%d sp_post=$%04X\n",
+                            "sp_pre=$%04X aot_ret=%d sp_post=$%04X "
+                            "mx=%u%u->%u%u d=$%04X->$%04X db=$%02X->$%02X\n",
                             op, (unsigned)pc_before, (unsigned)target,
-                            (unsigned)_sp_pre, (int)_air, (unsigned)in.sp);
+                            (unsigned)_sp_pre, (int)_air, (unsigned)in.sp,
+                            _m_pre, _x_pre, in.mf, in.xf,
+                            (unsigned)_d_pre, (unsigned)in.dp,
+                            _db_pre, in.db);
                 const uint32_t ret =
                     (pc_before + (uint32_t)call_len +
                      (uint32_t)cpu_dispatch_inline_arg_bytes(target)) & 0xFFFFFF;
@@ -1898,10 +1921,11 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                         fprintf(stderr,
                                 "[interp_bridge] contained malformed NORMAL "
                                 "return target=$%06X sp_pre=$%04X "
-                                "expected=$%04X actual=$%04X owner=$%04X\n",
+                                "expected=$%04X actual=$%04X owner=$%04X depth=%d entry=$%06X\n",
                                 (unsigned)target, (unsigned)_sp_pre,
                                 (unsigned)_expected_post_s, (unsigned)in.sp,
-                                (unsigned)s_enter);
+                                (unsigned)s_enter, s_interp_bridge_depth,
+                                (unsigned)entry_pc24);
                     }
                     sync_interp_to_cpu(&in, cpu);
                     bridge_apu_flush(cpu);
@@ -2003,12 +2027,16 @@ static int _interp_run_core(CpuState *cpu, uint32_t entry_pc24,
                         }
                         sync_interp_to_cpu(&in, cpu);
                         /* A nested non-scheduler tier run belongs to a compiled
-                         * caller. Preserve SKIP_N so that caller can unwind the
-                         * host frame whose guest epilogue was already consumed.
-                         * Top-level scheduler runs retain their contained boolean
-                         * completion contract. */
-                        if (!yield_pc && s_interp_bridge_depth > 1)
-                            return (int)_air + 2;
+                         * caller. This interpreter frame consumes one level of
+                         * skip (_air - 1). Any remaining SKIP_N propagates so
+                         * compiled ancestors can unwind host frames whose guest
+                         * epilogues were already consumed. Top-level scheduler
+                         * runs retain their contained boolean completion contract. */
+                        if (!yield_pc && s_interp_bridge_depth > 1) {
+                            int _remaining = (int)_air - 1;
+                            if (_remaining > 0)
+                                return _remaining + 2;
+                        }
                         return 1;
                     }
                 }
@@ -2537,8 +2565,6 @@ RecompReturn interp_tier_dispatch_interrupt(CpuState *cpu,
 RecompReturn interp_tier_dispatch_tail(CpuState *cpu, uint32_t target_pc24,
                                        uint32_t site_pc24, uint16_t entry_s,
                                        uint8_t hrv) {
-    if (cpu_interrupt_context_active())
-        return interp_tier_dispatch_interrupt(cpu, target_pc24);
     /* This tail transfer abandons every compiled guest frame beneath the AOT
      * root that the active interpreter bounced into.  Starting a new nested
      * interpreter here leaves those host frames live; if the guest continuation
@@ -2550,6 +2576,12 @@ RecompReturn interp_tier_dispatch_tail(CpuState *cpu, uint32_t target_pc24,
      * AOT tail fallbacks retain the balanced nested-interpreter path below. */
     if (s_interp_bounce_owner_depth > 0)
         return interp_bridge_lle_yield_unwind(cpu, target_pc24);
+    /* An ordinary subroutine called by an NMI still returns with RTS/RTL.
+     * Resume its owning interpreter before considering RTI semantics; running
+     * a nested interrupt interpreter here consumes the caller's entire NMI,
+     * then resumes a compiled caller whose guest stack has already unwound. */
+    if (cpu_interrupt_context_active() && hrv == 0)
+        return interp_tier_dispatch_interrupt(cpu, target_pc24);
     return interp_tier_dispatch_balanced(cpu, target_pc24, site_pc24,
                                          entry_s, hrv);
 }
@@ -2620,9 +2652,12 @@ RecompReturn interp_tier_dispatch_balanced(CpuState *cpu, uint32_t target_pc24,
          * remains NORMAL. */
         const uint16_t expected_post_s = (uint16_t)(entry_s + hrv);
         if (cpu->S != expected_post_s) {
-            int skip = cpu_resolve_post_return_skip(cpu->S);
-            if (skip > 0)
+            const uint16_t _s_delta = (uint16_t)(cpu->S - expected_post_s);
+            if (_s_delta != 0 && _s_delta < 0x8000u) {
+                int skip = cpu_resolve_post_return_skip(cpu->S);
+                if (skip < 1) skip = 1;
                 return (RecompReturn)skip;
+            }
         }
         return RECOMP_RETURN_NORMAL;
     }

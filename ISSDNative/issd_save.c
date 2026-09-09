@@ -2,6 +2,7 @@
 #include "snes/snes.h"
 #include "cpu_state.h"
 #include "issd_bridge.h"
+#include "common_cpu_infra.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,7 +16,7 @@
 extern uint8_t g_ram[0x20000];
 
 #define SAVE_MAGIC 0x44535349 /* 'ISSD' */
-#define SAVE_VERSION 1
+#define SAVE_VERSION 2
 #define SAVES_DIR "saves"
 
 static void EnsureSaveDir(void) {
@@ -31,6 +32,24 @@ static void GetSlotPath(int slot_index, char *out_path, size_t max_len) {
         snprintf(out_path, max_len, "%s/quicksave.sav", SAVES_DIR);
     } else {
         snprintf(out_path, max_len, "%s/slot_%d.sav", SAVES_DIR, slot_index);
+    }
+}
+
+/* Move the PPU snapshot region between the live PPU and a slot. Absent a PPU
+ * (unit tests, pre-init) the simulation half of the slot still round-trips. */
+static void CopyVideoState(IssdSaveSlot *slot, bool to_ppu) {
+    Ppu *ppu = g_snes ? g_snes->ppu : NULL;
+    if (!ppu) return;
+    if (to_ppu) {
+        memcpy(ppu->cgram, slot->cgram, sizeof(slot->cgram));
+        memcpy(ppu->oam, slot->oam, sizeof(slot->oam));
+        memcpy(ppu->highOam, slot->high_oam, sizeof(slot->high_oam));
+        memcpy(ppu->vram, slot->vram, sizeof(slot->vram));
+    } else {
+        memcpy(slot->cgram, ppu->cgram, sizeof(slot->cgram));
+        memcpy(slot->oam, ppu->oam, sizeof(slot->oam));
+        memcpy(slot->high_oam, ppu->highOam, sizeof(slot->high_oam));
+        memcpy(slot->vram, ppu->vram, sizeof(slot->vram));
     }
 }
 
@@ -71,6 +90,7 @@ bool issd_save_to_slot(int slot_index, const char *label) {
 
     /* Copy WRAM */
     memcpy(slot.wram, g_ram, sizeof(slot.wram));
+    CopyVideoState(&slot, false);
 
     FILE *f = fopen(path, "wb");
     if (!f) {
@@ -113,6 +133,7 @@ bool issd_load_from_slot(int slot_index) {
 
     /* Restore WRAM */
     memcpy(g_ram, slot.wram, sizeof(slot.wram));
+    CopyVideoState(&slot, true);
     snes_frame_counter = slot.frame_counter;
 
     printf("[Save] Loaded state from '%s' (%s - P1 Score: %u, P2 Score: %u)\n",
