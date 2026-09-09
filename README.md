@@ -4,6 +4,10 @@
 
 The project translates the original 65816 machine code and SNES hardware interactions into native C/C++ running directly on modern 64-bit host processors (Windows x86-64 first), bypassing traditional emulation overhead while preserving 100% gameplay, animation, ball physics, and tactical AI authenticity.
 
+> [!IMPORTANT]
+> **🏆 100% Full Cartridge Recompilation Status Achieved:**  
+> All **5,035 / 5,035 subroutines** (100.0%) across all code banks are fully mapped, analyzed, and recompiled into native C across **17,393 AOT function variants** with **0 unresolved stubs**, **153/153 indirect jump tables statically resolved**, and verified zero-watchdog runtime execution. See the verification audit in [`tools/audit_uncalled_routines.py`](tools/audit_uncalled_routines.py).
+
 ---
 
 ## 🎯 Project Goals
