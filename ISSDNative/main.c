@@ -843,6 +843,19 @@ static void UpscaleFrameBuffer(uint32_t *dst, int dst_w, int dst_h, const uint32
     }
 }
 
+/* Per-side widescreen margin in pixels. One definition: this used to be an
+ * if-chain copied at three call sites, which is how they drift apart. */
+static int IssdWsExtraForAspect(void) {
+    if (!g_issd_config.true_widescreen) return 0;
+    switch (g_issd_config.aspect_ratio) {
+        case ISSD_ASPECT_AUTHENTIC: return 32; /* 320x224, no frozen edge players */
+        case ISSD_ASPECT_16_10:     return 51; /* 358x224 */
+        case ISSD_ASPECT_16_9:      return 71; /* 398x224 */
+        case ISSD_ASPECT_21_9:      return 95; /* 446x224 */
+        default:                    return 0;
+    }
+}
+
 static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int render_w, int render_h, SDL_Rect *out_rect) {
     if (!out_rect) return;
     if (win_w <= 0 || win_h <= 0) {
@@ -1063,16 +1076,7 @@ int main(int argc, char **argv) {
             renderer = SDL_CreateRenderer(g_window, -1, 0);
         }
 
-        int cur_ws_extra = 0;
-        if (g_issd_config.true_widescreen) {
-            if (g_issd_config.aspect_ratio == ISSD_ASPECT_16_9) {
-                cur_ws_extra = 71;
-            } else if (g_issd_config.aspect_ratio == ISSD_ASPECT_16_10) {
-                cur_ws_extra = 51;
-            } else if (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9) {
-                cur_ws_extra = 95;
-            }
-        }
+        int cur_ws_extra = IssdWsExtraForAspect();
         g_ws_extra = cur_ws_extra;
         g_ws_active = (cur_ws_extra > 0);
         int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
@@ -1153,16 +1157,7 @@ int main(int argc, char **argv) {
             SDL_PauseAudioDevice(audio_dev, audio_paused);
         }
 
-        int cur_ws_extra = 0;
-        if (g_issd_config.true_widescreen) {
-            if (g_issd_config.aspect_ratio == ISSD_ASPECT_16_9) {
-                cur_ws_extra = 71;
-            } else if (g_issd_config.aspect_ratio == ISSD_ASPECT_16_10) {
-                cur_ws_extra = 51;
-            } else if (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9) {
-                cur_ws_extra = 95;
-            }
-        }
+        int cur_ws_extra = IssdWsExtraForAspect();
         g_ws_extra = cur_ws_extra;
         g_ws_active = (cur_ws_extra > 0);
         int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
@@ -1385,16 +1380,7 @@ int main(int argc, char **argv) {
     }
 
     if (g_screenshot_path) {
-        int cur_ws_extra = 0;
-        if (g_issd_config.true_widescreen) {
-            if (g_issd_config.aspect_ratio == ISSD_ASPECT_16_9) {
-                cur_ws_extra = 71;
-            } else if (g_issd_config.aspect_ratio == ISSD_ASPECT_16_10) {
-                cur_ws_extra = 51;
-            } else if (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9) {
-                cur_ws_extra = 95;
-            }
-        }
+        int cur_ws_extra = IssdWsExtraForAspect();
         int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
         if (SaveBmp(g_screenshot_path, g_pixel_buffer, cur_render_w, SNES_HEIGHT)) {
             printf("[Screenshot] Saved frame buffer to: %s (%dx%d)\n", g_screenshot_path, cur_render_w, SNES_HEIGHT);

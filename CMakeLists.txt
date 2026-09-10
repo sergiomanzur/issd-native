@@ -22,6 +22,7 @@ set(GAME_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/main.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_bridge.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_widescreen.c"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_pose_history.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_config.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_save.c"
     "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_mod.c"

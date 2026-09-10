@@ -10,7 +10,11 @@ def test_native_widescreen_preparation(tmp_path):
     compile_c(
         exe,
         repo,
-        [repo / "tests/test_widescreen_native.c", repo / "ISSDNative/issd_widescreen.c"],
+        [
+            repo / "tests/test_widescreen_native.c",
+            repo / "ISSDNative/issd_widescreen.c",
+            repo / "ISSDNative/issd_pose_history.c",
+        ],
         [
             repo / "ISSDNative",
             repo / "deps/snesrecomp/runner/src",

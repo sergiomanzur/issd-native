@@ -1,4 +1,5 @@
 #include "issd_widescreen.h"
+#include "issd_pose_history.h"
 #include "snes/ppu.h"
 #include <string.h>
 
@@ -198,6 +199,16 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     if (object < 0x400 || object > 0x1c40) continue;
     unsigned pose = word(ram, object);
     if (!pose) continue;
+    /* The cartridge stops advancing poses outside its own live window, so an
+     * object out in the widened margin would otherwise be a frozen statue.
+     * Presentation only: WRAM keeps the pose the game actually set. */
+    {
+      int ox = (int16_t)word(ram, object + 8);
+      int oy = (int16_t)word(ram, object + 12);
+      issd_pose_history_observe(object, ox, oy, (uint16_t)pose);
+      pose = issd_pose_history_pose(object, ox, oy, (uint16_t)pose);
+      if (!pose) continue;
+    }
     bool packed = (pose & 0x8000) != 0;
     uint8_t parts;
     if (packed) {
@@ -266,7 +277,10 @@ done:
 static uint8_t s_prev_ram[0x20000];
 static bool s_prev_ram_valid = false;
 
-void issd_widescreen_reset(void) { s_prev_ram_valid = false; }
+void issd_widescreen_reset(void) {
+  s_prev_ram_valid = false;
+  issd_pose_history_reset();
+}
 
 static void remember_ram(const uint8_t *ram) {
   if (!ram) return;

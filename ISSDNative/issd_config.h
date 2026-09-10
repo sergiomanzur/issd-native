@@ -16,8 +16,15 @@ typedef enum {
     ISSD_ASPECT_16_9 = 2,   /* 16:9 Widescreen Viewport */
     ISSD_ASPECT_16_10 = 3,  /* 16:10 PC Widescreen Viewport */
     ISSD_ASPECT_21_9 = 4,   /* 21:9 Ultrawide Cinematic */
-    ISSD_ASPECT_INTEGER = 5 /* Perfect Integer Scale */
+    ISSD_ASPECT_INTEGER = 5, /* Perfect Integer Scale */
+    /* 320x224. The cartridge culls objects outside x,y in [-32,288), so a
+     * 32 pixel margin per side is the widest view in which every visible
+     * player is still simulated, animated and in the game's own draw list.
+     * Wider presets look better but freeze players in the outer band.
+     * Appended rather than renumbered so saved configs keep their meaning. */
+    ISSD_ASPECT_AUTHENTIC = 6
 } IssdAspectRatio;
+#define ISSD_ASPECT_COUNT 7
 
 typedef enum {
     ISSD_RES_1X = 0,        /* Native 256 x 224 */

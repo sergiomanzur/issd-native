@@ -222,7 +222,7 @@ bool issd_menu_navigate_left(void) {
             break;
         }
         case 3: /* Aspect Ratio */
-            g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio - 1 + 6) % 6);
+            g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio - 1 + ISSD_ASPECT_COUNT) % ISSD_ASPECT_COUNT);
             break;
         case 4: /* True Widescreen (FOV) */
             g_issd_config.true_widescreen = !g_issd_config.true_widescreen;
@@ -291,7 +291,7 @@ bool issd_menu_navigate_right(void) {
             break;
         }
         case 3: /* Aspect Ratio */
-            g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio + 1) % 6);
+            g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio + 1) % ISSD_ASPECT_COUNT);
             break;
         case 4: /* True Widescreen (FOV) */
             g_issd_config.true_widescreen = !g_issd_config.true_widescreen;
@@ -447,7 +447,8 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_8_7)     ? "8:7 PIXEL" :
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_16_9)    ? "16:9 WIDE" :
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_16_10)   ? "16:10 PC" :
-                             (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9)    ? "21:9 ULTRA" : "INTEGER";
+                             (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9)    ? "21:9 ULTRA" :
+                             (g_issd_config.aspect_ratio == ISSD_ASPECT_AUTHENTIC) ? "AUTHENTIC 320" : "INTEGER";
 
     const char *res_str = (g_issd_config.internal_res == ISSD_RES_1X)     ? "1X (256x224)" :
                           (g_issd_config.internal_res == ISSD_RES_2X)     ? "2X (512x448)" :
