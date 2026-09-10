@@ -20,7 +20,10 @@ void PpuWsSetOamRightHints(Ppu *p, const uint8_t *h) { p->wsOamRightHintStrict =
 
 static void fixture(void) {
   memset(&ppu,0,sizeof(ppu)); memset(ram,0,sizeof(ram)); memset(rom,0,sizeof(rom));
-  ram[0x32]=6; ram[0x50]=1;
+  issd_widescreen_reset();
+  /* $70 selects the subsystem action: 0x08 is live match play. Pitch detection
+   * requires it, so a fixture that leaves it at 0 is a menu, not a pitch. */
+  ram[0x32]=6; ram[0x70]=0x08; ram[0x50]=1;
   ppu.bgmode=1; ppu.bgXsc[0]=3; ppu.bgXsc[1]=0x13;
   ppu.hScroll[0]=0x110; ppu.hScroll[1]=0x100;
   ppu.vScroll[0]=0x110; ppu.vScroll[1]=0x100;
@@ -94,6 +97,7 @@ int main(void) {
   issd_widescreen_end(&ppu);
 
   /* The same omitted whole object moves smoothly through the left margin. */
+  issd_widescreen_reset();
   word(0x6040,0);
   word(0xd08,(uint16_t)-48);
   issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71);
@@ -102,6 +106,24 @@ int main(void) {
     assert(ppu.wsOamLeftHint[i/8] & (1 << (i%8))); found++;
   }
   assert(found==1);
+  issd_widescreen_end(&ppu);
+
+  fixture();
+  /* Regression: the cartridge DMAs the OAM built by the PREVIOUS logic pass, so
+   * the supplement must reconstruct from that same generation. An object listed
+   * in the native draw list that sat in the margin last frame and stepped inside
+   * the native columns this frame has no native copy to defer to: reconstructing
+   * from this frame's records dropped it entirely and the ball blinked out. */
+  word(0x1d40,0x500); word(0x500,0x9000); word(0x508,280); word(0x50c,80);
+  rom[0x41000]=1; rom[0x41001]=0; rom[0x41002]=0;
+  rom[0x41003]=0x24; rom[0x41004]=0x10;
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71);
+  issd_widescreen_end(&ppu);
+  word(0x508,250);                       /* steps inside the native columns */
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71);
+  found=0;
+  for(int i=0;i<128;i++) if ((ppu.oam[2*i]>>8)==72 && (ppu.oam[2*i]&255)==16) found++;
+  assert(found==1);                      /* still drawn, at last frame's x=280 */
   issd_widescreen_end(&ppu);
 
   fixture();ppu.hScroll[0]=16;ppu.hScroll[1]=0;

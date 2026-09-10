@@ -110,9 +110,21 @@ typedef struct {
   bool missing_native_copy;
 } ObjectEntry;
 
-static inline bool is_oam_slot_free(uint16_t oam_val) {
-  /* Parked or offscreen OAM slots in SNES have Y=240 (0xF0) or Y >= 224 */
-  return (oam_val == 0xf0f0) || ((oam_val >> 8) >= 224);
+/* A slot may only be reused when the hardware cannot draw it on any visible
+ * line. Sprite rows are fetched as row = (uint8_t)(line - y), so for y >= 224
+ * the first candidate row is 256 - y and the sprite still appears along the top
+ * edge whenever 256 - y < height. Treating every y >= 224 as parked therefore
+ * overwrote live sprites straddling the top of the screen - most visibly the
+ * ball on its way up, which vanished mid-flight and only returned once the
+ * keeper caught it and its y dropped back into range. */
+static inline bool is_oam_slot_free(const Ppu *ppu, unsigned slot) {
+  static const uint8_t sizes[8][2] = {
+    {8,16},{8,32},{8,64},{16,32},{16,64},{32,64},{16,32},{16,32}
+  };
+  unsigned y = ppu->oam[slot*2] >> 8;
+  if (y < 224) return false;
+  unsigned large = (ppu->highOam[slot/4] >> ((slot%4)*2 + 1)) & 1;
+  return y + sizes[PPU_objSize(ppu)][large] <= 256;
 }
 
 /* Supplemental OAM comes from the same sorted draw list ($8095E0), not from
@@ -130,7 +142,7 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   /* Existing negative sprites are genuine edge pieces; parked entries
    * never receive a hint. Positive 9-bit sprites require an explicit hint. */
   for (unsigned slot=0; slot<128; slot++) {
-    if (is_oam_slot_free(ppu->oam[slot*2])) continue;
+    if (is_oam_slot_free(ppu, slot)) continue;
     unsigned raw = (ppu->oam[slot*2] & 255) |
       ((ppu->highOam[slot/4] >> ((slot%4)*2)) & 1) * 256;
     if (raw >= 512-64) left[slot/8] |= 1 << (slot%8);
@@ -221,7 +233,7 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
           x + size <= -left_extra || x >= 256+right_extra ||
           y+size <= 0 || y >= 224) continue;
       /* These are hardware parked entries, never an arbitrary visible slot. */
-      while (free_slot<128 && !is_oam_slot_free(ppu->oam[free_slot*2])) free_slot++;
+      while (free_slot<128 && !is_oam_slot_free(ppu, (unsigned)free_slot)) free_slot++;
       if (free_slot == 128) goto done;
       unsigned color=(attr&0xc1)^props;
       if (attr&0x20) color = color&8 ? color|2 : (color&~4)|8;
@@ -239,6 +251,29 @@ done:
   PpuWsSetOamRightHints(ppu,right);
 }
 
+/* The cartridge double buffers its sprite list: every NMI first DMAs the OAM
+ * built by the previous logic pass, then rebuilds it for the next one. Measured
+ * on a live match, PPU OAM and the latched PPU scroll registers at frame N are
+ * exactly the object records and camera as they stood at frame N-1.
+ *
+ * The supplement must therefore reconstruct from that same generation. Reading
+ * this frame's fresh records emitted geometry one frame ahead of the native
+ * sprites it was completing, so an object crossing the native clip edge was
+ * either dropped (the supplement deferred to a native copy that was never
+ * built) or drawn twice at two positions, and a camera crossing a 1024 pixel
+ * page boundary mixed this frame's high scroll bits with last frame's low bits
+ * and slewed the whole reconstructed margin by a full page for one frame. */
+static uint8_t s_prev_ram[0x20000];
+static bool s_prev_ram_valid = false;
+
+void issd_widescreen_reset(void) { s_prev_ram_valid = false; }
+
+static void remember_ram(const uint8_t *ram) {
+  if (!ram) return;
+  memcpy(s_prev_ram, ram, sizeof(s_prev_ram));
+  s_prev_ram_valid = true;
+}
+
 static int s_ws_extra = 0;
 
 bool Issd_IsWidescreenActive(void) {
@@ -247,13 +282,21 @@ bool Issd_IsWidescreenActive(void) {
 
 bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
                           size_t rom_size, int extra) {
-  if (!ppu) { s_ws_extra = 0; return false; }
+  if (!ppu) { s_ws_extra = 0; remember_ram(ram); return false; }
   if (frame.owner) issd_widescreen_end(frame.owner);
   if (extra < 0) extra=0;
   if (extra > 95) extra=95;
   PpuWsSetOamLeftHints(ppu,NULL); PpuWsSetOamRightHints(ppu,NULL);
   PpuSetWidescreenLayerClamp(ppu,0);
   for (int l=0;l<4;l++) PpuSetWidescreenLayerClampBand(ppu,l,0,0);
+  /* Classic 4:3 takes none of the presentation branches: no VRAM/OAM
+   * transaction, no supplemental sprites, no reconstructed margins. */
+  if (!extra) {
+    s_ws_extra = 0;
+    PpuSetExtraSpace(ppu,0);
+    remember_ram(ram);
+    return false;
+  }
   static int s_inactive_frames = 0;
   bool is_pitch = issd_widescreen_pitch_layout(ppu, ram);
   if (is_pitch) {
@@ -264,7 +307,9 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
 
   if (!is_pitch && (s_inactive_frames >= 2 || s_ws_extra == 0)) {
     s_ws_extra = 0;
-    PpuSetExtraSpaceCentered(ppu,(uint16_t)extra); return false;
+    PpuSetExtraSpaceCentered(ppu,(uint16_t)extra);
+    remember_ram(ram);
+    return false;
   }
   s_ws_extra = extra;
   frame.owner=ppu;
@@ -280,8 +325,12 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   PpuSetWidescreenLayerMask(ppu, 3);
   PpuSetWidescreenWindowExpansion(ppu, 3, 3);
   PpuSetWidescreenLayerClamp(ppu, 4);
-  fill_pitch(ppu, ram, extra, extra);
-  fill_objects(ppu, ram, rom, rom_size, extra, extra);
+  /* Reconstruct against the WRAM generation that produced the native OAM and
+   * the currently latched scroll registers, not this frame's fresh one. */
+  const uint8_t *rec = s_prev_ram_valid ? s_prev_ram : ram;
+  fill_pitch(ppu, rec, extra, extra);
+  fill_objects(ppu, rec, rom, rom_size, extra, extra);
+  remember_ram(ram);
   return true;
 }
 
