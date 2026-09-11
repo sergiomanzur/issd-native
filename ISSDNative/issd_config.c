@@ -16,6 +16,20 @@ const char *issd_config_get_default_path(void) {
     return s_default_config_path;
 }
 
+/* Steam Deck's panel is 1280x800, so the 16:10 preset is its exact native
+ * aspect. Steam exports SteamDeck=1 to launched titles; SteamOS alone is
+ * not enough because a desktop SteamOS install can be any resolution.
+ * This only ever seeds first-run defaults - an existing config file is
+ * loaded afterwards and wins. */
+bool issd_config_is_steam_deck(void) {
+#ifdef _WIN32
+    return false;
+#else
+    const char *deck = getenv("SteamDeck");
+    return deck && deck[0] == '1';
+#endif
+}
+
 void issd_config_init_defaults(IssdConfig *cfg) {
     if (!cfg) return;
     memset(cfg, 0, sizeof(*cfg));
@@ -41,6 +55,14 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->skip_intro = false;
     cfg->fast_menus = false;
     cfg->debug_unhooked_code = false;
+
+    if (issd_config_is_steam_deck()) {
+        cfg->aspect_ratio = ISSD_ASPECT_16_10;   /* 1280x800 native */
+        cfg->true_widescreen = true;
+        cfg->fullscreen = true;
+        cfg->window_width = 1280;
+        cfg->window_height = 800;
+    }
 
     cfg->key_p1_up = 26;
     cfg->key_p1_down = 22;

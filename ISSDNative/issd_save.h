@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>   /* size_t: MSVC pulls this in transitively, glibc does not */
 
 #ifdef __cplusplus
 extern "C" {

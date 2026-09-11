@@ -14,6 +14,7 @@ firmware/
 build/
 build-*/
 bin/
+dist/
 out/
 target/
 *.obj

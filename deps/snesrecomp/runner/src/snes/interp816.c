@@ -17,6 +17,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <time.h>   /* clock_gettime/CLOCK_MONOTONIC on POSIX hosts */
 #include "interp816.h"
 
 static const int cyclesPerOpcode[256] = {

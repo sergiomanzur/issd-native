@@ -24,6 +24,12 @@
 #include "issd_menu.h"
 #include "widescreen.h"
 #include "issd_widescreen.h"
+#include "launcher_picker.h"
+#ifndef _WIN32
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <errno.h>
+#endif
 #include "issd_frame_pacing.h"
 #include "issd_symbols.h"
 
@@ -52,13 +58,29 @@ void RtlApuUnlock(void) {
 
 #ifdef _WIN32
 #include <windows.h>
-#include <commdlg.h>
 static LONG WINAPI CrashFilter(EXCEPTION_POINTERS *ep) {
     fprintf(stderr, "[CRASH] Exception Code: 0x%08lX at Address: %p\n",
             ep->ExceptionRecord->ExceptionCode,
             ep->ExceptionRecord->ExceptionAddress);
     fflush(stderr);
     return EXCEPTION_EXECUTE_HANDLER;
+}
+#else
+#include <signal.h>
+#include <unistd.h>
+/* Async-signal-safe: write(2) only, no stdio, no exit(). Restoring the
+ * default handler and re-raising preserves the core dump and the real
+ * exit status instead of masking the fault. */
+static void CrashSignalHandler(int sig) {
+    const char *name = sig == SIGSEGV ? "[CRASH] SIGSEGV\n"
+                     : sig == SIGBUS  ? "[CRASH] SIGBUS\n"
+                     : sig == SIGFPE  ? "[CRASH] SIGFPE\n"
+                     : sig == SIGILL  ? "[CRASH] SIGILL\n"
+                                      : "[CRASH] fatal signal\n";
+    ssize_t written = write(2, name, strlen(name));
+    (void)written;
+    signal(sig, SIG_DFL);
+    raise(sig);
 }
 #endif
 
@@ -435,6 +457,32 @@ static void BuildDefaultConfigPath(char *out, size_t out_size) {
         snprintf(out, out_size, "%s\\issd_native.cfg", dir);
         return;
     }
+#else
+    /* XDG Base Directory: $XDG_CONFIG_HOME, else ~/.config. This is what
+     * SteamOS expects, and it keeps config off a read-only install path. */
+    {
+        char dir[1024];
+        const char *xdg = getenv("XDG_CONFIG_HOME");
+        const char *home = getenv("HOME");
+        dir[0] = 0;
+        if (xdg && xdg[0])
+            snprintf(dir, sizeof(dir), "%s/ISSDNative", xdg);
+        else if (home && home[0])
+            snprintf(dir, sizeof(dir), "%s/.config/ISSDNative", home);
+        if (dir[0]) {
+            char parent[1024];
+            snprintf(parent, sizeof(parent), "%s",
+                     (xdg && xdg[0]) ? xdg : home);
+            if (!(xdg && xdg[0])) {
+                snprintf(parent, sizeof(parent), "%s/.config", home);
+                mkdir(parent, 0755);
+            }
+            if (mkdir(dir, 0755) == 0 || errno == EEXIST) {
+                snprintf(out, out_size, "%s/issd_native.cfg", dir);
+                return;
+            }
+        }
+    }
 #endif
     snprintf(out, out_size, "issd_native.cfg");
 }
@@ -456,30 +504,14 @@ static const char *ResolveConfigPath(char *out, size_t out_size, const char *cli
     return out;
 }
 
+/* The runner already ships a cross-platform picker: a Win32 dialog on Windows,
+ * zenity or kdialog on Linux, and a clear diagnostic when neither is installed.
+ * Using it replaces a Windows-only copy of the same dialog and is what gives
+ * the SteamOS build a working ROM chooser. */
 static bool PromptForRomFile(char *out, size_t out_size) {
     if (!out || out_size == 0) return false;
     out[0] = '\0';
-#ifdef _WIN32
-    char path[ISSD_CONFIG_ROM_PATH_MAX] = "";
-    OPENFILENAMEA ofn;
-    memset(&ofn, 0, sizeof(ofn));
-    ofn.lStructSize = sizeof(ofn);
-    ofn.lpstrFile = path;
-    ofn.nMaxFile = (DWORD)sizeof(path);
-    ofn.lpstrTitle = "Select your International Superstar Soccer Deluxe SNES ROM";
-    ofn.lpstrFilter =
-        "SNES ROMs (*.sfc;*.smc)\0*.sfc;*.smc\0"
-        "All files (*.*)\0*.*\0";
-    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-    if (GetOpenFileNameA(&ofn)) {
-        snprintf(out, out_size, "%s", path);
-        return true;
-    }
-    return false;
-#else
-    (void)out_size;
-    return false;
-#endif
+    return snesrecomp_pick_rom_file(out, out_size) == 1 && out[0] != 0;
 }
 
 static SDL_GameController *g_controller = NULL;
@@ -922,6 +954,11 @@ int main(int argc, char **argv) {
     setvbuf(stderr, NULL, _IONBF, 0);
 #ifdef _WIN32
     SetUnhandledExceptionFilter(CrashFilter);
+#else
+    signal(SIGSEGV, CrashSignalHandler);
+    signal(SIGBUS,  CrashSignalHandler);
+    signal(SIGFPE,  CrashSignalHandler);
+    signal(SIGILL,  CrashSignalHandler);
 #endif
     const char *cli_config_path = NULL;
     const char *cli_rom_path = NULL;

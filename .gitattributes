@@ -1,0 +1,12 @@
+# Shell scripts must keep LF endings. Checked out with CRLF they fail on Linux
+# and inside the SteamOS build container with "\r: command not found", which is
+# a confusing way to discover a line-ending problem.
+*.sh text eol=lf
+
+# Same reasoning for anything the Linux side sources or executes.
+*.bash    text eol=lf
+Makefile  text eol=lf
+
+# Batch files are the mirror image: they need CRLF.
+*.cmd text eol=crlf
+*.bat text eol=crlf

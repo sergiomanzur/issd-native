@@ -93,6 +93,10 @@ typedef struct {
 extern IssdConfig g_issd_config;
 
 void issd_config_init_defaults(IssdConfig *cfg);
+
+/* True when Steam launched us on a Steam Deck. Seeds first-run defaults
+ * only; a config file on disk always wins. */
+bool issd_config_is_steam_deck(void);
 bool issd_config_load(IssdConfig *cfg, const char *filepath);
 bool issd_config_save(const IssdConfig *cfg, const char *filepath);
 void issd_config_set_default_path(const char *filepath);

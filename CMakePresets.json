@@ -1,0 +1,57 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SNESRECOMP_SDL_BACKEND": "SDL2"
+      }
+    },
+    {
+      "name": "windows",
+      "inherits": "base",
+      "displayName": "Windows x86-64",
+      "binaryDir": "${sourceDir}/build",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "linux",
+      "inherits": "base",
+      "displayName": "Linux x86-64 (host toolchain, fast iteration)",
+      "binaryDir": "${sourceDir}/build-linux",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "steamos",
+      "inherits": "base",
+      "displayName": "SteamOS / Steam Linux Runtime 3.0 (sniper)",
+      "binaryDir": "${sourceDir}/build-steamos",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_C_FLAGS_RELEASE": "-O3 -DNDEBUG",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "windows", "configurePreset": "windows" },
+    { "name": "linux", "configurePreset": "linux" },
+    { "name": "steamos", "configurePreset": "steamos" }
+  ]
+}

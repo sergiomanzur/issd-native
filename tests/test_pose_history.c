@@ -116,8 +116,12 @@ int main(void) {
   margin(x, 0x4000);
   changes = 0;
   prev = margin(x, 0x4000);
-  for (int f = 0; f < 24; f++) { x -= 3; uint16_t g = margin(x, 0x4000);
-                                 if (g != prev) changes++; prev = g; }
+  for (int f = 0; f < 24; f++) {
+    x -= 3;
+    uint16_t g = margin(x, 0x4000);
+    if (g != prev) changes++;
+    prev = g;
+  }
   assert(changes >= 6);
 
   /* Auxiliary records are not on the object grid and are passed through. */
