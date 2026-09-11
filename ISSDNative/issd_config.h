@@ -76,6 +76,9 @@ typedef struct {
      * than index so adding or removing a pack cannot silently select a
      * different one. */
     char active_mod_pack[64];
+    /* Directory under mods/ holding replacement background tiles.
+     * Empty renders the cartridge's own graphics. */
+    char hd_texture_pack[64];
 
     /* Controls (P1 Scancodes / Buttons) */
     int key_p1_up;

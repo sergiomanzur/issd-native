@@ -73,12 +73,19 @@ stage() {   # stage <target> <file>...
 
 # Mod packs are read from mods/ next to the executable. Shipping the binary
 # without them means a fresh dist cannot demonstrate modding at all.
+#
+# A roster pack is one .json; a high resolution tile pack is a directory of
+# images, so both shapes are copied.
 stage_mods() {
     local target="$1"
     [ -d "$REPO/mods" ] || return 0
     mkdir -p "$REPO/dist/$target/mods"
     cp -f "$REPO/mods"/*.json "$REPO/dist/$target/mods/" 2>/dev/null
-    note "$target: staged $(ls -1 "$REPO/dist/$target/mods" 2>/dev/null | wc -l) mod pack(s)"
+    for d in "$REPO/mods"/*/; do
+        [ -d "$d" ] || continue
+        cp -rf "$d" "$REPO/dist/$target/mods/"
+    done
+    note "$target: staged $(ls -1 "$REPO/dist/$target/mods"/*.json 2>/dev/null | wc -l) roster pack(s), $(find "$REPO/dist/$target/mods" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l) tile pack(s)"
 }
 
 build_windows() {

@@ -52,6 +52,10 @@ saves/
 *.wram
 *.ppu
 *.bmp
+
+# A high resolution tile pack is a directory of BMPs under mods/. Those are
+# content, not the screen captures the rule above is aimed at.
+!mods/**/*.bmp
 *.png
 *.wav
 *.spc

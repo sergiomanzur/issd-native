@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "issd_mod.h"
+#include "issd_hd.h"
 
 extern uint8_t g_ram[0x20000];
 
@@ -142,6 +142,42 @@ static void issd_menu_cycle_mod_pack(int direction) {
     }
 }
 
+/* Cycle the high resolution tile pack: off, then each directory under
+ * mods/ holding tiles. A pack is only images, so unlike a roster mod it
+ * can be swapped while the game runs. The directories are rescanned each
+ * time, so one dropped in mid-session is picked up without a restart. */
+static void issd_menu_cycle_hd_pack(int direction) {
+    const int count = issd_hd_scan_packs("mods");
+    const int states = count + 1;                 /* off, then each pack */
+    int cur = -1;
+    if (issd_hd_active()) {
+        for (int i = 0; i < count; i++)
+            if (strcmp(issd_hd_available_name(i), issd_hd_pack_name()) == 0)
+                cur = i;
+    }
+
+    const int want = ((cur + 1) + direction + states) % states - 1;
+    if (want < 0) {
+        g_issd_config.hd_texture_pack[0] = 0;
+        issd_hd_load_pack(NULL);
+    } else {
+        char dir[256];
+        snprintf(dir, sizeof(dir), "mods/%s", issd_hd_available_name(want));
+        strncpy(g_issd_config.hd_texture_pack, issd_hd_available_name(want),
+                sizeof(g_issd_config.hd_texture_pack) - 1);
+        g_issd_config.hd_texture_pack[sizeof(g_issd_config.hd_texture_pack) - 1] = 0;
+        issd_hd_load_pack(dir);
+    }
+}
+
+/* Replacements are drawn into the enlarged frame, so at 1x there is nothing
+ * to put them in. The row says so rather than appearing to do nothing. */
+static const char *issd_menu_hd_pack_label(void) {
+    if (!issd_hd_active()) return "OFF";
+    if (g_issd_config.internal_res == ISSD_RES_1X) return "NEEDS 2X+";
+    return issd_hd_pack_name();
+}
+
 static const char *issd_menu_mod_pack_label(void) {
     int cur = issd_mod_get_active_pack_index();
     if (cur < 0) return "VANILLA";
@@ -247,17 +283,9 @@ bool issd_menu_navigate_left(void) {
         case 1: /* Schema */
             g_overlay_menu.control_schema = (IssdControlSchema)((g_overlay_menu.control_schema - 1 + 3) % 3);
             break;
-        case 2: { /* Active Mod Pack */
-            int pack_count = issd_mod_get_pack_count();
-            if (pack_count > 0) {
-                int cur_act = issd_mod_get_active_pack_index();
-                /* Cycle from -1 (None) to pack_count - 1 */
-                cur_act--;
-                if (cur_act < -1) cur_act = pack_count - 1;
-                issd_mod_set_active_pack(cur_act);
-            }
+        case 2: /* Mod Pack */
+            issd_menu_cycle_mod_pack(-1);
             break;
-        }
         case 3: /* Aspect Ratio */
             g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio - 1 + ISSD_ASPECT_COUNT) % ISSD_ASPECT_COUNT);
             break;
@@ -293,8 +321,8 @@ bool issd_menu_navigate_left(void) {
         case 12: /* Engine Mode */
             g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
             break;
-        case 14: /* Mod Pack */
-            issd_menu_cycle_mod_pack(-1);
+        case 14: /* HD Tiles */
+            issd_menu_cycle_hd_pack(-1);
             break;
         case 13: /* Debug & Japanese Unhooked Code */
             g_issd_config.debug_unhooked_code = !g_issd_config.debug_unhooked_code;
@@ -320,16 +348,9 @@ bool issd_menu_navigate_right(void) {
         case 1: /* Schema */
             g_overlay_menu.control_schema = (IssdControlSchema)((g_overlay_menu.control_schema + 1) % 3);
             break;
-        case 2: { /* Active Mod Pack */
-            int pack_count = issd_mod_get_pack_count();
-            if (pack_count > 0) {
-                int cur_act = issd_mod_get_active_pack_index();
-                cur_act++;
-                if (cur_act >= pack_count) cur_act = -1;
-                issd_mod_set_active_pack(cur_act);
-            }
+        case 2: /* Mod Pack */
+            issd_menu_cycle_mod_pack(1);
             break;
-        }
         case 3: /* Aspect Ratio */
             g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio + 1) % ISSD_ASPECT_COUNT);
             break;
@@ -365,8 +386,8 @@ bool issd_menu_navigate_right(void) {
         case 12: /* Engine Mode */
             g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
             break;
-        case 14: /* Mod Pack */
-            issd_menu_cycle_mod_pack(1);
+        case 14: /* HD Tiles */
+            issd_menu_cycle_hd_pack(1);
             break;
         case 13: /* Debug & Japanese Unhooked Code */
             g_issd_config.debug_unhooked_code = !g_issd_config.debug_unhooked_code;
@@ -424,7 +445,7 @@ bool issd_menu_confirm(void) {
         case 11: /* Volume */
         case 12: /* Engine Mode */
         case 13: /* Debug & JPN Mode */
-        case 14: /* Mod Pack */
+        case 14: /* HD Tiles */
             issd_menu_navigate_right();
             break;
         case 15: /* Save & Restart */
@@ -481,19 +502,6 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     const char *schema_str = (g_overlay_menu.control_schema == ISSD_SCHEMA_CLASSIC) ? "CLASSIC" :
                              (g_overlay_menu.control_schema == ISSD_SCHEMA_FIFA)    ? "FIFA" : "PES";
 
-    /* Mod pack display */
-    char mod_str[24];
-    int active_mod = issd_mod_get_active_pack_index();
-    if (active_mod >= 0) {
-        IssdModPack *pack = issd_mod_get_pack(active_mod);
-        if (pack) {
-            snprintf(mod_str, sizeof(mod_str), "%.12s", pack->name);
-        } else {
-            snprintf(mod_str, sizeof(mod_str), "MOD #%d", active_mod + 1);
-        }
-    } else {
-        snprintf(mod_str, sizeof(mod_str), "NONE (VANILLA)");
-    }
 
     const char *aspect_str = (g_issd_config.aspect_ratio == ISSD_ASPECT_4_3)     ? "4:3 CRT" :
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_8_7)     ? "8:7 PIXEL" :
@@ -523,7 +531,8 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     char items[MENU_TOTAL_ITEMS][44];
     snprintf(items[0], sizeof(items[0]), "Resume Match");
     snprintf(items[1], sizeof(items[1]), "Controls:   <%s>", schema_str);
-    snprintf(items[2], sizeof(items[2]), "Mod Pack:   <%s>", mod_str);
+    snprintf(items[2], sizeof(items[2]), "Mod Pack:   <%s>",
+             issd_menu_mod_pack_label());
     snprintf(items[3], sizeof(items[3]), "Aspect:     <%s>", aspect_str);
     snprintf(items[4], sizeof(items[4]), "Widescreen: <%s>", g_issd_config.true_widescreen ? "ON (TRUE FOV)" : "OFF (4:3 NATIVE)");
     snprintf(items[5], sizeof(items[5]), "Internal:   <%s>",
@@ -536,7 +545,8 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[11], sizeof(items[11]), "Volume:     <%d%%>", g_issd_config.master_volume);
     snprintf(items[12], sizeof(items[12]), "Engine:     <%s>", mode_str);
     snprintf(items[13], sizeof(items[13]), "Debug/JPN:  <%s>", g_issd_config.debug_unhooked_code ? "ENABLED" : "DISABLED");
-    snprintf(items[14], sizeof(items[14]), "Mod Pack:   <%s>", issd_menu_mod_pack_label());
+    snprintf(items[14], sizeof(items[14]), "HD Tiles:   <%s>",
+             issd_menu_hd_pack_label());
     snprintf(items[15], sizeof(items[15]), "Save & Restart (applies mods)");
     snprintf(items[16], sizeof(items[16]), "Save & Quit to Desktop");
 

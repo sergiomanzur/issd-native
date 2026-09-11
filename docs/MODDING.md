@@ -220,3 +220,90 @@ The label indices, all sixteen read off the screen one at a time, are:
 The label is independent of the record's own contents, so it has to be kept
 consistent by hand. `tests/test_formation.c` asserts that every entry in the
 library counts its roles the way its label claims.
+
+---
+
+## 6. High Resolution Tiles
+
+A tile pack replaces the cartridge's 8x8 background graphics with larger
+images. It is a directory of BMPs under `mods/`, and it changes nothing
+about the cartridge: the game still runs its own graphics, and the
+replacements are drawn over them as the frame is enlarged for the window.
+
+```text
+mods/
+  title_screen_hd/
+    0a3f19c4b7e25d80.bmp      32x32, a 4x replacement for one 8x8 tile
+    1b77e0c9f2a41d63.bmp
+    ...
+```
+
+Pick one from the pause menu under **HD Tiles**, or set
+`hd_texture_pack=title_screen_hd` in the config. Packs are only images, so
+switching takes effect immediately - no restart, unlike a roster mod.
+
+Replacements are drawn into the enlarged frame, so **Internal** has to be
+2X or higher. At 1X there is nothing to put the extra detail into and the
+menu row says `NEEDS 2X+`.
+
+### Making one
+
+Play to the screen you want, dumping what the game draws:
+
+```sh
+ISSDNative --headless 3700 --dump-tiles tiles --dump-tiles-from 3650
+```
+
+Every distinct background tile is written as an 8x8 32-bit BMP named after
+its identity, alongside a `tiles.csv` listing each one's colour depth and
+the frame it first appeared on. A run walks through every screen before the
+one you want, so `--dump-tiles-from` skips the ones you do not.
+
+Then enlarge them:
+
+```sh
+python tools/upscale_tiles.py tiles mods/my_pack --scale 4
+```
+
+The filenames are the identities, so anything in that directory under the
+right name is used. Replace any of them by hand - with an AI upscaler, or
+redrawn from scratch - and the game picks that up instead. Any square
+32-bit BMP whose edge is a multiple of 8 works, so a pack can mix 2x and 8x
+tiles; each is sampled to whatever the current scale is.
+
+### What a tile's name means
+
+The name is a hash of the tile's own graphics **and** the colours it is
+drawn in. The cartridge reuses one piece of artwork across several
+palettes - the same crowd tile in a dozen kit colours - and a pack author
+almost always wants to treat those as separate images, so they are.
+
+The flip side is that a tile drawn in a palette that fades in or out is a
+different tile at every step of the fade, and will not be replaced unless
+every step is in the pack.
+
+### What does not get replaced
+
+- **Sprites.** Players, the ball and most UI text are objects, not
+  background tiles. Only backgrounds are covered.
+- **Anything drawn on top.** A background pixel is replaced only when the
+  frame still holds exactly the colour that tile would have put there, so a
+  pixel covered by a sprite, a higher layer, or colour maths is left as the
+  game drew it. This is what keeps players in front of the pitch instead of
+  behind it.
+- **Transparent pixels.** Colour index 0 shows whatever is behind it, so
+  there is nothing to replace.
+- **The widescreen margins**, which are reconstructed rather than drawn from
+  a tilemap.
+- **Mode 7**, which is not a tilemap at all.
+
+Expect roughly two thirds of a screen to be background. On the title screen
+it measures 66%.
+
+### Shipped example
+
+`mods/title_screen_hd` is the title screen's 397 tiles enlarged 4x. It is
+there to show the pipeline working end to end, not because a smooth filter
+is the best a pack can do - it is the floor, and hand-made or AI-upscaled
+art goes in the same folder under the same names.
+

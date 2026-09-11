@@ -24,6 +24,7 @@
 #include "issd_menu.h"
 #include "widescreen.h"
 #include "issd_widescreen.h"
+#include "issd_hd.h"
 #include "issd_touch.h"
 #include "issd_script.h"
 #include "issd_android.h"
@@ -115,6 +116,9 @@ static int g_auto_start_frame = -1;
  * so there was no way to check that an edge player animates rather than
  * holding a pose. Consecutive frames are the only evidence that settles it. */
 static const char *g_script_path = NULL;
+static const char *g_hd_pack_dir  = NULL;   /* --hd-pack DIR   */
+static const char *g_hd_dump_dir  = NULL;   /* --dump-tiles DIR */
+static unsigned    g_hd_dump_from = 0;      /* --dump-tiles-from N */
 
 /* Relaunch so a new cartridge image is built from scratch.
  *
@@ -231,6 +235,14 @@ static bool SaveBmp(const char *path, const uint32_t *pixels, int width, int hei
     return true;
 }
 
+/* Save what the window would show, replacement tiles included.
+ *
+ * Replacements are composited into the scaled buffer, so a capture taken
+ * from the native frame would miss them entirely - which is exactly the
+ * thing a capture is usually taken to check. */
+static int g_capture_scale = 4;
+static bool SaveFrame(const char *path, const uint32_t *native, int w, int h);
+
 /* Audio parameters */
 #define AUDIO_FREQ 44100
 #define AUDIO_CHANNELS 2
@@ -290,16 +302,22 @@ static void IssdDrawPpuFrame(void) {
         SimpleHdma_Init(&hdma[ch], &g_snes->dma->channel[ch]);
     }
 
+    issd_hd_begin_frame();
     for (int line = 0; line <= SNES_HEIGHT; line++) {
         if (line > 0) {
             for (int ch = 0; ch < 8; ch++) {
                 SimpleHdma_DoLine(&hdma[ch]);
             }
         }
+        /* After this line's HDMA, before it is drawn: the registers a
+         * replacement pass needs are the ones in force right now, and
+         * the title screen changes background mode partway down. */
+        issd_hd_note_line(g_snes->ppu, line);
         ppu_runLine(g_snes->ppu, line);
     }
     ppu_handleVblank(g_snes->ppu);
     issd_widescreen_end(g_snes->ppu);
+    issd_hd_dump_frame(g_snes->ppu);
 }
 
 static void IssdInitialize(void) {
@@ -998,6 +1016,19 @@ static void UpscaleFrameBuffer(uint32_t *dst, int dst_w, int dst_h, const uint32
     }
 }
 
+static bool SaveFrame(const char *path, const uint32_t *native, int w, int h) {
+    if (!issd_hd_active()) return SaveBmp(path, native, w, h);
+    int scale = g_capture_scale;
+    while (scale > 1 && (w * scale > MAX_INTERNAL_WIDTH || h * scale > MAX_INTERNAL_HEIGHT))
+        scale--;
+    UpscaleFrameBuffer(g_hi_pixel_buffer, w * scale, h * scale, native, w, h,
+                       ISSD_FILTER_NEAREST);
+    issd_hd_composite(g_snes ? g_snes->ppu : NULL, native, w, h,
+                      g_hi_pixel_buffer, scale,
+                      g_ws_active ? g_ws_extra : 0);
+    return SaveBmp(path, g_hi_pixel_buffer, w * scale, h * scale);
+}
+
 /* Per-side widescreen margin in pixels. One definition: this used to be an
  * if-chain copied at three call sites, which is how they drift apart. */
 static int IssdWsExtraForAspect(void) {
@@ -1115,6 +1146,15 @@ int main(int argc, char **argv) {
             g_load_state_frame = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc) {
             g_script_path = argv[++i];
+        } else if (strcmp(argv[i], "--hd-pack") == 0 && i + 1 < argc) {
+            g_hd_pack_dir = argv[++i];
+        } else if (strcmp(argv[i], "--dump-tiles") == 0 && i + 1 < argc) {
+            g_hd_dump_dir = argv[++i];
+        } else if (strcmp(argv[i], "--dump-tiles-from") == 0 && i + 1 < argc) {
+            g_hd_dump_from = (unsigned)atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--capture-scale") == 0 && i + 1 < argc) {
+            g_capture_scale = atoi(argv[++i]);
+            if (g_capture_scale < 1) g_capture_scale = 1;
         } else if (strcmp(argv[i], "--dump-frames") == 0 && i + 1 < argc) {
             sscanf(argv[++i], "%d:%d", &g_dump_first, &g_dump_last);
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
@@ -1134,6 +1174,25 @@ int main(int argc, char **argv) {
     issd_save_init();
     issd_mod_init();
     issd_mod_scan_and_load("mods");
+    /* Replacement background tiles. The command line wins over the saved
+     * setting so a pack can be tried without committing to it, and the
+     * dump directory is set before the first frame so the very first
+     * screen's tiles are captured too. */
+    {
+        char hd_dir[512];
+        const char *pack = g_hd_pack_dir;
+        if (!pack && g_issd_config.hd_texture_pack[0]) {
+            snprintf(hd_dir, sizeof hd_dir, "mods/%s",
+                     g_issd_config.hd_texture_pack);
+            pack = hd_dir;
+        }
+        if (pack) issd_hd_load_pack(pack);
+        if (g_hd_dump_dir) {
+            issd_hd_set_dump_dir(g_hd_dump_dir);
+            issd_hd_set_dump_start(g_hd_dump_from);
+            printf("[HD] Dumping background tiles to '%s'.\n", g_hd_dump_dir);
+        }
+    }
     issd_menu_init();
 
     char rom_path_buffer[ISSD_CONFIG_ROM_PATH_MAX];
@@ -1439,7 +1498,7 @@ int main(int argc, char **argv) {
                 if (g_dump_first >= 0 && (int)frame_count >= g_dump_first && (int)frame_count <= g_dump_last) {
                     char nm[64];
                     snprintf(nm, sizeof(nm), "f_%05u.bmp", frame_count);
-                    SaveBmp(nm, g_pixel_buffer, cur_render_w, cur_render_h);
+                    SaveFrame(nm, g_pixel_buffer, cur_render_w, cur_render_h);
                 }
 
 
@@ -1463,7 +1522,7 @@ int main(int argc, char **argv) {
                 if (g_headless && (frame_count % 120 == 0)) {
                     char scr_name[64];
                     snprintf(scr_name, sizeof(scr_name), "test_step_%04u.bmp", frame_count);
-                    SaveBmp(scr_name, g_pixel_buffer, cur_render_w, cur_render_h);
+                    SaveFrame(scr_name, g_pixel_buffer, cur_render_w, cur_render_h);
                 }
 
                 /* Check match state every 60 frames */
@@ -1499,7 +1558,7 @@ int main(int argc, char **argv) {
                  * to the window. CRT keeps a scaled texture because scanline
                  * darkening is generated into that buffer. */
                 int target_tex_w = cur_render_w, target_tex_h = cur_render_h;
-                if (g_issd_config.scaling_filter == ISSD_FILTER_CRT) {
+                if (g_issd_config.scaling_filter == ISSD_FILTER_CRT || issd_hd_active()) {
                     GetInternalResolutionDimensions(g_issd_config.internal_res, cur_render_w, cur_render_h, &target_tex_w, &target_tex_h);
                 }
 
@@ -1522,8 +1581,11 @@ int main(int argc, char **argv) {
                     }
                 }
 
+                /* Replacement tiles are written into the scaled buffer, so
+                 * a pack forces the scaled-texture path even when the
+                 * filter would otherwise hand SDL the native frame. */
                 SDL_Texture *present_texture = NULL;
-                if (cur_filter == ISSD_FILTER_CRT) {
+                if (cur_filter == ISSD_FILTER_CRT || issd_hd_active()) {
                     if (!texture) {
                         texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                             SDL_TEXTUREACCESS_STREAMING, cur_tex_w, cur_tex_h);
@@ -1531,6 +1593,12 @@ int main(int argc, char **argv) {
                     UpscaleFrameBuffer(g_hi_pixel_buffer, cur_tex_w, cur_tex_h,
                                    g_pixel_buffer, cur_render_w, cur_render_h,
                                    g_issd_config.scaling_filter);
+                    if (issd_hd_active() && cur_tex_w % cur_render_w == 0)
+                        issd_hd_composite(g_snes->ppu, g_pixel_buffer,
+                                          cur_render_w, cur_render_h,
+                                          g_hi_pixel_buffer,
+                                          cur_tex_w / cur_render_w,
+                                          g_ws_active ? g_ws_extra : 0);
                     SDL_UpdateTexture(texture, NULL, g_hi_pixel_buffer, cur_tex_w * sizeof(uint32_t));
                     present_texture = texture;
                 } else {
@@ -1590,7 +1658,7 @@ int main(int argc, char **argv) {
     if (g_screenshot_path) {
         int cur_ws_extra = IssdWsExtraForAspect();
         int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
-        if (SaveBmp(g_screenshot_path, g_pixel_buffer, cur_render_w, SNES_HEIGHT)) {
+        if (SaveFrame(g_screenshot_path, g_pixel_buffer, cur_render_w, SNES_HEIGHT)) {
             printf("[Screenshot] Saved frame buffer to: %s (%dx%d)\n", g_screenshot_path, cur_render_w, SNES_HEIGHT);
         } else {
             fprintf(stderr, "[Screenshot] Failed to save screenshot to: %s\n", g_screenshot_path);
