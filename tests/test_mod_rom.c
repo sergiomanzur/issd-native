@@ -22,6 +22,8 @@ static size_t attr_at(int team, int player) {
     return ROM_ATTR_BASE + ((size_t)team * PLAYERS + player) * ATTR_BYTES;
 }
 
+static uint8_t rating_nibble_for_50(void) { return (uint8_t)((50u*15u+49u)/99u); }
+
 int main(void) {
     assert(issd_mod_init());
     /* The repo ships mods/ next to the binary; tests run from the repo root. */
@@ -57,6 +59,13 @@ int main(void) {
     assert((a[0] >> 4) == 15);    /* acceleration 99 -> max */
     assert((a[0] & 0x0F) == 0);   /* speed 0 -> min, must not wrap to max */
     assert(a[5] == 0xA5);         /* untouched index byte preserved */
+
+    /* Position lives in the high nibble of byte 4 and must be written, not
+     * preserved: a pack naming a goalkeeper has to make him one. Codes read
+     * off the cartridge, where slots 0 and 11 carry 1 on all 36 teams. */
+    assert((a[4] >> 4) == 1);                          /* slot 0 is GK */
+    assert((rom[attr_at(0, 2) + 4] >> 4) == 6);        /* slot 2 is FW */
+    assert((a[4] & 0x0F) == rating_nibble_for_50());   /* stamina still packed */
 
     /* skin tone in the high nibble, hair style in the low one */
     assert((a[6] >> 4) == 1);

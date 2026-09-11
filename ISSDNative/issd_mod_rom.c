@@ -78,9 +78,22 @@ static void patch_name(uint8_t *rom, size_t base, const char *name) {
     }
 }
 
-/* Byte 5 is an attribute-block index the game uses for something we have not
- * characterised, so it is read-modify-write: only the fields a mod actually
- * describes are touched. */
+/* Position codes in the high nibble of byte 4. Read off the cartridge: slot 0
+ * and slot 11 carry 1 across all 36 teams - the two goalkeepers - and the
+ * values then climb through the outfield in squad order. 3 and 5 occur as
+ * in-between ratings, so a mod picks the four it can name and the game still
+ * reads the rest of the table unchanged. */
+static uint8_t position_code(const char *pos) {
+    if (!pos) return 4;
+    if (pos[0] == 'G') return 1;   /* GK */
+    if (pos[0] == 'D') return 2;   /* DF */
+    if (pos[0] == 'F') return 6;   /* FW */
+    return 4;                      /* MF, and anything unrecognised */
+}
+
+/* Byte 5 is the player's own slot index within the squad: it runs 0..19 and
+ * each value appears exactly 36 times, once per team. It belongs to the
+ * slot rather than to the player, so it is never rewritten. */
 static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) {
     const IssdPlayerAttributes *a = &p->attributes;
     rom[base + 0] = (uint8_t)((rating_to_nibble(a->acceleration) << 4) |
@@ -91,8 +104,11 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
                                rating_to_nibble(a->intelligence));
     rom[base + 3] = (uint8_t)((rating_to_nibble(a->dribbling)    << 4) |
                                rating_to_nibble(a->jumping));
-    /* High nibble is a positional rating, low nibble is stamina. */
-    rom[base + 4] = (uint8_t)((rom[base + 4] & 0xF0) |
+    /* High nibble is the position, low nibble stamina. The position was
+     * previously preserved rather than written, so a pack could name a
+     * player a goalkeeper and the game would still field him wherever the
+     * original squad had that slot. */
+    rom[base + 4] = (uint8_t)((position_code(p->position) << 4) |
                                rating_to_nibble(a->stamina));
     /* rom[base + 5] deliberately preserved. */
     rom[base + 6] = (uint8_t)(((p->skin_tone & 0x0F) << 4) |

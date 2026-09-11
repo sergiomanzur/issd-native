@@ -112,7 +112,7 @@ static const uint8_t s_font8x8[96][8] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}  /* 127 */
 };
 
-#define MENU_TOTAL_ITEMS 16
+#define MENU_TOTAL_ITEMS 17
 
 /* Cycle the active mod pack: -1 is vanilla, then each loaded pack.
  * Re-patching restores the pristine cartridge first, so switching packs
@@ -427,7 +427,15 @@ bool issd_menu_confirm(void) {
         case 14: /* Mod Pack */
             issd_menu_navigate_right();
             break;
-        case 15: /* Save & Quit */
+        case 15: /* Save & Restart */
+            /* A mod pack is applied to the cartridge image before the
+             * engine boots, and rosters are cached as a match loads, so
+             * choosing one mid-session changes nothing until the game
+             * starts again. This is that restart. */
+            issd_config_save(&g_issd_config, NULL);
+            issd_restart_application();
+            break;
+        case 16: /* Save & Quit */
             issd_config_save(&g_issd_config, NULL);
             exit(0);
             break;
@@ -529,12 +537,13 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[12], sizeof(items[12]), "Engine:     <%s>", mode_str);
     snprintf(items[13], sizeof(items[13]), "Debug/JPN:  <%s>", g_issd_config.debug_unhooked_code ? "ENABLED" : "DISABLED");
     snprintf(items[14], sizeof(items[14]), "Mod Pack:   <%s>", issd_menu_mod_pack_label());
-    snprintf(items[15], sizeof(items[15]), "Save & Quit to Desktop");
+    snprintf(items[15], sizeof(items[15]), "Save & Restart (applies mods)");
+    snprintf(items[16], sizeof(items[16]), "Save & Quit to Desktop");
 
     int start_y = box_y + 14;
     for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {
         uint32_t color = (i == g_overlay_menu.current_item) ? 0xFF00FF66 : 0xFFE0E0E0;
-        int item_y = start_y + i * 12;
+        int item_y = start_y + i * 11;
         if (i == g_overlay_menu.current_item) {
             DrawChar(fb, width, height, box_x + 4, item_y, '>', 0xFF00FF66);
         }

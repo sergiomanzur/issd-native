@@ -115,6 +115,51 @@ static int g_auto_start_frame = -1;
  * so there was no way to check that an edge player animates rather than
  * holding a pose. Consecutive frames are the only evidence that settles it. */
 static const char *g_script_path = NULL;
+
+/* Relaunch so a new cartridge image is built from scratch.
+ *
+ * Mod packs patch the ROM image once, before the engine boots, and the
+ * game caches roster data as a match loads. Switching packs mid-session
+ * therefore does nothing visible until something reloads, which is
+ * confusing: the menu says one pack and the pitch shows another. Starting
+ * the process again is the honest way to apply it.
+ *
+ * The original command line is reused so --rom, --config and friends
+ * survive the restart. */
+static int    g_argc;
+static char **g_argv;
+
+static const char *ResolveConfigPath(char *out, size_t out_size, const char *cli_path);
+
+void issd_restart_application(void) {
+    char cfg_path[1024];
+    issd_config_save(&g_issd_config, ResolveConfigPath(cfg_path, sizeof(cfg_path), NULL));
+#ifdef _WIN32
+    char exe[1024];
+    if (GetModuleFileNameA(NULL, exe, sizeof(exe))) {
+        /* Quote every argument: paths here routinely contain spaces. */
+        char cmd[4096];
+        int n = snprintf(cmd, sizeof(cmd), "\"%s\"", exe);
+        for (int i = 1; i < g_argc && n > 0 && n < (int)sizeof(cmd); i++)
+            n += snprintf(cmd + n, sizeof(cmd) - n, " \"%s\"", g_argv[i]);
+        STARTUPINFOA si; PROCESS_INFORMATION pi;
+        memset(&si, 0, sizeof(si)); si.cb = sizeof(si);
+        memset(&pi, 0, sizeof(pi));
+        if (CreateProcessA(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi)) {
+            CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+            exit(0);
+        }
+    }
+    fprintf(stderr, "[Restart] Could not relaunch; exiting instead.\n");
+    exit(0);
+#else
+    /* execv replaces this process, so nothing after it runs on success. */
+    if (g_argv) execv("/proc/self/exe", g_argv);
+    fprintf(stderr, "[Restart] Could not relaunch; exiting instead.\n");
+    exit(0);
+#endif
+}
+
 static int g_dump_first = -1, g_dump_last = -1;
 static int g_save_state_frame = -1;
 static int g_load_state_frame = -1;
@@ -1028,6 +1073,7 @@ static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int 
 }
 
 int main(int argc, char **argv) {
+    g_argc = argc; g_argv = argv;
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
 #ifdef ISSD_ANDROID

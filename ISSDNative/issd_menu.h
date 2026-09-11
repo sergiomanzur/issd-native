@@ -46,6 +46,10 @@ bool issd_menu_cancel(void);
 /* Render overlay on top of 256x224 32-bit ARGB framebuffer */
 void issd_menu_render(uint32_t *framebuffer, int width, int height);
 
+/* Provided by the host: save settings and start the process again, so a
+ * newly chosen mod pack is applied to a fresh cartridge image. */
+void issd_restart_application(void);
+
 #ifdef __cplusplus
 }
 #endif

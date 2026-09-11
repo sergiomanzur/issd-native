@@ -19,7 +19,7 @@
     {
      "shirt_number": 1,
      "name": "Abc",
-     "position": "MF",
+     "position": "GK",
      "skin_tone": 1,
      "hair_style": 13,
      "acceleration": 99,
@@ -53,7 +53,7 @@
     {
      "shirt_number": 1,
      "name": "Third",
-     "position": "MF",
+     "position": "FW",
      "skin_tone": 0,
      "hair_style": 0,
      "acceleration": 50,

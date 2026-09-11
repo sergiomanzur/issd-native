@@ -71,6 +71,16 @@ stage() {   # stage <target> <file>...
     done
 }
 
+# Mod packs are read from mods/ next to the executable. Shipping the binary
+# without them means a fresh dist cannot demonstrate modding at all.
+stage_mods() {
+    local target="$1"
+    [ -d "$REPO/mods" ] || return 0
+    mkdir -p "$REPO/dist/$target/mods"
+    cp -f "$REPO/mods"/*.json "$REPO/dist/$target/mods/" 2>/dev/null
+    note "$target: staged $(ls -1 "$REPO/dist/$target/mods" 2>/dev/null | wc -l) mod pack(s)"
+}
+
 build_windows() {
     rule "windows"
     command -v cmake >/dev/null || die "cmake not on PATH"
@@ -78,6 +88,7 @@ build_windows() {
     cmake --build --preset windows        || die "windows: build failed"
     stage windows "$REPO/build/ISSDNative.exe" "$REPO/build/SDL2.dll" \
                   "$REPO/recomp/aot_boot_deny.txt"
+    stage_mods windows
     note "windows -> dist/windows"
 }
 
@@ -88,6 +99,7 @@ build_linux() {
         || die "linux: WSL distro '$WSL_DISTRO' unavailable (set ISSD_WSL_DISTRO)"
     wsl_run "$(wslpath_of "$REPO/scripts/build-linux.sh")" || die "linux: build failed"
     stage linux "$REPO/build-linux/ISSDNative" "$REPO/recomp/aot_boot_deny.txt"
+    stage_mods linux
     note "linux -> dist/linux"
 }
 
@@ -100,6 +112,7 @@ build_steamos() {
         bash /src/scripts/build-steamos.sh || die "steamos: container build failed"
     stage steamos "$REPO/build-steamos/ISSDNative" "$REPO/recomp/aot_boot_deny.txt" \
                   "$REPO/scripts/steamos-run.sh"
+    stage_mods steamos
     note "steamos -> dist/steamos"
 }
 
