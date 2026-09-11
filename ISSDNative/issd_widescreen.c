@@ -178,10 +178,19 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
       count++;
     }
   }
-  /* Active match officials (referee, linesmen) */
-  const unsigned aux_officials[] = { 0x04A0, 0x08A0, 0x08D0 };
-  for (unsigned k=0; k < sizeof(aux_officials)/sizeof(aux_officials[0]); k++) {
-    unsigned object = aux_officials[k];
+  /* Auxiliary draw records: officials, and the field objects enumerated by
+   * $809B28/$809B4A. A zero pose is the inactive marker.
+   *
+   * This is a scan rather than a list of known ids because hardcoding three
+   * of them left five live records with no supplemental copy at all: over a
+   * 6000 frame match, $09A0, $09D0, $0AA0, $0AD0 and $0BA0 were live and
+   * inside the widescreen margin for 3290 frames with nothing drawing them,
+   * which is what made objects wink in and out at the edges. One of the three
+   * hardcoded ids, $08A0, was never live at all. */
+  for (unsigned base=0x400; base<0xd00; base+=0x100) {
+   for (unsigned offset=0xa0; offset<=0xd0; offset+=0x30) {
+    if (offset==0xd0 && base<0x800) continue;
+    unsigned object = base + offset;
     if (!word(ram, object)) continue;
     bool exists=false;
     for (unsigned i=0;i<count;i++) {
@@ -192,6 +201,7 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
       objects[count].missing_native_copy=true;
       count++;
     }
+   }
   }
   for (unsigned i=1;i<count;i++) {
     ObjectEntry entry=objects[i];
