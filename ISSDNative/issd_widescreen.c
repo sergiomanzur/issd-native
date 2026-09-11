@@ -34,7 +34,16 @@ bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram) {
   unsigned submode = word(ram, 0x70);
   if (mode != 3 && mode != 6) return false;
   if (submode < 0x08) return false;
-  if (submode == 0x1C) return false;   /* coin toss */
+  /* Pre-match presentation: the stadium fly-in, the coin toss and the
+   * framed pitch view. It all happens on the pitch, so stride, $50, the BG
+   * mode and both tilemap bases read exactly like live play, but the world
+   * metatile maps hold nothing for the widened columns yet. Reconstructing
+   * them painted grass and crowd rows either side of the framed view.
+   *
+   * Measured across a full Open Game from boot to kickoff, 0x0F covers 1061
+   * frames of that sequence and 0x1C one more; an earlier fix excluded only
+   * 0x1C, which is why the coin toss stayed broken. */
+  if (submode == 0x0F || submode == 0x1C) return false;
   /* A previous guard tested $38 == 0xC4E4 && $3A == 0x8B here. Neither holds
    * during the coin toss: $38 is 0 throughout and $3A is a frame counter, so
    * the guard never once fired. Removed rather than left as reassurance. */
@@ -63,6 +72,16 @@ bool issd_widescreen_menu_layout(const Ppu *ppu, const uint8_t *ram) {
    * would fight that, and it is not a menu. */
   if (mode != 5 && mode != 6) return false;
   if (issd_widescreen_pitch_layout(ppu, ram)) return false;
+  /* A menu has no stadium loaded. The pre-match presentation does: it runs
+   * on the pitch with a valid metatile stride, and only the framed centre is
+   * meant to be visible. Without this it is not a pitch (its submode is
+   * excluded above) and it does have BG2, so it fell through to the menu
+   * path and had grass and crowd repeated into its margins - the same broken
+   * green the pitch reconstruction had been painting there. */
+  {
+    unsigned stride = word(ram, 0x1ffcc);
+    if (stride >= 0x80 && stride <= 0x340 && (stride & 63) == 0) return false;
+  }
   /* Some screens composite the wallpaper through the sub screen for colour
    * math and leave only sprites on the main screen: the scenario select runs
    * main=0x10, sub=0x07. Checking the main screen alone missed those. */

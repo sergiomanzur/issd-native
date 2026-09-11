@@ -55,6 +55,7 @@ int main(void) {
    * which runs main=0x10 sub=0x07 for colour math), and must never trigger
    * on the title screen, whose HDMA mode 3 split is not a menu. */
   ram[0x70]=0x00; ram[0x32]=6;
+  word(0x1ffcc, 0);            /* a menu has no stadium loaded */
   ppu.screenEnabled[0]=0x17; ppu.screenEnabled[1]=0x00;
   assert(issd_widescreen_menu_layout(&ppu,ram));
   ppu.screenEnabled[0]=0x10; ppu.screenEnabled[1]=0x07;
@@ -64,6 +65,12 @@ int main(void) {
   ppu.screenEnabled[0]=0x17;
   ram[0x32]=1; assert(!issd_widescreen_menu_layout(&ppu,ram));  /* title */
   ram[0x32]=0; assert(!issd_widescreen_menu_layout(&ppu,ram));  /* boot */
+  /* The pre-match presentation is mode 6 with BG2 and is not a pitch, but
+   * it does have a stadium loaded and only its framed centre should show.
+   * Treating it as a menu repeated grass into its margins. */
+  word(0x1ffcc, 0x200);
+  ram[0x70]=0x0F; assert(!issd_widescreen_pitch_layout(&ppu,ram));
+  assert(!issd_widescreen_menu_layout(&ppu,ram));
   ram[0x32]=6; ram[0x70]=0x08;
   assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
   /* BG2 world (248,256) wraps to left nametable, expected last column of #1. */
