@@ -29,5 +29,6 @@ set(ISSD_GAME_SOURCES
     "${ISSD_ROOT}/ISSDNative/issd_decompress.c"
     "${ISSD_ROOT}/ISSDNative/issd_audio.c"
     "${ISSD_ROOT}/ISSDNative/issd_touch.c"
+    "${ISSD_ROOT}/ISSDNative/issd_script.c"
     "${ISSD_ROOT}/ISSDNative/issd_android.c"
 )

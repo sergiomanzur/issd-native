@@ -8,12 +8,33 @@
  * Detection needs two full periods of history, hence SEQ_MAX >= 2*CYCLE_MAX. */
 #define CYCLE_MAX 12u       /* longest locomotion period we try to detect */
 #define CADENCE_MAX 32u     /* beyond this the motion is not a run cycle */
+/* A player held up by a tackle or pinned against a boundary still jitters
+ * a pixel or two every frame. Treating that as movement made the
+ * continuation replay a full run cycle on the spot, so a stuck player
+ * appeared to sprint without going anywhere.
+ *
+ * Movement is therefore net displacement across a window of frames, not
+ * distance walked. Summing per-frame steps does not work: a player
+ * shuffling one pixel back and forth accumulates plenty of steps while
+ * going nowhere, which is precisely the case this exists to reject.
+ *
+ * A step beyond anything a player covers in a frame is a reposition, not
+ * travel - a set piece or a camera cut - and clears the window, so the
+ * object is not credited with having sprinted across the pitch.
+ *
+ * 8 frames at 60Hz is well under one animation cycle; 6 pixels is more
+ * than jitter and less than a walking pace covers. */
+#define TRAVEL_WINDOW 8u
+#define TRAVEL_MIN_PX 6u
+#define TRAVEL_TELEPORT_PX 32   /* beyond a frame's travel: reposition */
 
 typedef struct {
   bool     seen;
   int      last_x, last_y;
   bool     had_pos;
-  bool     moving;      /* moved since the previous observed frame */
+  bool     moving;      /* travelling, not merely jittering */
+  int      trail_x[TRAVEL_WINDOW], trail_y[TRAVEL_WINDOW];
+  uint8_t  trail_n, trail_head;
 
   uint16_t seq[SEQ_MAX];    /* distinct poses, oldest .. newest */
   uint8_t  seq_len;
@@ -77,7 +98,26 @@ void issd_pose_history_observe(unsigned object, int x, int y, uint16_t pose) {
   Slot *s = slot_for(object);
   if (!s) return;
 
-  s->moving = s->had_pos && (x != s->last_x || y != s->last_y);
+  if (s->had_pos) {
+    int sx = x - s->last_x, sy = y - s->last_y;
+    if (sx < 0) sx = -sx;
+    if (sy < 0) sy = -sy;
+    if (sx + sy > TRAVEL_TELEPORT_PX) s->trail_n = 0;   /* repositioned */
+  }
+  if (s->trail_n) {
+    unsigned oldest =
+        (unsigned)((s->trail_head + TRAVEL_WINDOW - s->trail_n) % TRAVEL_WINDOW);
+    int dx = x - s->trail_x[oldest], dy = y - s->trail_y[oldest];
+    if (dx < 0) dx = -dx;
+    if (dy < 0) dy = -dy;
+    s->moving = (unsigned)(dx + dy) >= TRAVEL_MIN_PX;
+  } else {
+    s->moving = false;
+  }
+  s->trail_x[s->trail_head] = x;
+  s->trail_y[s->trail_head] = y;
+  s->trail_head = (uint8_t)((s->trail_head + 1u) % TRAVEL_WINDOW);
+  if (s->trail_n < TRAVEL_WINDOW) s->trail_n++;
   s->last_x = x; s->last_y = y; s->had_pos = true;
   const bool moving = s->moving;
 

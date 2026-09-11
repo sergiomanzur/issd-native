@@ -25,6 +25,7 @@
 #include "widescreen.h"
 #include "issd_widescreen.h"
 #include "issd_touch.h"
+#include "issd_script.h"
 #include "issd_android.h"
 #include "launcher_picker.h"
 #ifndef _WIN32
@@ -113,6 +114,7 @@ static int g_auto_start_frame = -1;
  * --screenshot only ever captures the final frame, which cannot show motion,
  * so there was no way to check that an edge player animates rather than
  * holding a pose. Consecutive frames are the only evidence that settles it. */
+static const char *g_script_path = NULL;
 static int g_dump_first = -1, g_dump_last = -1;
 static int g_save_state_frame = -1;
 static int g_load_state_frame = -1;
@@ -1065,6 +1067,8 @@ int main(int argc, char **argv) {
             g_save_state_frame = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--load-state") == 0 && i + 1 < argc) {
             g_load_state_frame = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc) {
+            g_script_path = argv[++i];
         } else if (strcmp(argv[i], "--dump-frames") == 0 && i + 1 < argc) {
             sscanf(argv[++i], "%d:%d", &g_dump_first, &g_dump_last);
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
@@ -1261,6 +1265,8 @@ int main(int argc, char **argv) {
 
     printf("[Running] Starting main execution loop...\n");
 
+    if (g_script_path) issd_script_load(g_script_path);
+
     while (g_running) {
         if (!g_headless) {
             SDL_Event ev;
@@ -1299,7 +1305,9 @@ int main(int argc, char **argv) {
                 PpuBeginDrawing(g_snes->ppu, (uint8_t *)g_pixel_buffer, (size_t)cur_render_w * sizeof(uint32_t),
                     kPpuRenderFlags_NewRenderer | (g_ws_active ? kPpuRenderFlags_NoSpriteLimits : 0));
 
-                if (g_auto_start_frame > 0) {
+                if (issd_script_active()) {
+                    g_pad1_state = issd_script_mask(frame_count);
+                } else if (g_auto_start_frame > 0) {
                     g_pad1_state = 0;
                     if (frame_count >= (uint32_t)g_auto_start_frame) {
                         uint32_t phase = frame_count % 60;

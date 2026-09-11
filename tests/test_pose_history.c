@@ -67,6 +67,20 @@ int main(void) {
   margin(x, frozen);
   for (int f = 0; f < 12; f++) assert(margin(x, frozen) == frozen);
 
+  /* A player held up by a tackle or pinned against a boundary still jitters
+   * a pixel every frame. That must not read as running: replaying a run cycle
+   * on the spot is what made stuck players appear to sprint without moving. */
+  issd_pose_history_reset();
+  x = 200;
+  for (int rep = 0; rep < 4; rep++)
+    for (int i = 0; i < 4; i++) { live(x, cyc[i]); x -= 3; live(x, cyc[i]); x -= 3; }
+  x = -40;
+  margin(x, frozen);
+  for (int f = 0; f < 20; f++) {
+    x += (f & 1) ? 1 : -1;              /* jitter, going nowhere */
+    assert(margin(x, frozen) == frozen);
+  }
+
   /* No clean cycle observed: hold the last frame rather than invent one. */
   issd_pose_history_reset();
   x = 200;
