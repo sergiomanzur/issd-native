@@ -12,20 +12,28 @@
  */
 #include "issd_mod.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* Layout of the roster tables: squads of 20 players, each with an 8 byte
  * name and 7 bytes of attributes, both flat arrays indexed by
  * team * 20 + player. */
-/* 33, not the 36 the editor assumes. Decoding the name table shows teams 0
- * to 32 hold full squads and the data stops there; writing 36 would run past
- * the table into whatever follows it. */
-#define ROM_TEAMS             33
+#define ROM_TEAMS             36
 #define ROM_PLAYERS_PER_TEAM  20
 #define ROM_NAME_BYTES         8
 #define ROM_ATTR_BYTES         7
-#define ROM_NAME_BASE     230286u
-#define ROM_ATTR_BASE     328192u
+/* The editor overstates both table bases by exactly 512 bytes. Walking the
+ * name table back from its value reaches real names 64 slots earlier, and
+ * from the true start it runs exactly 720 slots - 36 squads of 20, which is
+ * the count the editor assumed but could not reach from its own offset.
+ * Reading from the wrong base still lands inside the table, so it silently
+ * edits the wrong team rather than failing.
+ *
+ * The attribute base is confirmed the same 512 lower: at 0x50000 squad slot 0
+ * carries a distinct position value for all 36 teams - the goalkeeper - which
+ * the editor offset does not show. */
+#define ROM_NAME_BASE     229774u
+#define ROM_ATTR_BASE     327680u
 
 /* The cartridge does not use ASCII. 0x00 renders as a space and doubles as
  * padding; letters run from 0x68. Generated from the editor's dictionary. */
@@ -89,6 +97,27 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
     /* rom[base + 5] deliberately preserved. */
     rom[base + 6] = (uint8_t)(((p->skin_tone & 0x0F) << 4) |
                                (p->hair_style & 0x0F));
+}
+
+/* Switching packs at runtime has to start from the untouched cartridge:
+ * patches are destructive, so applying a second pack over the first would
+ * leave whichever fields the second does not mention still holding the
+ * first one's values. A pristine copy is kept for that. */
+static uint8_t *s_live;
+static uint8_t *s_pristine;
+static size_t   s_size;
+
+void issd_mod_rom_set_image(uint8_t *rom, size_t rom_size) {
+  s_live = rom; s_size = rom_size;
+  free(s_pristine);
+  s_pristine = (uint8_t *)malloc(rom_size);
+  if (s_pristine) memcpy(s_pristine, rom, rom_size);
+}
+
+int issd_mod_reapply(void) {
+  if (!s_live || !s_pristine) return 0;
+  memcpy(s_live, s_pristine, s_size);      /* back to vanilla first */
+  return issd_mod_apply_to_rom(s_live, s_size);
 }
 
 int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {

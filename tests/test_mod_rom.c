@@ -6,8 +6,8 @@
 #include <string.h>
 #include "issd_mod.h"
 
-#define ROM_NAME_BASE 230286u
-#define ROM_ATTR_BASE 328192u
+#define ROM_NAME_BASE 229774u
+#define ROM_ATTR_BASE 327680u
 #define PLAYERS       20
 #define NAME_BYTES     8
 #define ATTR_BYTES     7
@@ -64,7 +64,7 @@ int main(void) {
 
     /* --- a team beyond the cartridge's table must be refused, not written
      *     past the end of the roster data --- */
-    assert(rom[name_at(40, 0)] == 0xEE);
+    assert(rom[name_at(40, 0)] == 0xEE);   /* 36 teams: 40 is out of range */
 
     /* --- a ROM too small to hold the tables is refused outright --- */
     assert(issd_mod_apply_to_rom(rom, 1024) == 0);

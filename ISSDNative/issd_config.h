@@ -72,6 +72,11 @@ typedef struct {
     bool fast_menus;
     bool debug_unhooked_code;
 
+    /* Name of the active mod pack, empty for vanilla. Stored by name rather
+     * than index so adding or removing a pack cannot silently select a
+     * different one. */
+    char active_mod_pack[64];
+
     /* Controls (P1 Scancodes / Buttons) */
     int key_p1_up;
     int key_p1_down;

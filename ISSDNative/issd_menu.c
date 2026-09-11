@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "issd_mod.h"
+
 extern uint8_t g_ram[0x20000];
 
 IssdOverlayMenu g_overlay_menu;
@@ -110,7 +112,42 @@ static const uint8_t s_font8x8[96][8] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}  /* 127 */
 };
 
-#define MENU_TOTAL_ITEMS 15
+#define MENU_TOTAL_ITEMS 16
+
+/* Cycle the active mod pack: -1 is vanilla, then each loaded pack.
+ * Re-patching restores the pristine cartridge first, so switching packs
+ * never leaves fields from the previous one behind. Rosters are read when
+ * a match loads, so the change shows from the next match rather than
+ * mid-play. */
+static void issd_menu_cycle_mod_pack(int direction) {
+    const int count = issd_mod_get_pack_count();
+    const int states = count + 1;                 /* vanilla + each pack */
+    int cur = issd_mod_get_active_pack_index();   /* -1 .. count-1 */
+    int slot = ((cur + 1) + direction + states) % states;
+    int want = slot - 1;
+
+    issd_mod_set_active_pack(want);
+    issd_mod_reapply();
+
+    if (want < 0) {
+        g_issd_config.active_mod_pack[0] = 0;
+    } else {
+        IssdModPack *pack = issd_mod_get_pack(want);
+        if (pack) {
+            strncpy(g_issd_config.active_mod_pack, pack->name,
+                    sizeof(g_issd_config.active_mod_pack) - 1);
+            g_issd_config.active_mod_pack[
+                sizeof(g_issd_config.active_mod_pack) - 1] = 0;
+        }
+    }
+}
+
+static const char *issd_menu_mod_pack_label(void) {
+    int cur = issd_mod_get_active_pack_index();
+    if (cur < 0) return "VANILLA";
+    IssdModPack *pack = issd_mod_get_pack(cur);
+    return (pack && pack->name[0]) ? pack->name : "VANILLA";
+}
 
 static void DrawChar(uint32_t *fb, int fb_w, int fb_h, int x, int y, char c, uint32_t color) {
     if (c < 32 || c > 126) c = ' ';
@@ -256,6 +293,9 @@ bool issd_menu_navigate_left(void) {
         case 12: /* Engine Mode */
             g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
             break;
+        case 14: /* Mod Pack */
+            issd_menu_cycle_mod_pack(-1);
+            break;
         case 13: /* Debug & Japanese Unhooked Code */
             g_issd_config.debug_unhooked_code = !g_issd_config.debug_unhooked_code;
             if (g_issd_config.debug_unhooked_code) {
@@ -325,6 +365,9 @@ bool issd_menu_navigate_right(void) {
         case 12: /* Engine Mode */
             g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
             break;
+        case 14: /* Mod Pack */
+            issd_menu_cycle_mod_pack(1);
+            break;
         case 13: /* Debug & Japanese Unhooked Code */
             g_issd_config.debug_unhooked_code = !g_issd_config.debug_unhooked_code;
             if (g_issd_config.debug_unhooked_code) {
@@ -381,9 +424,10 @@ bool issd_menu_confirm(void) {
         case 11: /* Volume */
         case 12: /* Engine Mode */
         case 13: /* Debug & JPN Mode */
+        case 14: /* Mod Pack */
             issd_menu_navigate_right();
             break;
-        case 14: /* Save & Quit */
+        case 15: /* Save & Quit */
             issd_config_save(&g_issd_config, NULL);
             exit(0);
             break;
@@ -484,7 +528,8 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[11], sizeof(items[11]), "Volume:     <%d%%>", g_issd_config.master_volume);
     snprintf(items[12], sizeof(items[12]), "Engine:     <%s>", mode_str);
     snprintf(items[13], sizeof(items[13]), "Debug/JPN:  <%s>", g_issd_config.debug_unhooked_code ? "ENABLED" : "DISABLED");
-    snprintf(items[14], sizeof(items[14]), "Save & Quit to Desktop");
+    snprintf(items[14], sizeof(items[14]), "Mod Pack:   <%s>", issd_menu_mod_pack_label());
+    snprintf(items[15], sizeof(items[15]), "Save & Quit to Desktop");
 
     int start_y = box_y + 14;
     for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {

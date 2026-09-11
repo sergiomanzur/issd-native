@@ -1138,8 +1138,23 @@ int main(int argc, char **argv) {
 
     /* Rosters are read from the cartridge image at runtime, so mods are
      * applied to it here: after the ROM is in memory, before the engine
-     * boots and reads any of it. */
-    issd_mod_apply_to_rom(rom_data, rom_size);
+     * boots and reads any of it. The pristine copy lets the pack be changed
+     * later from the menu without stacking one patch on top of another. */
+    issd_mod_rom_set_image(rom_data, rom_size);
+    {
+        int want = -1;   /* -1 is vanilla */
+        if (g_issd_config.active_mod_pack[0]) {
+            for (int i = 0; i < issd_mod_get_pack_count(); i++) {
+                IssdModPack *mp = issd_mod_get_pack(i);
+                if (mp && strcmp(mp->name, g_issd_config.active_mod_pack) == 0) { want = i; break; }
+            }
+            if (want < 0)
+                fprintf(stderr, "[ModLoader] Config selects mod pack '%s' but no such pack is installed; starting vanilla.\n",
+                        g_issd_config.active_mod_pack);
+        }
+        issd_mod_set_active_pack(want);
+        issd_mod_reapply();
+    }
 
     if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "[ERROR] SDL_Init failed: %s\n", SDL_GetError());

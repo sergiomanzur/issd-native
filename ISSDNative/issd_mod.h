@@ -82,6 +82,14 @@ void        issd_mod_apply_match_overrides(uint8_t p1_team, uint8_t p2_team);
  * Returns the number of players patched. */
 int         issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size);
 
+/* Remember the cartridge image and keep a pristine copy, so packs can be
+ * switched at runtime. Call once, after the ROM is read. */
+void        issd_mod_rom_set_image(uint8_t *rom, size_t rom_size);
+
+/* Restore the pristine image and apply whichever pack is active. Rosters are
+ * read when a match loads, so a change takes effect from the next match. */
+int         issd_mod_reapply(void);
+
 #ifdef __cplusplus
 }
 #endif
