@@ -68,3 +68,8 @@ captures/
 dumps/
 recomp/.generated.snesrecomp-staging-*/
 deps/**/.git-vendor/
+android/local.properties
+android/.gradle/
+android/app/build/
+deps/SDL2/
+android/app/.cxx/

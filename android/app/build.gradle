@@ -1,0 +1,63 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.issdnative'
+    compileSdk 34
+    ndkVersion '26.2.11394342'
+
+    defaultConfig {
+        applicationId 'com.issdnative'
+        // 26 (Android 8) is a broad floor: it covers the Retroid handhelds and
+        // essentially every device still in use, without forcing legacy
+        // storage fallbacks.
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=c++_shared'
+                // arm64-v8a is the shipping target (every current Android
+                // handheld). x86_64 exists so the app can run in the emulator,
+                // which is x86_64 only on an x86 host.
+                abiFilters 'arm64-v8a', 'x86_64'
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    sourceSets {
+        main {
+            // SDL ships the Activity that owns the Android window and input;
+            // compile it straight from the pinned source tree rather than
+            // keeping a second copy in this repo.
+            java.srcDirs += '../../deps/SDL2/android-project/app/src/main/java'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug   // unsigned dev builds
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // The ROM is never shipped. Nothing here bundles cartridge data.
+    packagingOptions {
+        jniLibs { useLegacyPackaging = true }
+    }
+}

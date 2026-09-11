@@ -24,6 +24,8 @@
 #include "issd_menu.h"
 #include "widescreen.h"
 #include "issd_widescreen.h"
+#include "issd_touch.h"
+#include "issd_android.h"
 #include "launcher_picker.h"
 #ifndef _WIN32
 #include <sys/stat.h>
@@ -448,6 +450,14 @@ static bool FileExists(const char *path) {
 static void BuildDefaultConfigPath(char *out, size_t out_size) {
     if (!out || out_size == 0) return;
     out[0] = '\0';
+#ifdef ISSD_ANDROID
+    /* App-private external storage: no runtime permission needed, and the
+     * user can still reach it over USB to drop in a ROM. */
+    if (issd_android_external_dir()[0]) {
+        snprintf(out, out_size, "%s/issd_native.cfg", issd_android_external_dir());
+        return;
+    }
+#endif
 #ifdef _WIN32
     const char *appdata = getenv("APPDATA");
     if (appdata && appdata[0]) {
@@ -511,11 +521,72 @@ static const char *ResolveConfigPath(char *out, size_t out_size, const char *cli
 static bool PromptForRomFile(char *out, size_t out_size) {
     if (!out || out_size == 0) return false;
     out[0] = '\0';
+#ifdef ISSD_ANDROID
+    /* Android has no file dialog callable from C. Scan the app's own
+     * external directory, which is where a user can copy a cartridge
+     * image over USB without granting storage permissions. */
+    return issd_android_find_rom(out, out_size);
+#else
     return snesrecomp_pick_rom_file(out, out_size) == 1 && out[0] != 0;
+#endif
 }
 
 static SDL_GameController *g_controller = NULL;
 static SDL_Window *g_window = NULL;
+
+/* SDL reports touches normalised to the window, and reports each finger
+ * independently. issd_touch wants the full set of live points in window
+ * pixels once per frame, so collect them from SDL's own finger state
+ * rather than trying to track down/up transitions ourselves. */
+static void PumpTouchState(void) {
+    if (!g_window || !issd_touch_enabled()) return;
+    int win_w = 0, win_h = 0;
+    SDL_GetWindowSize(g_window, &win_w, &win_h);
+    issd_touch_set_viewport(win_w, win_h);
+
+    int xs[10], ys[10], n = 0;
+    const int devices = SDL_GetNumTouchDevices();
+    for (int d = 0; d < devices && n < 10; d++) {
+        const SDL_TouchID id = SDL_GetTouchDevice(d);
+        const int fingers = SDL_GetNumTouchFingers(id);
+        for (int f = 0; f < fingers && n < 10; f++) {
+            SDL_Finger *finger = SDL_GetTouchFinger(id, f);
+            if (!finger) continue;
+            xs[n] = (int)(finger->x * (float)win_w);
+            ys[n] = (int)(finger->y * (float)win_h);
+            n++;
+        }
+    }
+    issd_touch_set_points(xs, ys, n);
+
+    if (issd_touch_take_menu_press()) issd_menu_toggle();
+}
+
+/* Drawn straight onto the renderer after the game frame, so the overlay is
+ * always at native window resolution rather than the 256-pixel-wide SNES
+ * buffer, and never gets scaled into mush. */
+static void RenderTouchOverlay(SDL_Renderer *renderer) {
+    if (!renderer || !issd_touch_enabled()) return;
+    const IssdTouchRect *rects = NULL;
+    const int count = issd_touch_rects(&rects);
+    if (!rects) return;
+
+    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    for (int i = 0; i < count; i++) {
+        const IssdTouchRect *r = &rects[i];
+        if (!r->visible) continue;
+        SDL_Rect box = { r->x, r->y, r->w, r->h };
+        /* The menu button stays brighter than the rest: it is the one
+         * control that is always available and must be findable. */
+        const bool is_menu = (i == ISSD_TOUCH_MENU);
+        const Uint8 fill = r->pressed ? 190 : (is_menu ? 120 : 70);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, fill);
+        SDL_RenderFillRect(renderer, &box);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255,
+                               r->pressed ? 255 : (is_menu ? 220 : 150));
+        SDL_RenderDrawRect(renderer, &box);
+    }
+}
 
 static void ToggleFullscreen(void) {
     if (!g_window) return;
@@ -952,6 +1023,13 @@ static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int 
 int main(int argc, char **argv) {
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
+#ifdef ISSD_ANDROID
+    /* A handheld may have both a touchscreen and physical controls; the
+     * overlay is additive, so leaving it on costs nothing but screen. */
+    issd_touch_set_enabled(true);
+#else
+    issd_touch_set_enabled(false);
+#endif
 #ifdef _WIN32
     SetUnhandledExceptionFilter(CrashFilter);
 #else
@@ -1186,6 +1264,7 @@ int main(int argc, char **argv) {
                     ProcessInputEvent(&ev);
                 }
             }
+            PumpTouchState();
         }
 
         uint64_t now = SDL_GetPerformanceCounter();
@@ -1245,7 +1324,12 @@ int main(int argc, char **argv) {
                 }
 
                 /* Run 1 SNES frame */
-                uint32_t inputs = (g_pad1_state & 0xFFF) | ((g_pad2_state & 0xFFF) << 12);
+                /* Touch is additive: a physical pad and the on-screen pad
+                 * both drive player 1, which is what a handheld with both
+                 * needs. */
+                uint32_t touch_bits = issd_touch_pad_mask();
+                uint32_t inputs = ((g_pad1_state | touch_bits) & 0xFFF)
+                                | ((g_pad2_state & 0xFFF) << 12);
                 uint64_t _rf_t0 = SDL_GetPerformanceCounter();
                 RtlRunFrame(inputs);
                 uint64_t _rf_t1 = SDL_GetPerformanceCounter();
@@ -1385,6 +1469,7 @@ int main(int argc, char **argv) {
                 SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                 SDL_RenderClear(renderer);
                 SDL_RenderCopy(renderer, present_texture, NULL, &dst_rect);
+                RenderTouchOverlay(renderer);
                 SDL_RenderPresent(renderer);
                 last_present_time = SDL_GetPerformanceCounter();
 

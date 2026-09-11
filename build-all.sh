@@ -13,6 +13,7 @@
 #   linux    WSL (fast iteration, host glibc)   -> dist/linux
 #   steamos  Docker, Steam Linux Runtime 3.0    -> dist/steamos
 #            "sniper" SDK (Debian 12, glibc 2.36)
+#   android  Gradle + NDK, arm64-v8a + x86_64   -> dist/android
 #
 # A build that cannot run its target FAILS. It never quietly produces fewer
 # artifacts than asked for: silently skipping a target is how a stale binary
@@ -24,7 +25,7 @@ WSL_DISTRO_DEFAULT="Ubuntu-24.04"
 WSL_DISTRO="${ISSD_WSL_DISTRO:-$WSL_DISTRO_DEFAULT}"
 SNIPER_IMAGE="${ISSD_SNIPER_IMAGE:-registry.gitlab.steamos.cloud/steamrt/sniper/sdk:latest}"
 
-ALL_TARGETS=(windows linux steamos)
+ALL_TARGETS=(windows linux steamos android)
 TARGETS=("${ALL_TARGETS[@]}")
 
 die()  { printf '\n[build-all] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -49,7 +50,7 @@ done
 
 for t in "${TARGETS[@]}"; do
     case "$t" in
-        windows|linux|steamos) ;;
+        windows|linux|steamos|android) ;;
         *) die "unknown target '$t' (expected: ${ALL_TARGETS[*]})" ;;
     esac
 done
@@ -102,6 +103,20 @@ build_steamos() {
     note "steamos -> dist/steamos"
 }
 
+build_android() {
+    rule "android"
+    local sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$LOCALAPPDATA/Android/Sdk}}"
+    # LOCALAPPDATA is a Windows path; cygpath turns it into one bash can stat.
+    command -v cygpath >/dev/null && sdk="$(cygpath -u "$sdk" 2>/dev/null || printf %s "$sdk")"
+    [ -d "$sdk" ] || die "android: Android SDK not found at '$sdk'. Set ANDROID_SDK_ROOT, or --skip android"
+    bash "$REPO/scripts/build-android.sh" || die "android: build failed"
+    local apk
+    apk=$(find "$REPO/android/app/build/outputs/apk" -name '*.apk' 2>/dev/null | head -1)
+    [ -n "$apk" ] || die "android: no APK produced"
+    stage android "$apk"
+    note "android -> dist/android"
+}
+
 # MSYS_NO_PATHCONV stops Git Bash rewriting container-side absolute paths
 # (-w /src and the script argument) into Windows paths before docker sees them.
 # /c/foo -> C:/foo for Docker volume mounts; identity elsewhere.
@@ -119,6 +134,7 @@ for t in "${TARGETS[@]}"; do
         windows) build_windows || FAILED+=(windows) ;;
         linux)   build_linux   || FAILED+=(linux) ;;
         steamos) build_steamos || FAILED+=(steamos) ;;
+        android) build_android || FAILED+=(android) ;;
     esac
 done
 

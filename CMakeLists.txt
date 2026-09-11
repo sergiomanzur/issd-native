@@ -25,27 +25,14 @@ endif()
 
 include(${SNESRECOMP_ROOT}/runner/runner.cmake)
 
-file(GLOB GENERATED_SOURCES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/recomp/generated/*.c"
-)
-
-set(GAME_SOURCES
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/main.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_bridge.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_widescreen.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_pose_history.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_config.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_save.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_mod.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_menu.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_decompress.c"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ISSDNative/issd_audio.c"
-)
+# One shared source list for every port (see cmake/issd_sources.cmake).
+set(ISSD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/issd_sources.cmake)
 
 add_executable(ISSDNative
     ${SNESRECOMP_RUNNER_SOURCES}
-    ${GENERATED_SOURCES}
-    ${GAME_SOURCES}
+    ${ISSD_GENERATED_SOURCES}
+    ${ISSD_GAME_SOURCES}
 )
 
 target_include_directories(ISSDNative PRIVATE
