@@ -46,6 +46,29 @@ bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram) {
          stride <= 0x340 && (stride & 63) == 0;
 }
 
+/* Menus are pillarboxed unless they are one of the screens built the way the
+ * cartridge builds all of them: BG2 a tiling wallpaper, BG1 the panels and
+ * BG3 or sprites the text. Verified by isolating layers on the main menu and
+ * the scenario select, which share the layering exactly.
+ *
+ * Only BG2 is extended, and only by repeating what is already on screen. The
+ * wallpaper is a repeating pattern, so it tiles into the margins seamlessly;
+ * nothing is scaled and no artwork is invented. Panels and text stay at their
+ * authored positions in the middle 256 pixels. */
+bool issd_widescreen_menu_layout(const Ppu *ppu, const uint8_t *ram) {
+  if (!ppu || !ram) return false;
+  unsigned mode = word(ram, 0x32);
+  /* Modes 0 and 1 are boot, the Konami logo and the title screen. The title
+   * is an HDMA mode 3 split with windowed photo frames; widening its layers
+   * would fight that, and it is not a menu. */
+  if (mode != 5 && mode != 6) return false;
+  if (issd_widescreen_pitch_layout(ppu, ram)) return false;
+  /* Some screens composite the wallpaper through the sub screen for colour
+   * math and leave only sprites on the main screen: the scenario select runs
+   * main=0x10, sub=0x07. Checking the main screen alone missed those. */
+  return ((ppu->screenEnabled[0] | ppu->screenEnabled[1]) & (1u << 1)) != 0;
+}
+
 static bool world_tile(const uint8_t *ram, unsigned layer,
                        int x, int y, uint16_t *tile) {
   unsigned stride = word(ram, 0x1ffcc);
@@ -321,6 +344,7 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   if (extra > 95) extra=95;
   PpuWsSetOamLeftHints(ppu,NULL); PpuWsSetOamRightHints(ppu,NULL);
   PpuSetWidescreenLayerClamp(ppu,0);
+  PpuSetWidescreenLayerRepeat(ppu,0);
   for (int l=0;l<4;l++) PpuSetWidescreenLayerClampBand(ppu,l,0,0);
   /* Classic 4:3 takes none of the presentation branches: no VRAM/OAM
    * transaction, no supplemental sprites, no reconstructed margins. */
@@ -340,7 +364,14 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
 
   if (!is_pitch && (s_inactive_frames >= 2 || s_ws_extra == 0)) {
     s_ws_extra = 0;
-    PpuSetExtraSpaceCentered(ppu,(uint16_t)extra);
+    if (issd_widescreen_menu_layout(ppu, ram)) {
+      PpuSetExtraSpace(ppu, (uint16_t)extra);
+      PpuSetExtraSideSpace(ppu, extra, extra, 0);
+      PpuSetWidescreenLayerRepeat(ppu, 1u << 1);                     /* BG2 */
+      PpuSetWidescreenLayerClamp(ppu, (1u<<0) | (1u<<2) | (1u<<3));  /* rest */
+    } else {
+      PpuSetExtraSpaceCentered(ppu,(uint16_t)extra);
+    }
     remember_ram(ram);
     return false;
   }

@@ -12,6 +12,7 @@ void PpuSetExtraSpace(Ppu *p, uint16_t n) { p->extraLeftRight = p->extraLeftCur 
 void PpuSetExtraSpaceCentered(Ppu *p, uint16_t n) { p->extraLeftRight = n; p->extraLeftCur = p->extraRightCur = 0; }
 void PpuSetExtraSideSpace(Ppu *p,int l,int r,int b) { p->extraLeftCur=l;p->extraRightCur=r;p->extraBottomCur=b; }
 void PpuSetWidescreenLayerClamp(Ppu *p, uint8_t n) { p->wsLayerClamp = n; }
+void PpuSetWidescreenLayerRepeat(Ppu *p, uint8_t n) { p->wsLayerRepeat = n; }
 void PpuSetWidescreenLayerMask(Ppu *p, uint8_t n) { p->wsLayerWidenMask = n; }
 void PpuSetWidescreenWindowExpansion(Ppu *p, uint8_t l, uint8_t w) { p->wsWindowExpandLayers = l; p->wsWindowExpandWindows = w; }
 void PpuSetWidescreenLayerClampBand(Ppu *p, uint8_t l, uint8_t a, uint8_t b) { p->wsClampY0[l] = a; p->wsClampY1[l] = b; }
@@ -47,6 +48,23 @@ int main(void) {
   assert(ppu.extraLeftCur==0 && ppu.extraRightCur==0);          /* black bars */
   ram[0x70]=0x08; issd_widescreen_reset();
   assert(issd_widescreen_pitch_layout(&ppu,ram));
+
+  /* Menus: the wallpaper on BG2 is repeated into the margins instead of
+   * pillarboxing them. It must trigger whether the screen composites BG2
+   * through the main screen (main menu) or the sub screen (scenario select,
+   * which runs main=0x10 sub=0x07 for colour math), and must never trigger
+   * on the title screen, whose HDMA mode 3 split is not a menu. */
+  ram[0x70]=0x00; ram[0x32]=6;
+  ppu.screenEnabled[0]=0x17; ppu.screenEnabled[1]=0x00;
+  assert(issd_widescreen_menu_layout(&ppu,ram));
+  ppu.screenEnabled[0]=0x10; ppu.screenEnabled[1]=0x07;
+  assert(issd_widescreen_menu_layout(&ppu,ram));
+  ppu.screenEnabled[0]=0x11; ppu.screenEnabled[1]=0x00;   /* no BG2 at all */
+  assert(!issd_widescreen_menu_layout(&ppu,ram));
+  ppu.screenEnabled[0]=0x17;
+  ram[0x32]=1; assert(!issd_widescreen_menu_layout(&ppu,ram));  /* title */
+  ram[0x32]=0; assert(!issd_widescreen_menu_layout(&ppu,ram));  /* boot */
+  ram[0x32]=6; ram[0x70]=0x08;
   assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
   /* BG2 world (248,256) wraps to left nametable, expected last column of #1. */
   assert(ppu.vram[0x1800+31] == 0x2403);
