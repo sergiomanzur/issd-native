@@ -56,15 +56,27 @@ static uint8_t encode_char(char c) {
     return 0x00;                               /* unrepresentable -> blank */
 }
 
-/* Attributes are 4 bit fields. The cartridge stores 0..15 and the game shows
- * 1..16, so there are sixteen levels, not a hundred. Mod files are authored on
- * the familiar 0..99 scale, so they are quantised here rather than silently
- * truncated - a 99 and an 80 must not collapse to the same nibble by accident,
- * and a value of 0 must not wrap to the maximum. */
+/* Attributes are 4 bit fields, but the cartridge does not use all sixteen
+ * levels. Measured across its own 720 players, every attribute sits between
+ * nibble 2 and nibble 9, averaging about 6 - acceleration, for instance,
+ * runs 2..9 with most players on 5, 6 or 7.
+ *
+ * Mapping an authored 0..99 straight onto 0..15 therefore put a normal
+ * football rating of 70 to 90 at nibble 11 to 14: above anything the game
+ * ships, and squeezed into so few steps that a whole squad came out
+ * effectively identical. Mapping onto the range actually in use keeps modded
+ * players comparable with stock ones and spreads a squad across real steps.
+ *
+ * 0 stays at the floor rather than wrapping, and 99 reaches the same ceiling
+ * the cartridge's best players do rather than an unreachable one. */
+#define RATING_NIBBLE_MIN 2u
+#define RATING_NIBBLE_MAX 9u
+
 static uint8_t rating_to_nibble(uint8_t rating) {
     if (rating > 99) rating = 99;
-    unsigned n = ((unsigned)rating * 15u + 49u) / 99u;   /* 0..99 -> 0..15 */
-    return (uint8_t)(n > 15 ? 15 : n);
+    const unsigned span = RATING_NIBBLE_MAX - RATING_NIBBLE_MIN;   /* 7 steps */
+    unsigned n = RATING_NIBBLE_MIN + ((unsigned)rating * span + 49u) / 99u;
+    return (uint8_t)(n > RATING_NIBBLE_MAX ? RATING_NIBBLE_MAX : n);
 }
 
 static void patch_name(uint8_t *rom, size_t base, const char *name) {

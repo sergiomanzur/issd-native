@@ -22,7 +22,7 @@ static size_t attr_at(int team, int player) {
     return ROM_ATTR_BASE + ((size_t)team * PLAYERS + player) * ATTR_BYTES;
 }
 
-static uint8_t rating_nibble_for_50(void) { return (uint8_t)((50u*15u+49u)/99u); }
+static uint8_t rating_nibble_for_50(void) { return (uint8_t)(2u + (50u*7u+49u)/99u); }
 
 int main(void) {
     assert(issd_mod_init());
@@ -56,8 +56,12 @@ int main(void) {
 
     /* --- attributes are nibble pairs, 0..99 quantised to 0..15 --- */
     const uint8_t *a = rom + attr_at(0, 0);
-    assert((a[0] >> 4) == 15);    /* acceleration 99 -> max */
-    assert((a[0] & 0x0F) == 0);   /* speed 0 -> min, must not wrap to max */
+    /* The cartridge only ever uses nibbles 2..9 across its own 720 players,
+     * so an authored 0..99 maps onto that band. Mapping onto the full 0..15
+     * put every normal football rating at 11..14: above anything the game
+     * ships and squashed into so few steps that a squad came out identical. */
+    assert((a[0] >> 4) == 9);     /* acceleration 99 -> the ceiling in use */
+    assert((a[0] & 0x0F) == 2);   /* speed 0 -> the floor, and never wraps */
     assert(a[5] == 0xA5);         /* untouched index byte preserved */
 
     /* Position lives in the high nibble of byte 4 and must be written, not
