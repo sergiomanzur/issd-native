@@ -12,6 +12,9 @@ bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram);
 /* True on a menu screen whose BG2 wallpaper can be repeated into the side
  * margins instead of pillarboxing them. */
 bool issd_widescreen_menu_layout(const Ppu *ppu, const uint8_t *ram);
+/* True on the title screen, whose margins take its backdrop colour rather
+ * than black bars. */
+bool issd_widescreen_title_layout(const Ppu *ppu, const uint8_t *ram);
 bool Issd_IsWidescreenActive(void);
 /* Drop the remembered previous-frame WRAM. Call whenever continuity with the
  * last presented frame is broken (state load, scene cut) so the supplement

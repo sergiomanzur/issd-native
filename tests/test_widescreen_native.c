@@ -71,6 +71,23 @@ int main(void) {
   word(0x1ffcc, 0x200);
   ram[0x70]=0x0F; assert(!issd_widescreen_pitch_layout(&ppu,ram));
   assert(!issd_widescreen_menu_layout(&ppu,ram));
+  /* The title screen takes its own backdrop colour in the margins rather
+   * than black bars. Every layer is clamped so the HDMA mode 3 split and the
+   * windowed photo frames are left exactly as the cartridge drew them, and it
+   * must never be mistaken for a menu or a pitch. */
+  ram[0x32]=1; ram[0x70]=0x00; word(0x1ffcc, 0);
+  assert(issd_widescreen_title_layout(&ppu,ram));
+  assert(!issd_widescreen_menu_layout(&ppu,ram));
+  assert(!issd_widescreen_pitch_layout(&ppu,ram));
+  issd_widescreen_reset();
+  assert(!issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
+  assert(ppu.extraLeftCur==71 && ppu.extraRightCur==71);  /* widened, not barred */
+  assert(ppu.wsLayerClamp == 0x0F);                       /* nothing extends */
+  ram[0x32]=6;
+  assert(!issd_widescreen_title_layout(&ppu,ram));        /* menus are not it */
+  word(0x1ffcc, 0x200);        /* restore the stadium the fixture set up */
+  issd_widescreen_reset();
+
   ram[0x32]=6; ram[0x70]=0x08;
   assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
   /* BG2 world (248,256) wraps to left nametable, expected last column of #1. */

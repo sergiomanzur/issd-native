@@ -88,6 +88,18 @@ bool issd_widescreen_menu_layout(const Ppu *ppu, const uint8_t *ram) {
   return ((ppu->screenEnabled[0] | ppu->screenEnabled[1]) & (1u << 1)) != 0;
 }
 
+/* The title screen is an HDMA mode 3 split with windowed photo frames, so
+ * extending its layers would fight the split. It does not need extending:
+ * with every layer disabled the picture still renders white, which means the
+ * white is the CGRAM backdrop rather than any layer. Widening the picture
+ * while clamping every layer to the middle 256 pixels therefore fills the
+ * margins with the screen own backdrop colour and leaves the split, the
+ * windows and the sprites exactly where the cartridge put them. */
+bool issd_widescreen_title_layout(const Ppu *ppu, const uint8_t *ram) {
+  if (!ppu || !ram) return false;
+  return word(ram, 0x32) == 1;
+}
+
 static bool world_tile(const uint8_t *ram, unsigned layer,
                        int x, int y, uint16_t *tile) {
   unsigned stride = word(ram, 0x1ffcc);
@@ -383,7 +395,11 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
 
   if (!is_pitch && (s_inactive_frames >= 2 || s_ws_extra == 0)) {
     s_ws_extra = 0;
-    if (issd_widescreen_menu_layout(ppu, ram)) {
+    if (issd_widescreen_title_layout(ppu, ram)) {
+      PpuSetExtraSpace(ppu, (uint16_t)extra);
+      PpuSetExtraSideSpace(ppu, extra, extra, 0);
+      PpuSetWidescreenLayerClamp(ppu, 0x0F);   /* every layer stays centred */
+    } else if (issd_widescreen_menu_layout(ppu, ram)) {
       PpuSetExtraSpace(ppu, (uint16_t)extra);
       PpuSetExtraSideSpace(ppu, extra, extra, 0);
       PpuSetWidescreenLayerRepeat(ppu, 1u << 1);                     /* BG2 */
