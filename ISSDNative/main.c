@@ -109,6 +109,11 @@ static int g_auto_start_frame = -1;
  * position, so widescreen work banks a state interactively and reinstalls it
  * here: -1 disables, otherwise the frame the quicksave slot is written after
  * or restored before. */
+/* --dump-frames A:B writes every frame in the range to f_NNNNN.bmp.
+ * --screenshot only ever captures the final frame, which cannot show motion,
+ * so there was no way to check that an edge player animates rather than
+ * holding a pose. Consecutive frames are the only evidence that settles it. */
+static int g_dump_first = -1, g_dump_last = -1;
 static int g_save_state_frame = -1;
 static int g_load_state_frame = -1;
 static uint32_t g_pixel_buffer[MAX_WS_WIDTH * SNES_HEIGHT];
@@ -1060,6 +1065,8 @@ int main(int argc, char **argv) {
             g_save_state_frame = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--load-state") == 0 && i + 1 < argc) {
             g_load_state_frame = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--dump-frames") == 0 && i + 1 < argc) {
+            sscanf(argv[++i], "%d:%d", &g_dump_first, &g_dump_last);
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
             cli_config_path = argv[++i];
         } else if (argv[i][0] != '-') {
@@ -1355,6 +1362,11 @@ int main(int argc, char **argv) {
 
                 /* Render SNES PPU scanlines */
                 IssdDrawPpuFrame();
+                if (g_dump_first >= 0 && (int)frame_count >= g_dump_first && (int)frame_count <= g_dump_last) {
+                    char nm[64];
+                    snprintf(nm, sizeof(nm), "f_%05u.bmp", frame_count);
+                    SaveBmp(nm, g_pixel_buffer, cur_render_w, cur_render_h);
+                }
 
 
                 /* Scanline Filter Effect (Native buffer mode) */
