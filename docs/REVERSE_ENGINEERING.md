@@ -136,3 +136,53 @@ capacity; scenes exhausting all entries have not been validated. The existing
 95-pixel per-side cap remains, so the "21:9" selection renders 446x224 internal
 pixels. Stadium/weather combinations and all set-piece transitions still need
 broader visual coverage before claiming exhaustive compatibility.
+
+---
+
+## Locating per-team data by diffing cartridge read maps
+
+The per-team formation table resisted every pattern search. Capturing the
+formation index the game leaves in `$7E15F6` for thirty of the thirty-six
+teams gave a thirty-constraint fingerprint, and sweeping every stride from
+1 to 1024 in both directions - matching exact values, and again matching
+only the partition of teams into equal groups, so any re-encoding would
+still be caught - found nothing anywhere in the 2 MB image. The same search
+over a WRAM snapshot found nothing either.
+
+What found it was recording reads rather than searching bytes. A temporary
+hook in `RomPtr` - the single function every cartridge access resolves
+through - marked each offset a run touched, and six runs were captured that
+differed only in which team the team select screen had highlighted.
+
+Two facts fell out immediately:
+
+- Only about 67,000 of 2,097,152 offsets are read at all up to that screen.
+- Because the navigation scripts walk through the grid, a run that ends on a
+  later cell also performs every earlier cell's reads. Only the two teams at
+  the end of each row had reads nobody else made.
+
+Those two teams are three apart in the roster, so any 16-bit table indexed
+by team shows up as a pair of reads exactly six bytes apart. Three such
+pairs appeared at once: the attribute table (140-byte stride, already
+known), and two pointer tables. Following the pointers from `$8B:EF48` gave
+36 records of 31 bytes whose first byte reproduced the fingerprint exactly,
+including the six teams that had never been captured.
+
+The technique generalises to any per-team or per-entity table: capture read
+maps for two runs that differ only in the selection, subtract, and look for
+offsets whose spacing matches the index distance.
+
+### Confirming what the record does
+
+Three mutations, each changing one thing:
+
+- Forcing all twenty of a team's position nibbles to the same value left the
+  printed formation unchanged - so the label is not derived from the roster,
+  which a promising-looking five-out-of-six correlation had suggested.
+- Writing each of the sixteen values into the label byte and screenshotting
+  the result enumerated the whole printable vocabulary.
+- Rewriting only the ten coordinate pairs, leaving label and roles alone,
+  changed 620 bytes of WRAM at kickoff and visibly moved the markers on the
+  in-match radar - so the pairs drive real positioning, not just the
+  formation screen. Shifting every pair's depth by the same amount and
+  watching which way the side moved established that negative is upfield.

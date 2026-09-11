@@ -11,6 +11,7 @@
  * editor for this exact cartridge, cross-checked against the ROM itself.
  */
 #include "issd_mod.h"
+#include "issd_formation.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,6 +35,21 @@
  * the editor offset does not show. */
 #define ROM_NAME_BASE     229774u
 #define ROM_ATTR_BASE     327680u
+
+/* Team shapes live apart from the roster, behind a pointer table.
+ *
+ * $8B:EF48 holds thirty-six 16-bit pointers, one per team, into bank $8B;
+ * each names a 31-byte record holding the label the team select screen
+ * prints, ten home positions, and ten role bytes. Found by recording every
+ * cartridge offset a run touches and diffing runs that differed only by
+ * which team was highlighted - two teams three apart in the roster read two
+ * pointers six bytes apart, which is what gave the table away.
+ *
+ * The records themselves are packed end to end from $8B:EF9E, but nothing
+ * requires that, so the pointer is always followed rather than computed. */
+#define ROM_FORMATION_PTRS          0x05EF48u
+#define ROM_FORMATION_BANK          0x0Bu
+#define ROM_FORMATION_RECORD_BYTES  31u
 
 /* The cartridge does not use ASCII. 0x00 renders as a space and doubles as
  * padding; letters run from 0x68. Generated from the editor's dictionary. */
@@ -127,6 +143,92 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
                                (p->hair_style & 0x0F));
 }
 
+/* LoROM: bank $80+n covers file offset n * $8000, mapped at $8000-$FFFF. */
+static size_t formation_record_offset(const uint8_t *rom, uint8_t team_id) {
+    const size_t entry = ROM_FORMATION_PTRS + (size_t)team_id * 2u;
+    const unsigned ptr = (unsigned)rom[entry] | ((unsigned)rom[entry + 1] << 8);
+    if (ptr < 0x8000u) return 0;       /* not a bank address: table is wrong */
+    return (size_t)ROM_FORMATION_BANK * 0x8000u + (ptr - 0x8000u);
+}
+
+static void warn_unknown_formation(const char *pack, const char *name) {
+    fprintf(stderr, "[ModLoader] '%s': unknown formation \"%s\". Known: ",
+            pack, name);
+    for (int i = 0; i < issd_formation_count(); i++)
+        fprintf(stderr, "%s\"%s\"", i ? ", " : "", issd_formation_at(i)->name);
+    fprintf(stderr, ".\n");
+}
+
+/* The label only names the shape; the positions and roles are the shape. A
+ * pack that lists its players' positions differently from the formation it
+ * asked for gets a warning rather than a silent correction, because which of
+ * the two is wrong is the author's call. */
+static void warn_position_mismatch(const IssdModTeam *team,
+                                   const IssdFormation *f, int n) {
+    int want[3] = {0, 0, 0};   /* defenders, midfielders, forwards */
+    for (int i = 0; i < ISSD_FORMATION_SLOTS; i++) {
+        uint8_t r = f->slots[i].role;
+        if (r == ISSD_ROLE_DEFENDER || r == ISSD_ROLE_DEFENDER_ATTACK) want[0]++;
+        else if (r == ISSD_ROLE_FORWARD) want[2]++;
+        else want[1]++;
+    }
+    int have[3] = {0, 0, 0};
+    const int outfield = n < 11 ? n : 11;
+    for (int p = 1; p < outfield; p++) {   /* slot 0 is the keeper */
+        char c = team->players[p].position[0];
+        if (c == 'D') have[0]++;
+        else if (c == 'F') have[2]++;
+        else have[1]++;
+    }
+    if (outfield == 11 &&
+        (have[0] != want[0] || have[1] != want[1] || have[2] != want[2]))
+        fprintf(stderr,
+                "[ModLoader] team %u '%s': formation \"%s\" lines up %d-%d-%d "
+                "but the first eleven are listed %d-%d-%d. The pitch follows "
+                "the formation; the squad list follows the positions.\n",
+                team->team_id, team->name, f->name,
+                want[0], want[1], want[2], have[0], have[1], have[2]);
+}
+
+/* Write a team's shape. Returns true when the record was rewritten. */
+static bool patch_formation(uint8_t *rom, size_t rom_size,
+                            const char *pack_name, const IssdModTeam *team,
+                            int player_count) {
+    if (!team->formation[0]) return false;
+
+    const IssdFormation *base = issd_formation_find(team->formation);
+    if (!base) { warn_unknown_formation(pack_name, team->formation); return false; }
+
+    IssdFormation f;
+    if (!issd_formation_apply_tactics(&f, base, team->tactics))
+        fprintf(stderr,
+                "[ModLoader] '%s': unknown tactics \"%s\" (attacking, balanced "
+                "or defensive). Using the formation as authored.\n",
+                pack_name, team->tactics);
+
+    const size_t off = formation_record_offset(rom, team->team_id);
+    if (!off || off + ROM_FORMATION_RECORD_BYTES > rom_size) {
+        fprintf(stderr,
+                "[ModLoader] '%s': team %u's formation record is outside the "
+                "cartridge image. Leaving its shape alone.\n",
+                pack_name, team->team_id);
+        return false;
+    }
+
+    rom[off] = f.label;
+    for (int i = 0; i < ISSD_FORMATION_SLOTS; i++) {
+        rom[off + 1 + (size_t)i * 2] = (uint8_t)f.slots[i].depth;
+        rom[off + 2 + (size_t)i * 2] = (uint8_t)f.slots[i].width;
+        rom[off + 21 + (size_t)i]    = f.slots[i].role;
+    }
+
+    warn_position_mismatch(team, &f, player_count);
+    printf("[ModLoader]   shape \"%s\"%s%s, shown as %s\n", f.name,
+           team->tactics[0] ? " / " : "", team->tactics,
+           issd_formation_label_text(f.label));
+    return true;
+}
+
 /* Switching packs at runtime has to start from the untouched cartridge:
  * patches are destructive, so applying a second pack over the first would
  * leave whichever fields the second does not mention still holding the
@@ -163,7 +265,7 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
         return 0;
     }
 
-    int players_patched = 0, teams_patched = 0;
+    int players_patched = 0, teams_patched = 0, formations_patched = 0;
 
     for (int pi = 0; pi < issd_mod_get_pack_count(); pi++) {
         IssdModPack *pack = issd_mod_get_pack(pi);
@@ -200,11 +302,15 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
             teams_patched++;
             printf("[ModLoader] Patched team %u '%s' (%d players)\n",
                    team->team_id, team->name, n);
+            if (patch_formation(rom, rom_size, pack->name, team, n))
+                formations_patched++;
         }
     }
 
     if (players_patched)
         printf("[ModLoader] Applied %d player(s) across %d team(s) to the "
                "cartridge image.\n", players_patched, teams_patched);
+    if (formations_patched)
+        printf("[ModLoader] Reshaped %d team(s).\n", formations_patched);
     return players_patched;
 }

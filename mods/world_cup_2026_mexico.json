@@ -1,7 +1,7 @@
 {
   "name": "World Cup 2026 - Mexico",
   "author": "ISSD Native",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Mexico squad for the 2026 World Cup, on team 33 (N.S. America page, below Brazil). Slots follow the cartridge order - keeper, four defenders, three midfielders, three forwards, then the substitutes repeat that shape. Ratings use the full 0-99 width because the cartridge has only eight usable steps: a keeper really does shoot at 8 and a striker at 96.",
   "teams": [
     {
@@ -9,8 +9,8 @@
       "name": "Mexico",
       "short_name": "MEX",
       "country_code": "MEX",
-      "formation": 0,
-      "strategy": 1,
+      "formation": "4-2-3-1",
+      "tactics": "attacking",
       "home_shirt_rgb": 26695,
       "home_shorts_rgb": 16777215,
       "away_shirt_rgb": 16777215,
@@ -145,25 +145,9 @@
           "stamina": 78
         },
         {
-          "shirt_number": 9,
-          "name": "Gimenez",
-          "position": "FW",
-          "skin_tone": 0,
-          "hair_style": 0,
-          "acceleration": 76,
-          "speed": 74,
-          "shooting": 96,
-          "technique": 72,
-          "balance": 82,
-          "intelligence": 78,
-          "dribbling": 62,
-          "jumping": 94,
-          "stamina": 70
-        },
-        {
           "shirt_number": 20,
           "name": "Martin",
-          "position": "FW",
+          "position": "MF",
           "skin_tone": 0,
           "hair_style": 2,
           "acceleration": 68,
@@ -179,7 +163,7 @@
         {
           "shirt_number": 10,
           "name": "Vega",
-          "position": "FW",
+          "position": "MF",
           "skin_tone": 0,
           "hair_style": 0,
           "acceleration": 82,
@@ -191,6 +175,22 @@
           "dribbling": 94,
           "jumping": 46,
           "stamina": 72
+        },
+        {
+          "shirt_number": 9,
+          "name": "Gimenez",
+          "position": "FW",
+          "skin_tone": 0,
+          "hair_style": 0,
+          "acceleration": 76,
+          "speed": 74,
+          "shooting": 96,
+          "technique": 72,
+          "balance": 82,
+          "intelligence": 78,
+          "dribbling": 62,
+          "jumping": 94,
+          "stamina": 70
         },
         {
           "shirt_number": 13,

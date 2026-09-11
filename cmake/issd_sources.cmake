@@ -26,6 +26,7 @@ set(ISSD_GAME_SOURCES
     "${ISSD_ROOT}/ISSDNative/issd_save.c"
     "${ISSD_ROOT}/ISSDNative/issd_mod.c"
     "${ISSD_ROOT}/ISSDNative/issd_mod_rom.c"
+    "${ISSD_ROOT}/ISSDNative/issd_formation.c"
     "${ISSD_ROOT}/ISSDNative/issd_menu.c"
     "${ISSD_ROOT}/ISSDNative/issd_decompress.c"
     "${ISSD_ROOT}/ISSDNative/issd_audio.c"

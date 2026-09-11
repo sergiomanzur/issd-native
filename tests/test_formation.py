@@ -4,20 +4,18 @@ from pathlib import Path
 from test_config_persistence import compile_c
 
 
-def test_mod_rom_patching(tmp_path):
+def test_formation_library(tmp_path):
     repo = Path(__file__).resolve().parents[1]
-    exe = tmp_path / "test_mod_rom.exe"
+    exe = tmp_path / "test_formation.exe"
     compile_c(
         exe,
         repo,
         [
-            repo / "tests/test_mod_rom.c",
-            repo / "ISSDNative/issd_mod_rom.c",
-            repo / "ISSDNative/issd_mod.c",
+            repo / "tests/test_formation.c",
             repo / "ISSDNative/issd_formation.c",
         ],
         [repo / "ISSDNative"],
     )
     result = subprocess.run([str(exe)], cwd=repo, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "skipped" not in result.stdout, result.stdout
+    assert "passed" in result.stdout, result.stdout

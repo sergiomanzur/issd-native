@@ -42,8 +42,12 @@ typedef struct {
     char     name[32];
     char     short_name[4];
     char     country_code[4];
-    uint8_t  formation;
-    uint8_t  strategy;
+    /* A formation name from the library in issd_formation.h - "4-4-2",
+     * "4-2-3-1", "3-4-2-1" and so on. Empty leaves the team's own shape
+     * alone. `tactics` is "attacking", "balanced" or "defensive" and shifts
+     * that shape without changing how many players are in each line. */
+    char     formation[24];
+    char     tactics[16];
     uint32_t home_shirt_rgb;
     uint32_t home_shorts_rgb;
     uint32_t away_shirt_rgb;

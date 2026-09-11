@@ -76,6 +76,11 @@ int issd_mod_load_pack(const char *json_filepath) {
                 strncpy(cur_team->country_code, sval, sizeof(cur_team->country_code) - 1);
             } else if (strcmp(key, "position") == 0 && cur_player) {
                 strncpy(cur_player->position, sval, sizeof(cur_player->position) - 1);
+            } else if (strcmp(key, "formation") == 0 && cur_team && !cur_player) {
+                strncpy(cur_team->formation, sval, sizeof(cur_team->formation) - 1);
+            } else if ((strcmp(key, "tactics") == 0 ||
+                        strcmp(key, "strategy") == 0) && cur_team && !cur_player) {
+                strncpy(cur_team->tactics, sval, sizeof(cur_team->tactics) - 1);
             }
         } else if (sscanf(p, "\"%63[^\"]\" : %d", key, &ival) == 2 ||
                    sscanf(p, "\"%63[^\"]\": %d", key, &ival) == 2 ||
@@ -87,10 +92,6 @@ int issd_mod_load_pack(const char *json_filepath) {
                     cur_team->team_id = (uint8_t)ival;
                     cur_player = NULL;
                 }
-            } else if (strcmp(key, "formation") == 0 && cur_team) {
-                cur_team->formation = (uint8_t)ival;
-            } else if (strcmp(key, "strategy") == 0 && cur_team) {
-                cur_team->strategy = (uint8_t)ival;
             } else if (strcmp(key, "shirt_number") == 0) {
                 if (cur_team && cur_team->player_count < ISSD_MAX_PLAYERS_PER_TEAM) {
                     cur_player = &cur_team->players[cur_team->player_count++];

@@ -94,3 +94,14 @@ Direct Page instructions execute 1 cycle faster on the 65816 CPU and form the hi
 | `$7F:D000` - `$7F:DFFF` | `RAM_ISSD_WORLD_METATILE_MAP_BG1` | Buffer | World-space 2D byte ID grid for pitch turf |
 | `$7F:E000` - `$7F:EFFF` | `RAM_ISSD_WORLD_METATILE_MAP_BG2` | Buffer | World-space 2D byte ID grid for stadium geometry |
 | `$7F:FFCC` | `RAM_ISSD_STADIUM_STRIDE` | uint16 | Horizontal stride byte width for active stadium metatile map |
+
+
+## `$7E15F6` - formation label index of the highlighted team
+
+The team select screen writes the highlighted team's formation label index
+here, 0-15, and the "FORMATION x-x-x" line is drawn from it. It is copied
+from byte `+0` of that team's 31-byte shape record, reached through the
+pointer table at `$8B:EF48`; see `docs/MODDING.md` for the record layout.
+
+`$7E15F4` holds the same thing for the other side and is 16-bit like its
+neighbour, though only the low byte is ever non-zero.
