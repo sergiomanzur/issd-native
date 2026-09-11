@@ -1136,6 +1136,11 @@ int main(int argc, char **argv) {
     g_rom_data = rom_data;
     g_rom_size = rom_size;
 
+    /* Rosters are read from the cartridge image at runtime, so mods are
+     * applied to it here: after the ROM is in memory, before the engine
+     * boots and reads any of it. */
+    issd_mod_apply_to_rom(rom_data, rom_size);
+
     if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
         fprintf(stderr, "[ERROR] SDL_Init failed: %s\n", SDL_GetError());
         return 1;

@@ -2,27 +2,30 @@
 #define ISSD_MOD_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define ISSD_MAX_PLAYERS_PER_TEAM 16
+/* The cartridge stores 20 squad slots per team. This was 16, which quietly
+ * left the last four players of every team unpatched. */
+#define ISSD_MAX_PLAYERS_PER_TEAM 20
 #define ISSD_MAX_TEAMS_PER_PACK   36
 #define ISSD_MAX_MOD_PACKS        16
 
 typedef struct {
-    uint8_t acceleration;  /* 0 - 99 */
-    uint8_t speed;         /* 0 - 99 */
-    uint8_t shooting;      /* 0 - 99 */
-    uint8_t technique;     /* 0 - 99 */
-    uint8_t balance;       /* 0 - 99 */
-    uint8_t intelligence;  /* 0 - 99 */
-    uint8_t dribbling;     /* 0 - 99 */
-    uint8_t jumping;       /* 0 - 99 */
-    uint8_t stamina;       /* 0 - 99 */
-    uint8_t goalkeeping;   /* 0 - 99 */
+    uint8_t acceleration;  /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t speed;         /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t shooting;      /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t technique;     /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t balance;       /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t intelligence;  /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t dribbling;     /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t jumping;       /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t stamina;       /* 0 - 99, quantised to the cartridge 1-16 */
+    uint8_t goalkeeping;   /* 0 - 99, quantised to the cartridge 1-16 */
 } IssdPlayerAttributes;
 
 typedef struct {
@@ -73,6 +76,11 @@ void        issd_mod_set_active_pack(int index);
 const IssdModTeam* issd_mod_get_active_team(uint8_t team_id);
 bool        issd_mod_apply_to_game(uint8_t team_id);
 void        issd_mod_apply_match_overrides(uint8_t p1_team, uint8_t p2_team);
+
+/* Apply every active pack to the cartridge image. Rosters live in ROM, so
+ * this must run after the ROM is read and before the engine starts.
+ * Returns the number of players patched. */
+int         issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size);
 
 #ifdef __cplusplus
 }
