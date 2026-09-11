@@ -38,6 +38,15 @@ int main(void) {
   fixture();
   assert(issd_widescreen_pitch_layout(&ppu,ram));
   ram[0x32]=1; assert(!issd_widescreen_pitch_layout(&ppu,ram)); ram[0x32]=6;
+  /* The coin toss runs on the pitch, so stride, $50, the BG mode and both
+   * tilemap bases all look exactly like live play. Only the submode tells
+   * them apart, and treating it as a pitch built side margins out of
+   * metatile maps the game had not populated yet. */
+  ram[0x70]=0x1C; assert(!issd_widescreen_pitch_layout(&ppu,ram));
+  assert(!issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));  /* pillarboxed */
+  assert(ppu.extraLeftCur==0 && ppu.extraRightCur==0);          /* black bars */
+  ram[0x70]=0x08; issd_widescreen_reset();
+  assert(issd_widescreen_pitch_layout(&ppu,ram));
   assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
   /* BG2 world (248,256) wraps to left nametable, expected last column of #1. */
   assert(ppu.vram[0x1800+31] == 0x2403);

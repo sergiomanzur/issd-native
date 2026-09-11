@@ -19,16 +19,25 @@ static uint16_t word(const uint8_t *p, unsigned a) {
 
 bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram) {
   if (!ppu || !ram) return false;
-  /* $80846C: 3=demo, 6=menus/game.
-   * Submode in $70: 0x00..0x07 = menus, stadium select, pre-match coin toss (pillarboxed).
-   *                 0x08+ = live match (gameplay, fouls, corners, throw-ins, goals, replays).
-   * $50 enables the match OAM builder. */
+  /* $80846C: 3=demo, 6=menus/game. $50 enables the match OAM builder.
+   * Submode in $70, measured across a full 6000 frame match:
+   *   0x00..0x07  menus and stadium select
+   *   0x08        live match play (5173 of 5236 in-match frames)
+   *   0x09, 0x0B  brief in-match states, left enabled
+   *   0x1C        pre-match coin toss
+   *
+   * The coin toss happens on the pitch, so every other pitch signal is set
+   * and it passed the >= 0x08 test, leaving the reconstruction to build side
+   * margins from metatile maps the game has not populated yet: broken grass
+   * either side. It is pillarboxed by submode instead. */
   unsigned mode = word(ram, 0x32);
   unsigned submode = word(ram, 0x70);
   if (mode != 3 && mode != 6) return false;
   if (submode < 0x08) return false;
-  /* Check coin toss state machine (CODE_8BC4E4: $38 == 0xC4E4, $3A == 0x8B) */
-  if (word(ram, 0x38) == 0xC4E4 && (word(ram, 0x3A) & 0xFF) == 0x8B) return false;
+  if (submode == 0x1C) return false;   /* coin toss */
+  /* A previous guard tested $38 == 0xC4E4 && $3A == 0x8B here. Neither holds
+   * during the coin toss: $38 is 0 throughout and $3A is a frame counter, so
+   * the guard never once fired. Removed rather than left as reassurance. */
 
   unsigned stride = word(ram, 0x1ffcc);
   return word(ram, 0x50) != 0 &&
