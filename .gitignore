@@ -78,3 +78,8 @@ android/.gradle/
 android/app/build/
 deps/SDL2/
 android/app/.cxx/
+
+# The mod editor is built, not committed: 29 MB of bundled Python, and
+# `python tools/build_mod_studio.py` makes it in one command.
+tools/mod_studio/dist/
+tools/mod_studio/__pycache__/

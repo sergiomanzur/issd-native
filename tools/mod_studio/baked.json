@@ -1,0 +1,896 @@
+{
+ "formations": [
+  {
+   "name": "4-4-2",
+   "blurb": "Flat back four, flat midfield four, two strikers.",
+   "label": "4-4-2",
+   "slots": [
+    {
+     "depth": 8,
+     "width": -32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 8,
+     "width": 32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -32,
+     "role": 2
+    },
+    {
+     "depth": -12,
+     "width": -11,
+     "role": 2
+    },
+    {
+     "depth": -12,
+     "width": 11,
+     "role": 2
+    },
+    {
+     "depth": 0,
+     "width": 32,
+     "role": 2
+    },
+    {
+     "depth": 0,
+     "width": -16,
+     "role": 3
+    },
+    {
+     "depth": 0,
+     "width": 16,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "4-4-2 diamond",
+   "blurb": "Back four, a holder, two wide, one behind the strikers.",
+   "label": "4-4-2",
+   "slots": [
+    {
+     "depth": 8,
+     "width": -32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 8,
+     "width": 32,
+     "role": 1
+    },
+    {
+     "depth": 12,
+     "width": 0,
+     "role": 2
+    },
+    {
+     "depth": -4,
+     "width": -28,
+     "role": 6
+    },
+    {
+     "depth": -4,
+     "width": 28,
+     "role": 6
+    },
+    {
+     "depth": -16,
+     "width": 0,
+     "role": 6
+    },
+    {
+     "depth": 0,
+     "width": -14,
+     "role": 3
+    },
+    {
+     "depth": 0,
+     "width": 14,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "4-3-3",
+   "blurb": "Back four, a midfield three, a front three.",
+   "label": "4-3-3",
+   "slots": [
+    {
+     "depth": 8,
+     "width": -32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 8,
+     "width": 32,
+     "role": 1
+    },
+    {
+     "depth": 6,
+     "width": 0,
+     "role": 2
+    },
+    {
+     "depth": -8,
+     "width": -16,
+     "role": 2
+    },
+    {
+     "depth": -8,
+     "width": 16,
+     "role": 2
+    },
+    {
+     "depth": -4,
+     "width": -34,
+     "role": 3
+    },
+    {
+     "depth": -10,
+     "width": 0,
+     "role": 3
+    },
+    {
+     "depth": -4,
+     "width": 34,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "4-2-3-1",
+   "blurb": "Two holding midfielders, three behind a lone striker.",
+   "label": "4-5-1",
+   "slots": [
+    {
+     "depth": 8,
+     "width": -32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 8,
+     "width": 32,
+     "role": 1
+    },
+    {
+     "depth": 10,
+     "width": -10,
+     "role": 2
+    },
+    {
+     "depth": 10,
+     "width": 10,
+     "role": 2
+    },
+    {
+     "depth": -8,
+     "width": -30,
+     "role": 6
+    },
+    {
+     "depth": -8,
+     "width": 0,
+     "role": 6
+    },
+    {
+     "depth": -8,
+     "width": 30,
+     "role": 6
+    },
+    {
+     "depth": -20,
+     "width": 0,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "4-1-4-1",
+   "blurb": "An anchor behind a midfield four, one striker.",
+   "label": "4-5-1",
+   "slots": [
+    {
+     "depth": 8,
+     "width": -32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 8,
+     "width": 32,
+     "role": 1
+    },
+    {
+     "depth": 12,
+     "width": 0,
+     "role": 2
+    },
+    {
+     "depth": -6,
+     "width": -32,
+     "role": 6
+    },
+    {
+     "depth": -6,
+     "width": -10,
+     "role": 2
+    },
+    {
+     "depth": -6,
+     "width": 10,
+     "role": 2
+    },
+    {
+     "depth": -6,
+     "width": 32,
+     "role": 6
+    },
+    {
+     "depth": -18,
+     "width": 0,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "4-5-1",
+   "blurb": "Back four, a flat five across midfield, one striker.",
+   "label": "4-5-1",
+   "slots": [
+    {
+     "depth": 8,
+     "width": -32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 8,
+     "width": 32,
+     "role": 1
+    },
+    {
+     "depth": -4,
+     "width": -34,
+     "role": 6
+    },
+    {
+     "depth": 0,
+     "width": -14,
+     "role": 2
+    },
+    {
+     "depth": 2,
+     "width": 0,
+     "role": 2
+    },
+    {
+     "depth": 0,
+     "width": 14,
+     "role": 2
+    },
+    {
+     "depth": -4,
+     "width": 34,
+     "role": 6
+    },
+    {
+     "depth": -14,
+     "width": 0,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "3-5-2",
+   "blurb": "Three at the back, wing backs, two strikers.",
+   "label": "3-5-2",
+   "slots": [
+    {
+     "depth": 2,
+     "width": -20,
+     "role": 1
+    },
+    {
+     "depth": -8,
+     "width": 0,
+     "role": 1
+    },
+    {
+     "depth": 2,
+     "width": 20,
+     "role": 1
+    },
+    {
+     "depth": -4,
+     "width": -40,
+     "role": 6
+    },
+    {
+     "depth": 4,
+     "width": -12,
+     "role": 2
+    },
+    {
+     "depth": 8,
+     "width": 0,
+     "role": 2
+    },
+    {
+     "depth": 4,
+     "width": 12,
+     "role": 2
+    },
+    {
+     "depth": -4,
+     "width": 40,
+     "role": 6
+    },
+    {
+     "depth": 0,
+     "width": -16,
+     "role": 3
+    },
+    {
+     "depth": 0,
+     "width": 16,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "3-4-3",
+   "blurb": "Three at the back, four across, a front three.",
+   "label": "3-4-3",
+   "slots": [
+    {
+     "depth": 0,
+     "width": -20,
+     "role": 1
+    },
+    {
+     "depth": -4,
+     "width": 0,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 20,
+     "role": 1
+    },
+    {
+     "depth": -8,
+     "width": -32,
+     "role": 6
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 2
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 2
+    },
+    {
+     "depth": -8,
+     "width": 32,
+     "role": 6
+    },
+    {
+     "depth": -10,
+     "width": -26,
+     "role": 3
+    },
+    {
+     "depth": -14,
+     "width": 0,
+     "role": 3
+    },
+    {
+     "depth": -10,
+     "width": 26,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "3-4-2-1",
+   "blurb": "Three at the back, two shadow strikers behind a lone man.",
+   "label": "3-4-3",
+   "slots": [
+    {
+     "depth": 0,
+     "width": -20,
+     "role": 1
+    },
+    {
+     "depth": -4,
+     "width": 0,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 20,
+     "role": 1
+    },
+    {
+     "depth": -6,
+     "width": -34,
+     "role": 6
+    },
+    {
+     "depth": 2,
+     "width": -11,
+     "role": 2
+    },
+    {
+     "depth": 2,
+     "width": 11,
+     "role": 2
+    },
+    {
+     "depth": -6,
+     "width": 34,
+     "role": 6
+    },
+    {
+     "depth": -10,
+     "width": -18,
+     "role": 3
+    },
+    {
+     "depth": -10,
+     "width": 18,
+     "role": 3
+    },
+    {
+     "depth": -22,
+     "width": 0,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "5-3-2",
+   "blurb": "Five at the back, three in the middle, two up.",
+   "label": "5-3-2",
+   "slots": [
+    {
+     "depth": 0,
+     "width": -32,
+     "role": 5
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": -6,
+     "width": 0,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 32,
+     "role": 5
+    },
+    {
+     "depth": 2,
+     "width": -24,
+     "role": 2
+    },
+    {
+     "depth": -2,
+     "width": 0,
+     "role": 2
+    },
+    {
+     "depth": 2,
+     "width": 24,
+     "role": 2
+    },
+    {
+     "depth": -8,
+     "width": -16,
+     "role": 3
+    },
+    {
+     "depth": -8,
+     "width": 16,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "5-4-1",
+   "blurb": "Five at the back, four across, one striker.",
+   "label": "5-4-1",
+   "slots": [
+    {
+     "depth": 2,
+     "width": -34,
+     "role": 5
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": -4,
+     "width": 0,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 2,
+     "width": 34,
+     "role": 5
+    },
+    {
+     "depth": -6,
+     "width": -30,
+     "role": 6
+    },
+    {
+     "depth": 0,
+     "width": -10,
+     "role": 2
+    },
+    {
+     "depth": 0,
+     "width": 10,
+     "role": 2
+    },
+    {
+     "depth": -6,
+     "width": 30,
+     "role": 6
+    },
+    {
+     "depth": -18,
+     "width": 0,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "4-2-4",
+   "blurb": "Back four, two in midfield, four forwards.",
+   "label": "4-2-4",
+   "slots": [
+    {
+     "depth": 8,
+     "width": -32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -11,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 11,
+     "role": 1
+    },
+    {
+     "depth": 8,
+     "width": 32,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -12,
+     "role": 2
+    },
+    {
+     "depth": 0,
+     "width": 12,
+     "role": 2
+    },
+    {
+     "depth": -8,
+     "width": -34,
+     "role": 3
+    },
+    {
+     "depth": -12,
+     "width": -12,
+     "role": 3
+    },
+    {
+     "depth": -12,
+     "width": 12,
+     "role": 3
+    },
+    {
+     "depth": -8,
+     "width": 34,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "3-3-4",
+   "blurb": "Three at the back, three in the middle, four up.",
+   "label": "3-3-4",
+   "slots": [
+    {
+     "depth": 0,
+     "width": -20,
+     "role": 1
+    },
+    {
+     "depth": -4,
+     "width": 0,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 20,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": -24,
+     "role": 2
+    },
+    {
+     "depth": 4,
+     "width": 0,
+     "role": 2
+    },
+    {
+     "depth": 0,
+     "width": 24,
+     "role": 2
+    },
+    {
+     "depth": -8,
+     "width": -34,
+     "role": 3
+    },
+    {
+     "depth": -12,
+     "width": -12,
+     "role": 3
+    },
+    {
+     "depth": -12,
+     "width": 12,
+     "role": 3
+    },
+    {
+     "depth": -8,
+     "width": 34,
+     "role": 3
+    }
+   ]
+  },
+  {
+   "name": "2-3-5",
+   "blurb": "The pyramid. Two at the back and five forwards.",
+   "label": "2-3-5",
+   "slots": [
+    {
+     "depth": 0,
+     "width": -16,
+     "role": 1
+    },
+    {
+     "depth": 0,
+     "width": 16,
+     "role": 1
+    },
+    {
+     "depth": 2,
+     "width": -26,
+     "role": 2
+    },
+    {
+     "depth": 4,
+     "width": 0,
+     "role": 2
+    },
+    {
+     "depth": 2,
+     "width": 26,
+     "role": 2
+    },
+    {
+     "depth": -10,
+     "width": -40,
+     "role": 3
+    },
+    {
+     "depth": -12,
+     "width": -18,
+     "role": 3
+    },
+    {
+     "depth": -16,
+     "width": 0,
+     "role": 3
+    },
+    {
+     "depth": -12,
+     "width": 18,
+     "role": 3
+    },
+    {
+     "depth": -10,
+     "width": 40,
+     "role": 3
+    }
+   ]
+  }
+ ],
+ "team_names": [
+  "Italy",
+  "Holland",
+  "England",
+  "Norway",
+  "Spain",
+  "Ireland",
+  "Portugal",
+  "Denmark",
+  "Germany",
+  "France",
+  "Belgium",
+  "Sweden",
+  "Romania",
+  "Bulgaria",
+  "Russia",
+  "Swiss",
+  "Greece",
+  "Croatia",
+  "Austria",
+  "Wales",
+  "Scotland",
+  "N.Ireland",
+  "Czech Rep.",
+  "Poland",
+  "Japan",
+  "S.Korea",
+  "Turkey",
+  "Nigeria",
+  "Cameroon",
+  "Morocco",
+  "Brazil",
+  "Argentina",
+  "Columbia",
+  "Mexico",
+  "U.S.A",
+  "Uruguay",
+  "All Star",
+  "Eurostar A",
+  "Eurostar B",
+  "Asian Star",
+  "African Star",
+  "All American Star"
+ ],
+ "stock_stadiums": [
+  {
+   "id": 0,
+   "name": "JAPAN",
+   "length": 114,
+   "width": 74
+  },
+  {
+   "id": 1,
+   "name": "U.S.A",
+   "length": 118,
+   "width": 82
+  },
+  {
+   "id": 2,
+   "name": "SPAIN",
+   "length": 126,
+   "width": 90
+  },
+  {
+   "id": 3,
+   "name": "ITALY",
+   "length": 130,
+   "width": 82
+  },
+  {
+   "id": 4,
+   "name": "ENGLAND",
+   "length": 122,
+   "width": 82
+  },
+  {
+   "id": 5,
+   "name": "GERMANY",
+   "length": 122,
+   "width": 74
+  },
+  {
+   "id": 6,
+   "name": "BRAZIL",
+   "length": 114,
+   "width": 90
+  },
+  {
+   "id": 7,
+   "name": "NIGERIA",
+   "length": 138,
+   "width": 90
+  }
+ ]
+}

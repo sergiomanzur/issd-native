@@ -68,7 +68,16 @@ def rating_to_step(rating):
     return min(RATING_MAX, RATING_MIN + (rating * span + 49) // 99)
 
 
+# A caller that already knows the list can hand it over. The editor does:
+# packaged as an .exe it has no repository to read, but it carries a
+# snapshot of the same file, and a checker that shrugs at every formation
+# name is worse than no checker.
+FORMATION_NAMES = None
+
+
 def known_formations():
+    if FORMATION_NAMES:
+        return list(FORMATION_NAMES)
     path = os.path.join(REPO, "ISSDNative", "issd_formation.c")
     try:
         with open(path, encoding="utf-8") as f:

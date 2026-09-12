@@ -96,6 +96,32 @@ by hand if you prefer.
 
 ---
 
+## 2a. The editor
+
+There is a visual editor for all of this:
+
+```
+tools/mod_studio/dist/ISSDModStudio.exe      built
+python tools/mod_studio_launch.py            from source
+python tools/build_mod_studio.py             rebuild the .exe
+```
+
+It reads and writes the same `.json` files this guide describes, so the
+two are interchangeable - edit a pack by hand, open it in the editor, and
+back again. **Check pack** runs the same rules `tools/validate_mod.py`
+does.
+
+It is worth a look even if you prefer a text editor, for three things it
+draws that a file cannot show you: the strip in the shades the cartridge
+will really store, the formation as a shape, and - the one that catches
+everybody - the band each rating quantises into. See
+`tools/mod_studio/README.md`.
+
+The rest of this guide is the file format, which is what the editor
+writes.
+
+---
+
 ## 3. Your first pack
 
 Save this as `mods/my_first_mod.json` and restart with it ticked:
