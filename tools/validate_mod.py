@@ -28,6 +28,11 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TEAM_COUNT = 36
+STADIUM_COUNT = 8
+STADIUM_NAME_CHARS = 7
+# The range the cartridge's own stadiums span.
+PITCH_LENGTH = (100, 140)
+PITCH_WIDTH = (64, 96)
 SQUAD_SLOTS = 20
 NAME_CHARS = 8
 POSITIONS = ("GK", "DF", "MF", "FW")
@@ -196,6 +201,59 @@ def check_team(report, team, index, formations, seen_ids):
     check_spread(report, where, players[:SQUAD_SLOTS])
 
 
+def check_stadium(report, st, index, seen_ids):
+    where = "stadium[%d]" % index
+    if not isinstance(st, dict):
+        report.error(where, "each stadium must be an object")
+        return
+
+    sid = st.get("stadium_id")
+    if sid is None:
+        report.error(where, "no stadium_id, so it names no stadium")
+    elif not isinstance(sid, int) or isinstance(sid, bool):
+        report.error(where, "stadium_id must be a number")
+    elif not 0 <= sid < STADIUM_COUNT:
+        report.error(where, "stadium_id %d does not exist; the cartridge has "
+                            "%d stadiums (0 to %d) and none can be added"
+                     % (sid, STADIUM_COUNT, STADIUM_COUNT - 1))
+    else:
+        where = "stadium %d" % sid
+        if sid in seen_ids:
+            report.error(where, "listed twice in this pack")
+        seen_ids.add(sid)
+
+    name = st.get("name")
+    if name is not None:
+        if not isinstance(name, str):
+            report.error(where, "name must be text")
+        else:
+            if len(name) > STADIUM_NAME_CHARS:
+                report.error(where, 'name "%s" is %d characters; the plate '
+                                    'holds %d'
+                             % (name, len(name), STADIUM_NAME_CHARS))
+            bad = sorted({c for c in name
+                          if not (c.isascii() and (c.isalpha() or c in " ."))})
+            if bad:
+                report.error(where, 'name "%s" has characters the cartridge '
+                                    'cannot show: %s'
+                             % (name, " ".join(repr(c) for c in bad)))
+
+    for key, limits in (("pitch_length", PITCH_LENGTH),
+                        ("pitch_width", PITCH_WIDTH)):
+        if key not in st:
+            continue
+        v = st[key]
+        if not isinstance(v, int) or isinstance(v, bool):
+            report.error(where, "%s must be a whole number" % key)
+        elif not limits[0] <= v <= limits[1]:
+            report.warn(where, "%s %s is outside the %d-%d the cartridge's own "
+                               "stadiums use, and will be clamped"
+                        % (key, v, limits[0], limits[1]))
+
+    if name is None and "pitch_length" not in st and "pitch_width" not in st:
+        report.warn(where, "changes nothing")
+
+
 def validate(path, report):
     try:
         with open(path, encoding="utf-8") as f:
@@ -214,9 +272,19 @@ def validate(path, report):
         report.error(path, 'no "name"; it is how the menu lists the pack and how '
                            "the saved selection finds it again")
 
+    stadiums = pack.get("stadiums")
+    if isinstance(stadiums, list):
+        seen_st = set()
+        for i, st in enumerate(stadiums):
+            check_stadium(report, st, i, seen_st)
+    elif stadiums is not None:
+        report.error(path, '"stadiums" must be an array')
+
     teams = pack.get("teams")
     if teams is None:
-        report.error(path, 'no "teams" array, so the pack changes nothing')
+        if not stadiums:
+            report.error(path, 'no "teams" or "stadiums", so the pack changes'
+                               ' nothing')
         return
     if not isinstance(teams, list):
         report.error(path, '"teams" must be an array')

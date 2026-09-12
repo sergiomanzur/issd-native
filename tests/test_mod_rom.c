@@ -159,6 +159,50 @@ int main(void) {
         }
     }
 
+    /* --- stadiums -------------------------------------------------
+     *
+     * Eight fixed 7-byte name fields, right-aligned the way the cartridge
+     * stores its own, and eight (length, width) pairs. */
+    {
+        const size_t NAME = 0x3CA9Bu, PITCH = 0x017AEDu;
+        IssdModPack *sp = issd_mod_get_pack(fixture);
+        memset(rom + NAME, 0xEE, 8 * 7);
+        memset(rom + PITCH, 0xEE, 8 * 2);
+
+        sp->stadium_count = 1;
+        sp->stadiums[0].stadium_id = 7;
+        snprintf(sp->stadiums[0].name, sizeof sp->stadiums[0].name, "AKRON");
+        sp->stadiums[0].pitch_length = 115;
+        sp->stadiums[0].pitch_width = 74;
+        issd_mod_apply_to_rom(rom, sizeof(rom));
+
+        const uint8_t *f = rom + NAME + 7 * 7;
+        assert(f[0] == 0x00 && f[1] == 0x00);        /* right-aligned */
+        assert(f[2] == 0x68 && f[3] == 0x72);        /* A K */
+        assert(f[4] == 0x79 && f[5] == 0x76 && f[6] == 0x75);   /* R O N */
+        assert(rom[PITCH + 7 * 2 + 0] == 115);
+        assert(rom[PITCH + 7 * 2 + 1] == 74);
+        /* Its neighbours are untouched: the fields are packed end to end. */
+        assert(rom[NAME + 6 * 7] == 0xEE);
+        assert(rom[PITCH + 6 * 2] == 0xEE);
+
+        /* A stadium the cartridge does not have is refused, not written
+         * past the end of the table. */
+        sp->stadiums[0].stadium_id = 9;
+        issd_mod_apply_to_rom(rom, sizeof(rom));
+        assert(rom[NAME + 8 * 7] == 0xEE);
+
+        /* Sizes outside the range the cartridge itself uses are clamped
+         * rather than trusted. */
+        sp->stadiums[0].stadium_id = 7;
+        sp->stadiums[0].pitch_length = 250;
+        sp->stadiums[0].pitch_width = 10;
+        issd_mod_apply_to_rom(rom, sizeof(rom));
+        assert(rom[PITCH + 7 * 2 + 0] == 140);
+        assert(rom[PITCH + 7 * 2 + 1] == 64);
+        sp->stadium_count = 0;
+    }
+
     puts("mod rom tests passed");
     return 0;
 }

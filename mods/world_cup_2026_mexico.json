@@ -1,8 +1,8 @@
 {
   "name": "World Cup 2026 - Mexico",
   "author": "ISSD Native",
-  "version": "1.3.0",
-  "description": "Mexico squad for the 2026 World Cup, on team 33 (N.S. America page, below Brazil). Slots follow the cartridge order - keeper, four defenders, three midfielders, three forwards, then the substitutes repeat that shape. Ratings use the full 0-99 width because the cartridge has only eight usable steps: a keeper really does shoot at 8 and a striker at 96.",
+  "version": "1.4.0",
+  "description": "Mexico's 2026 squad in a 4-2-3-1, and Chivas' Estadio Akron in place of the Nigeria stadium.",
   "teams": [
     {
       "team_id": 33,
@@ -337,6 +337,14 @@
           "stamina": 74
         }
       ]
+    }
+  ],
+  "stadiums": [
+    {
+      "stadium_id": 7,
+      "name": "AKRON",
+      "pitch_length": 115,
+      "pitch_width": 74
     }
   ]
 }

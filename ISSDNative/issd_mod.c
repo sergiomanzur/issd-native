@@ -253,6 +253,31 @@ static bool team_element(JsonReader *r, void *ctx) {
     return true;
 }
 
+static bool stadium_member(JsonReader *r, const char *key, void *ctx) {
+    IssdModStadium *st = (IssdModStadium *)ctx;
+    if (strcmp(key, "stadium_id") == 0) {
+        long v = 0;
+        if (!json_number(r, &v)) return false;
+        st->stadium_id = (int8_t)((v < 0 || v > 127) ? -1 : v);
+        return true;
+    }
+    if (strcmp(key, "name") == 0)         return JSON_STR_FIELD(r, st->name);
+    if (strcmp(key, "pitch_length") == 0) return json_u8(r, &st->pitch_length);
+    if (strcmp(key, "pitch_width") == 0)  return json_u8(r, &st->pitch_width);
+    return json_skip_value(r);
+}
+
+static bool stadium_element(JsonReader *r, void *ctx) {
+    IssdModPack *pack = (IssdModPack *)ctx;
+    if (pack->stadium_count >= ISSD_MAX_STADIUMS) return json_skip_value(r);
+    IssdModStadium *st = &pack->stadiums[pack->stadium_count];
+    memset(st, 0, sizeof *st);
+    st->stadium_id = -1;            /* so a missing id is detectable */
+    if (!json_object(r, stadium_member, st)) return false;
+    pack->stadium_count++;
+    return true;
+}
+
 static bool pack_member(JsonReader *r, const char *key, void *ctx) {
     IssdModPack *pack = (IssdModPack *)ctx;
     if (strcmp(key, "name") == 0)        return JSON_STR_FIELD(r, pack->name);
@@ -260,6 +285,7 @@ static bool pack_member(JsonReader *r, const char *key, void *ctx) {
     if (strcmp(key, "version") == 0)     return JSON_STR_FIELD(r, pack->version);
     if (strcmp(key, "description") == 0) return JSON_STR_FIELD(r, pack->description);
     if (strcmp(key, "teams") == 0)       return json_array(r, team_element, pack);
+    if (strcmp(key, "stadiums") == 0)    return json_array(r, stadium_element, pack);
     return json_skip_value(r);
 }
 
@@ -337,16 +363,17 @@ int issd_mod_load_pack(const char *json_filepath) {
     }
     pack->team_count = kept;
 
-    if (pack->team_count == 0) {
+    if (pack->team_count == 0 && pack->stadium_count == 0) {
         char why[96];
-        snprintf(why, sizeof why, "%s has no teams",
+        snprintf(why, sizeof why, "%s changes nothing",
                  pack->name[0] ? pack->name : base_name(json_filepath));
         issd_mod_result_note_error(why);
-        fprintf(stderr, "[ModLoader] %s - is the \"teams\" array there?\n", why);
+        fprintf(stderr, "[ModLoader] %s - is the \"teams\" or \"stadiums\""
+                        " array there?\n", why);
     }
-    printf("[ModLoader] Loaded pack '%s' (%d teams) from '%s'\n",
+    printf("[ModLoader] Loaded pack '%s' (%d teams, %d stadiums) from '%s'\n",
            pack->name[0] ? pack->name : "Unnamed Mod", pack->team_count,
-           json_filepath);
+           pack->stadium_count, json_filepath);
 
     g_mod_pack_count++;
     return g_mod_pack_count - 1;
@@ -566,6 +593,8 @@ void issd_mod_result_lines(char *headline, size_t hcap,
         n += snprintf(counts + n, sizeof counts - n, " %dplr", r->players_patched);
     if (r->formations_patched)
         n += snprintf(counts + n, sizeof counts - n, " %dfrm", r->formations_patched);
+    if (r->stadiums_patched)
+        n += snprintf(counts + n, sizeof counts - n, " %dstad", r->stadiums_patched);
     if (r->tiles_loaded)
         snprintf(counts + n, sizeof counts - n, " %dtile", r->tiles_loaded);
     snprintf(detail, dcap, "%.27s", counts);
@@ -594,6 +623,10 @@ void issd_mod_result_summary(char *out, size_t cap) {
         n += snprintf(body + n, sizeof(body) - n, ", %d shape%s",
                       r->formations_patched,
                       r->formations_patched == 1 ? "" : "s");
+    if (r->stadiums_patched)
+        n += snprintf(body + n, sizeof(body) - n, ", %d stadium%s",
+                      r->stadiums_patched,
+                      r->stadiums_patched == 1 ? "" : "s");
     if (r->tiles_loaded)
         snprintf(body + n, sizeof(body) - n, ", %d tiles", r->tiles_loaded);
 

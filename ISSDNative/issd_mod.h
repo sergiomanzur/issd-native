@@ -56,6 +56,19 @@ typedef struct {
     IssdModPlayer players[ISSD_MAX_PLAYERS_PER_TEAM];
 } IssdModTeam;
 
+/* The cartridge has eight stadiums, and like the teams they are a fixed
+ * table: one can be replaced but none added. A stadium is its name, which
+ * the pre-match screen prints, and the size of its pitch, which the game
+ * really does play differently on - 114 by 74 yards up to 138 by 90. */
+#define ISSD_MAX_STADIUMS 8
+
+typedef struct {
+    int8_t  stadium_id;      /* 0-7, or -1 for an entry with none */
+    char    name[16];        /* 7 characters reach the screen */
+    uint8_t pitch_length;    /* yards; 0 leaves the cartridge's own */
+    uint8_t pitch_width;
+} IssdModStadium;
+
 typedef struct {
     char        name[64];
     char        author[64];
@@ -69,6 +82,8 @@ typedef struct {
     int         apply_order;
     int         team_count;
     IssdModTeam teams[ISSD_MAX_TEAMS_PER_PACK];
+    int         stadium_count;
+    IssdModStadium stadiums[ISSD_MAX_STADIUMS];
 } IssdModPack;
 
 /* What the last application of the enabled packs actually did.
@@ -82,6 +97,7 @@ typedef struct {
     int  teams_patched;
     int  players_patched;
     int  formations_patched;
+    int  stadiums_patched;
     int  tiles_loaded;      /* filled in by the host, not the roster patcher */
     int  warnings;          /* applied, but something was ignored */
     int  errors;            /* a pack could not be used at all */

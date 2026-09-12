@@ -214,6 +214,8 @@ half-read.
 | `tactics` | text | `attacking`, `balanced`, `defensive`. Optional. |
 | `players` | array | Optional: leave it out to change only the shape. |
 
+A pack may also carry a `stadiums` array alongside `teams`; see section 8.
+
 ### Player
 
 | Key | Type | Notes |
@@ -451,7 +453,76 @@ art goes in the same folder under the same names.
 
 ---
 
-## 8. Generating packs with a tool
+## 8. Stadiums
+
+The cartridge has eight stadiums, and like the teams they are a fixed
+table: one can be replaced, none added.
+
+```json
+{
+  "name": "My Pack",
+  "stadiums": [
+    {
+      "stadium_id": 7,
+      "name": "AKRON",
+      "pitch_length": 115,
+      "pitch_width": 74
+    }
+  ]
+}
+```
+
+A pack may hold only `stadiums` and no `teams` at all.
+
+| id | stadium | pitch |
+|---|---|---|
+| 0 | JAPAN | 114 x 74 |
+| 1 | U.S.A | 118 x 82 |
+| 2 | SPAIN | 126 x 90 |
+| 3 | ITALY | 130 x 82 |
+| 4 | ENGLAND | 122 x 82 |
+| 5 | GERMANY | 122 x 74 |
+| 6 | BRAZIL | 114 x 90 |
+| 7 | NIGERIA | 138 x 90 |
+
+`name` is at most **7 characters**, letters, spaces and full stops - which
+is why the cartridge's own list is countries rather than grounds. It is
+stored right-aligned, as the cartridge stores its own, because the plate
+centres the field.
+
+`pitch_length` and `pitch_width` are in yards and are clamped to 100-140
+by 64-96, the range the cartridge's own stadiums span.
+
+### What a renamed stadium actually changes
+
+Be clear about this before building a pack around it.
+
+| | Changes? |
+|---|---|
+| Pre-match screen (`AKRON STADIUM 115y`) | **yes** |
+| Pitch dimensions printed on the select screen | **yes** |
+| Pitch preview drawn on the select screen | **yes** |
+| The name plate on the select screen | no - still the original |
+| How the pitch actually plays | **no** |
+
+That last row is measured, not assumed: the same match played on the
+138 x 90 pitch and on a 115 x 74 one, with identical inputs, leaves WRAM
+byte-identical 1400 frames in. The numbers are what the screens print. A
+field called `pitch_length` invites the opposite reading, so it is worth
+saying twice.
+
+The stands, crowd and advertising boards are background tiles, so a tile
+pack (section 7) is how a stadium gets its own look.
+
+### Shipped example
+
+`mods/world_cup_2026_mexico.json` puts Chivas' Estadio Akron in slot 7.
+Nothing else in the shipped packs uses that slot, and the 2026 tournament
+has no Nigerian venue.
+
+---
+
+## 9. Generating packs with a tool
 
 If a script or an AI agent is writing the pack, three things matter more
 than anything in the syntax.
@@ -523,7 +594,7 @@ Then run the validator and feed any errors back.
 
 ---
 
-## 9. When something does not work
+## 10. When something does not work
 
 The console window carries the detail; the menu carries the summary.
 
@@ -541,7 +612,7 @@ The console window carries the detail; the menu carries the summary.
 
 ---
 
-## 10. What cannot be modded
+## 11. What cannot be modded
 
 Being straight about the ceiling saves everyone time.
 
@@ -554,13 +625,17 @@ Being straight about the ceiling saves everyone time.
   sixteen it knows are fixed. The shape itself is free - see section 6.
 - **Sprites.** Tile packs replace backgrounds; players, the ball and most UI
   text are objects, and are not covered.
-- **New stadiums.** The ones that exist can be re-coloured through a tile
-  pack; adding one would need code that does not exist.
+- **A ninth stadium.** The eight can be renamed and resized (section 8);
+  a ninth would need every per-stadium table extended, and they are packed
+  against their neighbours.
+- **The name on the stadium select screen**, which is drawn from shared
+  font tiles through a tilemap rather than from the name table. The
+  pre-match screen does show a renamed stadium.
 - **Audio.** Not wired up.
 
 ---
 
-## 11. Sharing a pack
+## 12. Sharing a pack
 
 A pack is just files. Zip the `.json`, or the tile folder, and say which
 version of ISSD Native you built it against.

@@ -51,6 +51,41 @@
 #define ROM_FORMATION_BANK          0x0Bu
 #define ROM_FORMATION_RECORD_BYTES  31u
 
+/* Stadiums.
+ *
+ * Names are eight fixed 7-byte fields, right-aligned with 0x00 padding -
+ * "  JAPAN", "ENGLAND" - running from 0x3CA9B to exactly where the word
+ * STADIUM begins, which is why a ninth will not fit here.
+ *
+ * Pitch dimensions are eight (length, width) byte pairs. Found by
+ * searching for the lengths the select screen prints - 114, 118, 126, 130,
+ * 122, 122, 114, 138 - which occur in that order exactly once in the
+ * cartridge. The code that reads them is at $82:FADD, reached by
+ * LDA $82FADD,X with X twice the stadium index.
+ *
+ * They are what the screens print, and nothing else. Running the same
+ * match on a 138x90 pitch and a 115x74 one, same inputs, leaves WRAM
+ * byte-identical 1400 frames into play: the playfield does not change
+ * size. Worth stating plainly, because the obvious reading of a field
+ * called pitch_length is that it moves the touchlines.
+ *
+ * The count is a literal: LDA $4C / CMP #$0008 near $A2:9F6A. Raising it
+ * would need every one of these tables extended, and they are packed
+ * against their neighbours, so a stadium is replaced rather than added -
+ * the same deal the 36 teams offer. */
+#define ROM_STADIUMS            8
+#define ROM_STADIUM_NAME_BASE   0x3CA9Bu
+#define ROM_STADIUM_NAME_BYTES  7
+#define ROM_STADIUM_PITCH_BASE  0x017AEDu
+
+/* The range the cartridge's own stadiums span. The select screen draws a
+ * preview from these, and it has not been looked at outside that range, so
+ * a pack asking for a 40 yard pitch is clamped rather than trusted. */
+#define ROM_PITCH_MIN_LENGTH   100
+#define ROM_PITCH_MAX_LENGTH   140
+#define ROM_PITCH_MIN_WIDTH     64
+#define ROM_PITCH_MAX_WIDTH     96
+
 /* The cartridge does not use ASCII. 0x00 renders as a space and doubles as
  * padding; letters run from 0x68. Generated from the editor's dictionary. */
 static const struct { uint8_t code; char ch; } kCharset[] = {
@@ -64,6 +99,10 @@ static const struct { uint8_t code; char ch; } kCharset[] = {
     { 0x91, 'p' }, { 0x92, 'q' }, { 0x93, 'r' }, { 0x94, 's' }, { 0x95, 't' }, { 0x96, 'u' },
     { 0x97, 'v' }, { 0x98, 'w' }, { 0x99, 'x' }, { 0x9A, 'y' }, { 0x9B, 'z' },
 };
+
+/* The stadium plate has a full stop, which the roster font does not use:
+ * U.S.A is stored with 0x54 between the letters. */
+#define CHAR_PERIOD 0x54u
 
 static uint8_t encode_char(char c) {
     if (c == ' ') return 0x00;                 /* padding renders as a space */
@@ -141,6 +180,77 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
     /* rom[base + 5] deliberately preserved. */
     rom[base + 6] = (uint8_t)(((p->skin_tone & 0x0F) << 4) |
                                (p->hair_style & 0x0F));
+}
+
+/* Write one stadium. Returns true when anything changed. */
+static bool patch_stadium(uint8_t *rom, size_t rom_size, const char *pack_name,
+                          const IssdModStadium *st) {
+    if (st->stadium_id < 0) {
+        char why[96];
+        snprintf(why, sizeof why, "%s: a stadium has no stadium_id", pack_name);
+        issd_mod_result_note_warning(why);
+        fprintf(stderr, "[ModLoader] %s\n", why);
+        return false;
+    }
+    if (st->stadium_id >= ROM_STADIUMS) {
+        char why[96];
+        snprintf(why, sizeof why, "%s: stadium %d does not exist",
+                 pack_name, st->stadium_id);
+        issd_mod_result_note_warning(why);
+        fprintf(stderr,
+                "[ModLoader] '%s': stadium_id %d is out of range. The "
+                "cartridge has %d stadiums, so one can be replaced but not "
+                "added.\n", pack_name, st->stadium_id, ROM_STADIUMS);
+        return false;
+    }
+
+    const size_t name = ROM_STADIUM_NAME_BASE +
+                        (size_t)st->stadium_id * ROM_STADIUM_NAME_BYTES;
+    const size_t pitch = ROM_STADIUM_PITCH_BASE + (size_t)st->stadium_id * 2u;
+    if (name + ROM_STADIUM_NAME_BYTES > rom_size || pitch + 2 > rom_size)
+        return false;
+
+    bool changed = false;
+    if (st->name[0]) {
+        /* Right-aligned with leading blanks, the way the cartridge stores
+         * its own: the screen centres the field, so a left-aligned name
+         * sits off to one side. */
+        uint8_t enc[ROM_STADIUM_NAME_BYTES];
+        int n = 0;
+        for (const char *c = st->name; *c && n < ROM_STADIUM_NAME_BYTES; c++)
+            enc[n++] = (*c == '.') ? (uint8_t)CHAR_PERIOD : encode_char(*c);
+        const int pad = ROM_STADIUM_NAME_BYTES - n;
+        for (int i = 0; i < pad; i++) rom[name + i] = 0x00;
+        for (int i = 0; i < n; i++) rom[name + pad + i] = enc[i];
+        changed = true;
+        if ((int)strlen(st->name) > ROM_STADIUM_NAME_BYTES) {
+            char why[96];
+            snprintf(why, sizeof why, "%s: stadium name cut to %d characters",
+                     pack_name, ROM_STADIUM_NAME_BYTES);
+            issd_mod_result_note_warning(why);
+        }
+    }
+
+    if (st->pitch_length) {
+        uint8_t v = st->pitch_length;
+        if (v < ROM_PITCH_MIN_LENGTH) v = ROM_PITCH_MIN_LENGTH;
+        if (v > ROM_PITCH_MAX_LENGTH) v = ROM_PITCH_MAX_LENGTH;
+        rom[pitch + 0] = v;
+        changed = true;
+    }
+    if (st->pitch_width) {
+        uint8_t v = st->pitch_width;
+        if (v < ROM_PITCH_MIN_WIDTH) v = ROM_PITCH_MIN_WIDTH;
+        if (v > ROM_PITCH_MAX_WIDTH) v = ROM_PITCH_MAX_WIDTH;
+        rom[pitch + 1] = v;
+        changed = true;
+    }
+
+    if (changed)
+        printf("[ModLoader] Stadium %d: '%s' %dx%d yards\n", st->stadium_id,
+               st->name[0] ? st->name : "(name kept)",
+               rom[pitch + 0], rom[pitch + 1]);
+    return changed;
 }
 
 /* LoROM: bank $80+n covers file offset n * $8000, mapped at $8000-$FFFF. */
@@ -272,6 +382,7 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
     }
 
     int players_patched = 0, teams_patched = 0, formations_patched = 0;
+    int stadiums_patched = 0;
 
     /* Which pack last wrote each team, so an overlap can be named rather
      * than silently resolved. Stacking two packs that both rewrite Mexico
@@ -342,6 +453,10 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
             if (patch_formation(rom, rom_size, pack->name, team, n))
                 formations_patched++;
         }
+
+        for (int si = 0; si < pack->stadium_count; si++)
+            if (patch_stadium(rom, rom_size, pack->name, &pack->stadiums[si]))
+                stadiums_patched++;
     }
 
     if (players_patched)
@@ -350,7 +465,11 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
     if (formations_patched)
         printf("[ModLoader] Reshaped %d team(s).\n", formations_patched);
 
+    if (stadiums_patched)
+        printf("[ModLoader] Rebuilt %d stadium(s).\n", stadiums_patched);
+
     IssdModResult *r = issd_mod_result_mutable();
+    r->stadiums_patched = stadiums_patched;
     r->teams_patched = teams_patched;
     r->players_patched = players_patched;
     r->formations_patched = formations_patched;
