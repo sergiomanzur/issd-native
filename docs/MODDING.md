@@ -187,6 +187,24 @@ holding midfielders in a 4-2-3-1 really do sit behind the other three.
 Tactics never change how many players are in each line, so the printed label
 stays true whichever preset is used.
 
+### Seeing a formation in game
+
+Pick the team, then from the pre-match menu choose **FORMATION CHANGE**.
+That screen draws all eleven at their home positions across DF / MF / FW
+bands, and highlights the label in its **TYPE OF FORMATION** list. A small
+arrow beside a player marks an attacking role, so a side set to
+`defensive` shows none at all.
+
+`mods/formation_showcase.json` puts six different shapes on the six N.S.
+America teams and changes no squads, so they can be stepped through
+side by side.
+
+### A team entry may change only the shape
+
+A team needs no `players` list at all. Naming just `team_id` and
+`formation` leaves the squad exactly as the cartridge has it and changes
+only how it lines up.
+
 ### Squad order matters
 
 A formation assigns positions by squad order, not by the `position` string.

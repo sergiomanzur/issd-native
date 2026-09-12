@@ -1,0 +1,44 @@
+{
+  "name": "Formation Showcase",
+  "author": "ISSD Native",
+  "version": "1.0.0",
+  "description": "Six shapes on the six N.S. America teams, for checking formations without editing a squad.",
+  "teams": [
+    {
+      "team_id": 30,
+      "name": "Brazil",
+      "formation": "4-2-3-1",
+      "tactics": "attacking"
+    },
+    {
+      "team_id": 31,
+      "name": "Argentina",
+      "formation": "4-3-3",
+      "tactics": "balanced"
+    },
+    {
+      "team_id": 32,
+      "name": "Columbia",
+      "formation": "3-4-2-1",
+      "tactics": "attacking"
+    },
+    {
+      "team_id": 33,
+      "name": "Mexico",
+      "formation": "4-4-2 diamond",
+      "tactics": "balanced"
+    },
+    {
+      "team_id": 34,
+      "name": "U.S.A",
+      "formation": "5-4-1",
+      "tactics": "defensive"
+    },
+    {
+      "team_id": 35,
+      "name": "Uruguay",
+      "formation": "2-3-5",
+      "tactics": "attacking"
+    }
+  ]
+}

@@ -300,8 +300,16 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                 players_patched++;
             }
             teams_patched++;
-            printf("[ModLoader] Patched team %u '%s' (%d players)\n",
-                   team->team_id, team->name, n);
+            /* A team entry may carry no players at all: "leave this squad
+             * alone, just change how it lines up" is a reasonable thing for a
+             * pack to say, and reporting it as zero players patched reads as
+             * a failure when nothing failed. */
+            if (n > 0)
+                printf("[ModLoader] Patched team %u '%s' (%d players)\n",
+                       team->team_id, team->name, n);
+            else
+                printf("[ModLoader] Team %u '%s': squad left as it is\n",
+                       team->team_id, team->name);
             if (patch_formation(rom, rom_size, pack->name, team, n))
                 formations_patched++;
         }
