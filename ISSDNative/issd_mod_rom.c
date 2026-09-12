@@ -19,7 +19,17 @@
 /* Layout of the roster tables: squads of 20 players, each with an 8 byte
  * name and 7 bytes of attributes, both flat arrays indexed by
  * team * 20 + player. */
-#define ROM_TEAMS             36
+/* 42, not 36: the cartridge carries a seventh group of six that the select
+ * screen normally hides. See unlock_bonus_teams below. */
+#define ROM_TEAMS             42
+#define ROM_STOCK_TEAMS       36
+
+/* LDX #$0006 / LDA $7ED856 / CMP #$0001 / BNE +3 / LDX #$0007, at $85:A566.
+ * The flag is whatever the cartridge unlocks the bonus teams with; the
+ * default beside it is the count the screen otherwise uses. Raising that
+ * default is the whole unlock. Found by watching writes to the group count
+ * in WRAM and following the interpreter's PC back. */
+#define ROM_GROUP_COUNT_OPERAND 0x02A567u
 #define ROM_PLAYERS_PER_TEAM  20
 #define ROM_NAME_BYTES         8
 #define ROM_ATTR_BYTES         7
@@ -311,6 +321,176 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
     return true;
 }
 
+/* ------------------------------------------------------------- kits ---- */
+
+/* A kit is a seventeen-colour palette: two constants at each end, skin and
+ * hair in the middle, and the eight colours that make a strip - three shirt
+ * shades, three shorts shades, two sock shades. They sit end to end from
+ * $89:83C0, thirty-four bytes apart, eighty-four of them: two per team for
+ * the forty-two the select screen can offer.
+ *
+ * Which of the eighty-four a team wears is the part no search could find -
+ * there is no table of indices anywhere in the cartridge, and the mapping is
+ * not the team order, the group order or the screen order. So it was
+ * measured: forty-two matches, one per team, each recording every cartridge
+ * offset the run touched. The opponent is always England, so the palette
+ * that is not England's is the one the team wore. kKitRecord below is that
+ * measurement, and nothing else.
+ *
+ * The second palette of the pair is the change strip the game switches to
+ * when the two teams would clash. Measuring those would need a match per
+ * team against something that clashes with it; until someone does, a pack
+ * that cares can name the record itself with `kit_record`. */
+#define ROM_KIT_BASE     0x0483C0u
+#define ROM_KIT_STRIDE        34u
+#define ROM_KIT_SHIRT          7   /* three shades, dark to light */
+#define ROM_KIT_SHORTS        10   /* three shades */
+#define ROM_KIT_SOCKS         13   /* two shades */
+/* Every kit ends with the same two colours. Checking them is how a cartridge
+ * that is not this revision gets left alone rather than scribbled on. */
+#define ROM_KIT_TAIL_A    0x0120u
+#define ROM_KIT_TAIL_B    0x001Fu
+
+static const int16_t kKitRecord[ROM_TEAMS] = {
+    0,   /*  0 Italy              */
+    1,   /*  1 Holland            */
+    -1,  /*  2 England            */
+    3,   /*  3 Norway             */
+    5,   /*  4 Spain              */
+    6,   /*  5 Ireland            */
+    7,   /*  6 Portugal           */
+    8,   /*  7 Denmark            */
+    14,  /*  8 Germany            */
+    2,   /*  9 France             */
+    10,  /* 10 Belgium            */
+    12,  /* 11 Sweden             */
+    9,   /* 12 Romania            */
+    13,  /* 13 Bulgaria           */
+    11,  /* 14 Russia             */
+    17,  /* 15 Swiss              */
+    4,   /* 16 Greece             */
+    15,  /* 17 Croatia            */
+    53,  /* 18 Austria            */
+    17,  /* 19 Wales              */
+    17,  /* 20 Scotland           */
+    17,  /* 21 N.Ireland          */
+    17,  /* 22 Czech Rep.         */
+    17,  /* 23 Poland             */
+    19,  /* 24 Japan              */
+    18,  /* 25 S.Korea            */
+    53,  /* 26 Turkey             */
+    21,  /* 27 Nigeria            */
+    20,  /* 28 Cameroon           */
+    22,  /* 29 Morocco            */
+    28,  /* 30 Brazil             */
+    25,  /* 31 Argentina          */
+    26,  /* 32 Columbia           */
+    24,  /* 33 Mexico             */
+    23,  /* 34 U.S.A              */
+    27,  /* 35 Uruguay            */
+    29,  /* 36 All Star           */
+    30,  /* 37 Eurostar A         */
+    31,  /* 38 Eurostar B         */
+    32,  /* 39 Asian Star         */
+    33,  /* 40 African Star       */
+    34,  /* 41 All American Star  */
+};
+
+/* SNES colour: five bits each, blue high. */
+static uint16_t to_bgr555(uint32_t rgb, unsigned num, unsigned den) {
+    unsigned r = ((rgb >> 16) & 0xFF) * num / den;
+    unsigned g = ((rgb >>  8) & 0xFF) * num / den;
+    unsigned b = ( rgb        & 0xFF) * num / den;
+    if (r > 255) r = 255;
+    if (g > 255) g = 255;
+    if (b > 255) b = 255;
+    return (uint16_t)((r * 31 / 255) | ((g * 31 / 255) << 5) |
+                      ((b * 31 / 255) << 10));
+}
+
+static void write_colour(uint8_t *rom, size_t rec, unsigned slot, uint16_t c) {
+    const size_t o = rec + (size_t)slot * 2;
+    rom[o] = (uint8_t)(c & 0xFF);
+    rom[o + 1] = (uint8_t)(c >> 8);
+}
+
+/* The cartridge shades a strip by darkening: the lit shade is the colour
+ * itself, the others roughly three quarters and three fifths of it. Measured
+ * off its own kits - England's red runs $F6, $BD, $94. */
+static void write_part(uint8_t *rom, size_t rec, unsigned slot, uint32_t rgb,
+                       int shades) {
+    if (shades == 3) {
+        write_colour(rom, rec, slot + 0, to_bgr555(rgb, 60, 100));
+        write_colour(rom, rec, slot + 1, to_bgr555(rgb, 77, 100));
+        write_colour(rom, rec, slot + 2, to_bgr555(rgb, 100, 100));
+    } else {
+        write_colour(rom, rec, slot + 0, to_bgr555(rgb, 62, 100));
+        write_colour(rom, rec, slot + 1, to_bgr555(rgb, 95, 100));
+    }
+}
+
+/* Repaint one team's strip. Returns true when anything changed. */
+static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
+                      const IssdModTeam *team) {
+    if (!team->shirt_rgb && !team->shorts_rgb && !team->socks_rgb) return false;
+
+    int which = team->kit_record;
+    if (which < 0) which = kKitRecord[team->team_id];
+    if (which < 0) {
+        char why[112];
+        snprintf(why, sizeof why,
+                 "%s: team %u has no measured kit - name kit_record",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    const size_t rec = ROM_KIT_BASE + (size_t)which * ROM_KIT_STRIDE;
+    if (rec + ROM_KIT_STRIDE > rom_size) return false;
+    const uint16_t tail_a = (uint16_t)(rom[rec + 30] | (rom[rec + 31] << 8));
+    const uint16_t tail_b = (uint16_t)(rom[rec + 32] | (rom[rec + 33] << 8));
+    if (tail_a != ROM_KIT_TAIL_A || tail_b != ROM_KIT_TAIL_B) {
+        char why[112];
+        snprintf(why, sizeof why, "%s: kit %d is not a kit on this cartridge",
+                 pack_name, which);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    /* Some teams wear the same palette - six of them share kit 17 - so
+     * repainting one repaints all of them. Say so rather than let a pack
+     * wonder why Wales changed colour. */
+    int sharers = 0;
+    for (int t = 0; t < ROM_TEAMS; t++) if (kKitRecord[t] == which) sharers++;
+    if (sharers > 1) {
+        char why[112];
+        snprintf(why, sizeof why, "%s: kit %d is worn by %d teams",
+                 pack_name, which, sharers);
+        issd_mod_result_note_warning(why);
+    }
+
+    if (team->shirt_rgb)  write_part(rom, rec, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
+    if (team->shorts_rgb) write_part(rom, rec, ROM_KIT_SHORTS, team->shorts_rgb, 3);
+    if (team->socks_rgb)  write_part(rom, rec, ROM_KIT_SOCKS,  team->socks_rgb, 2);
+    printf("[ModLoader] Team %u wears a new strip (kit %d).\n",
+           team->team_id, which);
+    return true;
+}
+
+/* Offer the seventh group. Checked against the bytes it should hold, so a
+ * cartridge that is not this revision is left alone. */
+static bool unlock_bonus_teams(uint8_t *rom, size_t rom_size) {
+    if (rom_size <= ROM_GROUP_COUNT_OPERAND) return false;
+    if (rom[ROM_GROUP_COUNT_OPERAND - 1] != 0xA2 ||
+        rom[ROM_GROUP_COUNT_OPERAND] != 6) {
+        issd_mod_result_note_warning("cannot unlock the bonus teams here");
+        return false;
+    }
+    rom[ROM_GROUP_COUNT_OPERAND] = 7;
+    printf("[ModLoader] Bonus teams unlocked: %d teams in 7 groups.\n", ROM_TEAMS);
+    return true;
+}
+
 /* Write one stadium. Returns true when anything changed. */
 static bool patch_stadium(uint8_t *rom, size_t rom_size, const char *pack_name,
                           const IssdModStadium *st) {
@@ -511,7 +691,7 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
     }
 
     int players_patched = 0, teams_patched = 0, formations_patched = 0;
-    int stadiums_patched = 0;
+    int stadiums_patched = 0, kits_patched = 0;
 
     /* Expansion rewrites code and moves tables, so it happens once, before
      * any pack writes a stadium. The largest ask across the stack wins:
@@ -527,6 +707,8 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
         }
         expand_stadiums(rom, rom_size, want);
     }
+
+    if (issd_mod_wants_bonus_teams()) unlock_bonus_teams(rom, rom_size);
 
     /* Which pack last wrote each team, so an overlap can be named rather
      * than silently resolved. Stacking two packs that both rewrite Mexico
@@ -575,10 +757,31 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                 n = ROM_PLAYERS_PER_TEAM;
             }
 
+            /* Names run out at 36. The last six squads are assembled from
+             * their group at kick-off - there is no roster behind them to
+             * write to, and the eight bytes per player past the table
+             * belong to something else. Ratings and shape are real for all
+             * of them, so those still go in. */
+            const bool has_roster = team->team_id < ROM_STOCK_TEAMS;
+            if (!has_roster && n > 0) {
+                char why[112];
+                snprintf(why, sizeof why,
+                         "%s: team %u picks its players, so names are ignored",
+                         pack->name, team->team_id);
+                issd_mod_result_note_warning(why);
+                fprintf(stderr,
+                        "[ModLoader] '%s': team %u is an all-star side - the game "
+                        "takes its twenty players from its own group at kick-off, "
+                        "so the names in this pack cannot reach it. Ratings, "
+                        "shape and strip still apply.\n", pack->name, team->team_id);
+            }
+
             const size_t slot = (size_t)team->team_id * ROM_PLAYERS_PER_TEAM;
             for (int p = 0; p < n; p++) {
-                patch_name(rom, ROM_NAME_BASE + (slot + p) * ROM_NAME_BYTES,
-                           team->players[p].name);
+                if (has_roster)
+                    patch_name(rom,
+                               ROM_NAME_BASE + (slot + p) * ROM_NAME_BYTES,
+                               team->players[p].name);
                 patch_attributes(rom, ROM_ATTR_BASE + (slot + p) * ROM_ATTR_BYTES,
                                  &team->players[p]);
                 players_patched++;
@@ -596,6 +799,7 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                        team->team_id, team->name);
             if (patch_formation(rom, rom_size, pack->name, team, n))
                 formations_patched++;
+            if (patch_kit(rom, rom_size, pack->name, team)) kits_patched++;
         }
 
         for (int si = 0; si < pack->stadium_count; si++)
@@ -608,6 +812,9 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                "cartridge image.\n", players_patched, teams_patched);
     if (formations_patched)
         printf("[ModLoader] Reshaped %d team(s).\n", formations_patched);
+
+    if (kits_patched)
+        printf("[ModLoader] Repainted %d strip(s).\n", kits_patched);
 
     if (stadiums_patched)
         printf("[ModLoader] Rebuilt %d stadium(s).\n", stadiums_patched);

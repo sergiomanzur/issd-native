@@ -27,7 +27,11 @@ import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# 36 squads. The select screen can offer 42 once a pack unlocks the
+# seventh group, but the last six assemble their players from the group
+# they belong to, so a pack's names cannot reach them.
 TEAM_COUNT = 36
+TEAM_SLOTS = 42
 STADIUM_COUNT = 8          # what the cartridge ships
 STADIUM_MAX = 32           # what its tables can be extended to
 PLATE_CHARS = 12           # what fits on the select screen's name plate
@@ -36,6 +40,15 @@ STADIUM_NAME_CHARS = 7
 PITCH_LENGTH = (100, 140)
 PITCH_WIDTH = (64, 96)
 SQUAD_SLOTS = 20
+
+# Kit palettes: 84 of them, two per team for the 42 the select screen can
+# offer. Six teams share record 17 and two share 53, measured a match at a
+# time - see kKitRecord in ISSDNative/issd_mod_rom.c.
+KIT_RECORDS = 84
+SHARED_KIT_TEAMS = {15, 18, 19, 20, 21, 22, 23, 26}
+
+# What the host-drawn team plate fits.
+PLATE_CHARS = 12
 NAME_CHARS = 8
 POSITIONS = ("GK", "DF", "MF", "FW")
 TACTICS = ("attacking", "balanced", "normal", "defensive", "defence", "defense")
@@ -163,15 +176,20 @@ def check_team(report, team, index, formations, seen_ids):
         report.error(where, "no team_id, so it names no team and is dropped")
     elif not isinstance(team_id, int) or isinstance(team_id, bool):
         report.error(where, "team_id must be a number, not %r" % (team_id,))
-    elif not 0 <= team_id < TEAM_COUNT:
-        report.error(where, "team_id %d does not exist; the cartridge has %d teams "
+    elif not 0 <= team_id < TEAM_SLOTS:
+        report.error(where, "team_id %d does not exist; there are %d team slots "
                             "(0 to %d) and none can be added"
-                     % (team_id, TEAM_COUNT, TEAM_COUNT - 1))
+                     % (team_id, TEAM_SLOTS, TEAM_SLOTS - 1))
     else:
         where = "team %d" % team_id
         if team_id in seen_ids:
             report.error(where, "listed twice in this pack; the later one wins")
         seen_ids.add(team_id)
+        if team_id >= TEAM_COUNT and team.get("players"):
+            report.warn(where, "this is one of the six all-star sides; it "
+                               "picks its players from its group when the "
+                               "match loads, so these names are ignored "
+                               "(ratings, shape and strip still apply)")
 
     formation = team.get("formation")
     if formation is not None:
@@ -181,6 +199,45 @@ def check_team(report, team, index, formations, seen_ids):
             report.error(where, 'formation "%s" is not one the game knows.\n'
                                 '    Known: %s'
                          % (formation, ", ".join(formations)))
+
+    plate = team.get("plate_name")
+    if plate is not None:
+        if not isinstance(plate, str):
+            report.error(where, "plate_name must be text")
+        elif len(plate) > PLATE_CHARS:
+            report.error(where, 'plate_name "%s" is %d characters; the plate'
+                                ' the host draws fits %d'
+                         % (plate, len(plate), PLATE_CHARS))
+
+    photo = team.get("photo")
+    if photo is not None and not isinstance(photo, str):
+        report.error(where, "photo must be the name of a .bmp beside the pack")
+    elif isinstance(photo, str) and not photo.lower().endswith(".bmp"):
+        report.error(where, "photo must be a 32-bit .bmp; %r is not" % (photo,))
+
+    for key in ("shirt", "shorts", "socks"):
+        colour = team.get(key)
+        if colour is None:
+            continue
+        text = colour[1:] if isinstance(colour, str) and colour.startswith("#") else colour
+        if (not isinstance(colour, str) or len(str(text)) != 6 or
+                any(c not in "0123456789abcdefABCDEF" for c in str(text))):
+            report.error(where, '%s must be a colour like "#C8102E", not %r'
+                         % (key, colour))
+
+    kit = team.get("kit_record")
+    if kit is not None:
+        if not isinstance(kit, int) or isinstance(kit, bool):
+            report.error(where, "kit_record must be a number")
+        elif not 0 <= kit < KIT_RECORDS:
+            report.error(where, "kit_record %d does not exist; there are %d"
+                         % (kit, KIT_RECORDS))
+
+    if (team.get("shirt") or team.get("shorts") or team.get("socks")) and (
+            isinstance(team_id, int) and team_id in SHARED_KIT_TEAMS and
+            team.get("kit_record") is None):
+        report.warn(where, "this team shares its strip with others, so "
+                           "recolouring it recolours them too")
 
     tactics = team.get("tactics", team.get("strategy"))
     if tactics is not None and str(tactics).lower() not in TACTICS:

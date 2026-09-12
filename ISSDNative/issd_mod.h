@@ -12,7 +12,21 @@ extern "C" {
 /* The cartridge stores 20 squad slots per team. This was 16, which quietly
  * left the last four players of every team unpatched. */
 #define ISSD_MAX_PLAYERS_PER_TEAM 20
-#define ISSD_MAX_TEAMS_PER_PACK   36
+/* The select screen offers 42 teams once the seventh group is unlocked, but
+ * only 36 of them are squads. The last six - ALL STAR, EUROSTAR A and B,
+ * ASIAN STAR, AFRICAN STAR and ALL AMERICAN STAR - are assembled at kick-off
+ * from the group they belong to: team 36+g takes twenty players out of the
+ * six rosters of group g. That was measured, not guessed - a match as ALL
+ * AMERICAN STAR reads twenty eight-byte names scattered across teams 30 to
+ * 35 and none from a roster of its own, and the roster pointer table's last
+ * seven entries all point at the same dead address.
+ *
+ * So a pack can unlock them, and can give them attributes and a kit, but it
+ * cannot name their players: rename the group's teams and the all-stars
+ * follow. Only 0-35 are real squads. */
+#define ISSD_ROM_TEAMS            42
+#define ISSD_ROM_STOCK_TEAMS      36
+#define ISSD_MAX_TEAMS_PER_PACK   42
 #define ISSD_MAX_MOD_PACKS        16
 
 typedef struct {
@@ -48,10 +62,30 @@ typedef struct {
      * that shape without changing how many players are in each line. */
     char     formation[24];
     char     tactics[16];
-    uint32_t home_shirt_rgb;
-    uint32_t home_shorts_rgb;
-    uint32_t away_shirt_rgb;
-    uint32_t away_shorts_rgb;
+    /* What the select screen's plate should read. The plate is a
+     * pre-rendered graphic, so the host draws over it - the same way it
+     * does for stadiums. Empty leaves the cartridge's own. */
+    char     plate_name[20];
+    /* The squad photograph the select screen shows. The cartridge's own is
+     * a compressed graphic per team, so this is drawn by the host instead:
+     * a 32-bit BMP beside the pack file, any size, scaled into the 96x72
+     * the frame leaves. Empty keeps the cartridge's photograph. */
+    char     photo[64];
+    /* Kit colours. The cartridge keeps a seventeen-colour palette per kit:
+     * three shirt shades, three shorts shades, two sock shades, and skin and
+     * hair it shares with everyone. A pack gives the base colour of a part
+     * and the shades are derived from it, the way the cartridge shades its
+     * own. 0 leaves that part alone.
+     *
+     * Which palette a team wears is not written down anywhere a search can
+     * find it. It was measured instead, one match per team, by recording
+     * every cartridge offset a run touched; kKitRecord in issd_mod_rom.c is
+     * what that measured. `kit_record` overrides it for a cartridge or a
+     * team the table does not cover. */
+    uint32_t shirt_rgb;
+    uint32_t shorts_rgb;
+    uint32_t socks_rgb;
+    int      kit_record;      /* -1: use the measured table */
     int      player_count;
     IssdModPlayer players[ISSD_MAX_PLAYERS_PER_TEAM];
 } IssdModTeam;
@@ -98,6 +132,8 @@ typedef struct {
      * cartridge's eight; more than that relocates and extends its
      * tables. The highest value across the enabled packs wins. */
     int         stadium_slots;
+    /* True when the pack wants the seventh group of teams offered. */
+    bool        unlock_bonus_teams;
     IssdModStadium stadiums[ISSD_MAX_STADIUMS];
 } IssdModPack;
 
@@ -122,6 +158,16 @@ typedef struct {
 /* The plate text for a stadium slot, or NULL when no enabled pack names
  * it. Later packs in the stack win, as everywhere else. */
 const char *issd_mod_stadium_plate_name(int slot);
+
+/* The plate text for a team, or NULL when no enabled pack renames it. */
+const char *issd_mod_team_plate_name(int team_id);
+
+/* The full path of the squad photograph a pack gives a team, resolved
+ * against the pack's own directory. False when no enabled pack has one. */
+bool        issd_mod_team_photo_path(int team_id, char *out, size_t cap);
+
+/* True when any enabled pack asks for the seventh group. */
+bool        issd_mod_wants_bonus_teams(void);
 
 const IssdModResult *issd_mod_last_result(void);
 void issd_mod_result_reset(void);

@@ -274,9 +274,149 @@ test would paint a grey slab over it.
 
 ### What this does not reach
 
-The same approach applied to teams would be
-much larger: a team is spread across the roster name and attribute tables,
-a formation record behind a pointer table, flags, kit palettes and name
-plates, and the roster base is computed through a dispatcher in bank $83
-rather than sitting in an instruction as an immediate. The select screen's
-six-by-six grid would have to grow as well.
+The same approach applied to teams runs into the select screen's six-by-six
+grid, which would have to grow. The tables themselves turned out to be
+reachable - see the next section.
+
+---
+
+## The seventh group of teams, and what is actually behind it
+
+### Unlocking it
+
+The team select screen offers six groups of six. Watching writes to the
+group count in WRAM and following the interpreter's PC back reached
+$85:A566:
+
+```
+  LDX #$0006          ; the default
+  LDA $7ED856
+  CMP #$0001
+  BNE +3
+  LDX #$0007          ; ... unless the flag is set
+```
+
+Raising the default at file offset **0x2A567** from 6 to 7 is the whole
+unlock. A seventh group appears - ALL STAR, EUROSTAR A and B, ASIAN STAR,
+AFRICAN STAR, ALL AMERICAN STAR - and its teams are selectable and play.
+
+### They are not six spare squads
+
+The obvious next step - write twenty names at name_base + team * 160 -
+changed nothing, and a match as ALL AMERICAN STAR showed a keeper called
+da Silva, which is Brazil's. Three measurements settled it.
+
+A read map of that match, restricted to the name table, shows **twenty**
+eight-byte reads scattered across teams 30 to 35 and none from a roster of
+its own. Counted by slot they are exactly twenty players - six from Brazil,
+four from Argentina, three from Columbia and so on: team 36+g is assembled
+at kick-off out of the six rosters of group g.
+
+The same map shows six single-word reads at 0x38174 onwards. That is a
+**roster pointer table at 0x38138** - 43 sixteen-bit pointers into bank $87,
+stride $A0, one per team - and those reads are entries 30 to 35, the group
+being drawn from. Its last seven entries all hold the same dead address,
+$87:980E, one past the end of the 36 rosters. There is a second, identical
+copy at 0x398AE.
+
+Twenty names, no roster of its own, seven dummy pointers: three independent
+facts saying the same thing. A pack can give these six ratings, a shape, a
+strip, a plate and a photograph - all real per-team data - but not players.
+
+Searching for the pick list as a table found nothing under any encoding
+tried: (team, player) pairs either way round, packed indices, sixteen-bit
+globals, and every permutation of those. The picker is at $98:FA2D, reached
+by a JSL from $85:ADA1; it looks computed rather than tabulated, and was not
+chased further because nothing depends on it.
+
+### What the seventh group does have
+
+| | where | teams |
+|---|---|---|
+| ratings | 0x50000 + team * 140 | 0-41 |
+| formation | pointer table at 0x5EF48 | 0-42 |
+| kit palette | see below | 0-41 |
+| names | pointer table at 0x38138 | **0-35 only** |
+
+ALL STAR's formation record really does read 4-2-4, which is what the select
+screen prints for it - a cheap check that the pointer table runs past 36
+rather than into rubbish.
+
+---
+
+## Kit palettes: when there is no index table to find
+
+### The table
+
+Diffing the read maps of two matches that differed only in the opponent left
+a handful of runs, among them two thirty-two byte reads thirty-four bytes
+apart. Thirty-four bytes is seventeen colours, and dumping them showed a
+strip: three shirt shades, three shorts shades, two sock shades, skin and
+hair, and two constants at the end that every record shares ($0120, $001F).
+England's red runs $F6, $BD, $94 - the lit shade, and roughly three quarters
+and three fifths of it.
+
+Scanning for those two trailing constants at a 34-byte stride bounds the
+table: **84 records from 0x483C0**, two per team for the 42 the screen can
+offer.
+
+### The index that does not exist
+
+Which record a team wears is stored nowhere. Searched for and not found: a
+byte table, a word table, byte tables at every stride from 1 to 32, a table
+of bank-$89 addresses, and the record index scaled by 2 or by 34. The mapping
+is not the team order, the group order or the screen order - Brazil,
+Argentina, Columbia, Mexico, U.S.A and Uruguay wear records 28, 25, 26, 24,
+23 and 27.
+
+### Measuring it instead
+
+Forty-two scripted matches, one per cell of the select grid, each recording
+every cartridge offset it touched. Each run yields two things:
+
+- **which team it was** - the 160-byte roster read names the team outright,
+  so the grid cell never has to be trusted. Worth doing: several of the first
+  attempt's scripts confirmed before the cursor had finished moving, and the
+  roster read is what caught it.
+- **which record it wore** - the opponent is always England, so the
+  thirty-two byte read that is not England's is the team's own.
+
+Forty-one of the forty-two resolve. Six teams share one record and two share
+another, which is real rather than an artefact - a match between two of them
+reads one record, not two. England is the one team this cannot resolve,
+because it is the opponent in every run. kKitRecord in
+ISSDNative/issd_mod_rom.c is that measurement and nothing else.
+
+The other 42 records are the change strips the game switches to when two
+teams would clash. Pairing those to their teams would need a match per team
+against something that clashes with it, and has not been done.
+
+### The near miss worth recording
+
+There is a second palette table at 0x4C920 - 126 records of sixteen colours,
+and 126 is 42 times 3, which looks exactly like a per-team kit table. It is
+not the match palette: painting all 126 magenta changed nothing on the pitch.
+It belongs to the select screen. The lesson is the usual one - a table whose
+shape fits the theory is not evidence for the theory, and one mutation
+settles it in two minutes.
+
+---
+
+## The team plate and photograph, drawn host-side
+
+Both are pre-rendered graphics chosen by team, so a club the cartridge never
+heard of has neither. As with the stadium plate, the host draws over them.
+Three measurements:
+
+- **The screen.** Team select and stadium select share game mode $32 = $06,
+  $70 = $0C, so the four background scroll positions at $7E0018 separate
+  them: 20, 36, 16, 32 on team select against 52, 44, 48, 40 on the stadium
+  screen.
+- **The selection.** Capturing the six cells of one group and looking for the
+  byte that counted 60, 62, 64, 66, 68, 70 gives **$7E1526**: the team index
+  doubled, which is how the screen indexes its own tables.
+- **The rectangles.** The name plate is x 160-231, y 32-46, blue with a
+  vertical gradient, lettered yellow with a magenta outline. The
+  photograph's frame holds 96 x 72 at x 24, y 40.
+
+The flag beside the plate, and the match HUD's own plate, are left alone.

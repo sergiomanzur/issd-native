@@ -194,6 +194,33 @@ static bool json_u8(JsonReader *r, uint8_t *dst) {
 
 /* ------------------------------------------------------- the pack shape -- */
 
+/* A colour, written the way everyone writes colours: "#C8102E". The high
+ * byte is set on anything valid so that 0 can go on meaning "not given",
+ * which matters because black is a perfectly ordinary kit colour. */
+static bool json_colour(JsonReader *r, uint32_t *dst) {
+    char text[16];
+    /* A colour that is not written as text is skipped, not fatal: one
+     * mistyped field should cost that field, not the whole pack. */
+    json_skip_ws(r);
+    if (*r->p != '"') return json_skip_value(r);
+    if (!json_string(r, text, sizeof text)) return false;
+    const char *p = text;
+    if (*p == '#') p++;
+    uint32_t v = 0;
+    int digits = 0;
+    for (; *p; p++, digits++) {
+        int d;
+        if (*p >= '0' && *p <= '9')      d = *p - '0';
+        else if (*p >= 'a' && *p <= 'f') d = *p - 'a' + 10;
+        else if (*p >= 'A' && *p <= 'F') d = *p - 'A' + 10;
+        else return true;                /* not a colour; leave it unset */
+        v = (v << 4) | (uint32_t)d;
+    }
+    if (digits != 6) return true;
+    *dst = 0xFF000000u | v;
+    return true;
+}
+
 static bool player_member(JsonReader *r, const char *key, void *ctx) {
     IssdModPlayer *p = (IssdModPlayer *)ctx;
     IssdPlayerAttributes *a = &p->attributes;
@@ -238,6 +265,17 @@ static bool team_member(JsonReader *r, const char *key, void *ctx) {
     if (strcmp(key, "formation") == 0)    return JSON_STR_FIELD(r, t->formation);
     if (strcmp(key, "tactics") == 0 ||
         strcmp(key, "strategy") == 0)     return JSON_STR_FIELD(r, t->tactics);
+    if (strcmp(key, "plate_name") == 0)   return JSON_STR_FIELD(r, t->plate_name);
+    if (strcmp(key, "photo") == 0)        return JSON_STR_FIELD(r, t->photo);
+    if (strcmp(key, "shirt") == 0)        return json_colour(r, &t->shirt_rgb);
+    if (strcmp(key, "shorts") == 0)       return json_colour(r, &t->shorts_rgb);
+    if (strcmp(key, "socks") == 0)        return json_colour(r, &t->socks_rgb);
+    if (strcmp(key, "kit_record") == 0) {
+        long v = 0;
+        if (!json_number(r, &v)) return false;
+        t->kit_record = (int)v;
+        return true;
+    }
     if (strcmp(key, "players") == 0)      return json_array(r, player_element, t);
     return json_skip_value(r);
 }
@@ -248,6 +286,7 @@ static bool team_element(JsonReader *r, void *ctx) {
     IssdModTeam *t = &pack->teams[pack->team_count];
     memset(t, 0, sizeof *t);
     t->team_id = 0xFF;            /* so a missing team_id is detectable */
+    t->kit_record = -1;           /* -1: whatever the measured table says */
     if (!json_object(r, team_member, t)) return false;
     pack->team_count++;
     return true;
@@ -287,6 +326,17 @@ static bool pack_member(JsonReader *r, const char *key, void *ctx) {
     if (strcmp(key, "description") == 0) return JSON_STR_FIELD(r, pack->description);
     if (strcmp(key, "teams") == 0)       return json_array(r, team_element, pack);
     if (strcmp(key, "stadiums") == 0)    return json_array(r, stadium_element, pack);
+    if (strcmp(key, "unlock_bonus_teams") == 0) {
+        json_skip_ws(r);
+        if (*r->p == 't' || *r->p == 'f') {
+            pack->unlock_bonus_teams = (*r->p == 't');
+            return json_skip_value(r);
+        }
+        long v = 0;
+        if (!json_number(r, &v)) return false;
+        pack->unlock_bonus_teams = (v != 0);
+        return true;
+    }
     if (strcmp(key, "stadium_count") == 0) {
         long v = 0;
         if (!json_number(r, &v)) return false;
@@ -535,6 +585,60 @@ void issd_mod_enable_from_list(const char *list) {
 /* --------------------------------------------------------------- result -- */
 
 static IssdModResult g_result_public;
+
+bool issd_mod_team_photo_path(int team_id, char *out, size_t cap) {
+    bool found = false;
+    for (int i = 0; ; i++) {
+        const int pi = issd_mod_pack_at_order(i);
+        if (pi < 0) break;
+        const IssdModPack *pack = issd_mod_get_pack(pi);
+        if (!pack) continue;
+        for (int k = 0; k < pack->team_count; k++) {
+            if (pack->teams[k].team_id != team_id) continue;
+            if (!pack->teams[k].photo[0]) continue;
+            /* The photograph sits beside the pack that names it, so a
+             * pack is one folder a player can move around. */
+            char dir[256];
+            snprintf(dir, sizeof dir, "%s", pack->filepath);
+            char *cut = strrchr(dir, '/');
+            char *alt = strrchr(dir, '\\');
+            if (alt && (!cut || alt > cut)) cut = alt;
+            if (cut) *cut = '\0'; else dir[0] = '\0';
+            if (dir[0]) snprintf(out, cap, "%s/%s", dir, pack->teams[k].photo);
+            else        snprintf(out, cap, "%s", pack->teams[k].photo);
+            found = true;
+        }
+    }
+    return found;
+}
+
+const char *issd_mod_team_plate_name(int team_id) {
+    const char *found = NULL;
+    for (int i = 0; ; i++) {
+        const int pi = issd_mod_pack_at_order(i);
+        if (pi < 0) break;
+        const IssdModPack *pack = issd_mod_get_pack(pi);
+        if (!pack) continue;
+        for (int k = 0; k < pack->team_count; k++)
+            if (pack->teams[k].team_id == team_id && pack->teams[k].plate_name[0])
+                found = pack->teams[k].plate_name;
+    }
+    return found;
+}
+
+bool issd_mod_wants_bonus_teams(void) {
+    for (int i = 0; ; i++) {
+        const int pi = issd_mod_pack_at_order(i);
+        if (pi < 0) break;
+        const IssdModPack *pack = issd_mod_get_pack(pi);
+        if (!pack) continue;
+        /* A pack that edits one of the six implies it wants them offered. */
+        if (pack->unlock_bonus_teams) return true;
+        for (int k = 0; k < pack->team_count; k++)
+            if (pack->teams[k].team_id >= ISSD_ROM_STOCK_TEAMS) return true;
+    }
+    return false;
+}
 
 const char *issd_mod_stadium_plate_name(int slot) {
     const char *found = NULL;

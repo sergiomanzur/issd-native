@@ -839,3 +839,183 @@ void issd_menu_render_stadium_plate(uint32_t *fb, int width, int height,
     for (int i = 0; i < len; i++, x += advance)
         DrawChar(fb, width, height, x, y, name[i], PLATE_INK);
 }
+
+/* ---------------------------------------------- team name plate ------ */
+
+/* The team select screen names the highlighted team on a blue plate beside
+ * its flag, and like the stadium plate that name is a pre-rendered graphic:
+ * there is one per team and no way to add a word the cartridge does not
+ * already draw. A pack that turns Uruguay into Chivas gets everything else -
+ * the squad, the shape, the strip - and a plate still reading URUGUAY.
+ *
+ * So the host repaints it. Measured off the real screen: the plate is x
+ * 160-231, y 32-46, its blue runs as a gradient down the rows, and the
+ * lettering is yellow with a magenta outline. The flag to its left is left
+ * alone - it is the team's own and a club has no flag anyway.
+ *
+ * $7E1526 holds the highlighted team doubled, which is how the screen
+ * indexes its tables; found by capturing the six cells of one group and
+ * looking for the byte that counted 60, 62, 64, 66, 68, 70. */
+#define TEAM_PLATE_X0   160
+#define TEAM_PLATE_X1   231
+#define TEAM_PLATE_Y0    32
+#define TEAM_PLATE_Y1    46
+#define TEAM_PLATE_INK    0xFFFFFF00u   /* yellow */
+#define TEAM_PLATE_EDGE   0xFFEF0063u   /* magenta outline */
+#define TEAM_SELECTOR   0x1526u
+
+/* The plate's blue, row by row, sampled from a letter-free column. */
+static const uint32_t kTeamPlateRow[TEAM_PLATE_Y1 - TEAM_PLATE_Y0 + 1] = {
+    0xFF9CEFFFu, 0xFF31BDFFu, 0xFF31BDFFu, 0xFF4ACEFFu, 0xFF4ACEFFu,
+    0xFF4ACEFFu, 0xFF31BDFFu, 0xFF31BDFFu, 0xFF31A5FFu, 0xFF31A5FFu,
+    0xFF31A5FFu, 0xFF2184FFu, 0xFF2184FFu, 0xFF2184FFu, 0xFF31A5FFu
+};
+
+/* The two select screens share a game mode, so the scroll positions are what
+ * tells them apart: 20, 36, 16, 32 here against the stadium screen's 52, 44,
+ * 48, 40. */
+static bool on_team_select(void) {
+    static const uint8_t kScroll[4] = { 20, 36, 16, 32 };
+    if (g_ram[0x32] != 0x06 || g_ram[0x70] != 0x0C) return false;
+    for (int i = 0; i < 4; i++)
+        if (g_ram[0x18 + i * 2] != kScroll[i]) return false;
+    return true;
+}
+
+void issd_menu_render_team_plate(uint32_t *fb, int width, int height,
+                                 int margin) {
+    if (!fb) return;
+    if (!on_team_select()) return;
+
+    const int team = g_ram[TEAM_SELECTOR] / 2;
+    const char *name = issd_mod_team_plate_name(team);
+    if (!name || !name[0]) return;      /* the cartridge's own plate stands */
+
+    int len = (int)strlen(name);
+    const int room = TEAM_PLATE_X1 - TEAM_PLATE_X0 + 1;
+    int advance = 8;
+    if (len * advance > room) advance = 6;
+    if (len * advance > room) len = room / advance;
+
+    for (int y = TEAM_PLATE_Y0; y <= TEAM_PLATE_Y1; y++) {
+        if (y < 0 || y >= height) continue;
+        const uint32_t shade = kTeamPlateRow[y - TEAM_PLATE_Y0];
+        for (int x = TEAM_PLATE_X0; x <= TEAM_PLATE_X1; x++) {
+            const int px = margin + x;
+            if (px < 0 || px >= width) continue;
+            fb[(size_t)y * width + px] = shade;
+        }
+    }
+
+    /* Outline first, then the letter on top: that is what the cartridge's
+     * own plates look like, and it keeps yellow legible on pale blue. */
+    const int x0 = margin + TEAM_PLATE_X0 + (room - len * advance) / 2;
+    const int y = TEAM_PLATE_Y0 + 4;
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (!dx && !dy) continue;
+            int x = x0 + dx;
+            for (int i = 0; i < len; i++, x += advance)
+                DrawChar(fb, width, height, x, y + dy, name[i], TEAM_PLATE_EDGE);
+        }
+    }
+    int x = x0;
+    for (int i = 0; i < len; i++, x += advance)
+        DrawChar(fb, width, height, x, y, name[i], TEAM_PLATE_INK);
+}
+
+/* --------------------------------------------- team photograph ------- */
+
+/* Beside the plate the select screen shows the squad lined up for a
+ * photograph. Those are per-team graphics in the cartridge, compressed, and
+ * there is no spare one to point a new club at - so the host draws over the
+ * frame instead, from a BMP the pack ships.
+ *
+ * The frame's inside was measured off the screen: x 24-119, y 40-111,
+ * ninety-six by seventy-two, with the cartridge's own grey mount left
+ * showing around it. Any size of BMP is accepted and sampled to fit, which
+ * keeps the authoring end forgiving.
+ */
+#define PHOTO_X0   24
+#define PHOTO_Y0   40
+#define PHOTO_W    96
+#define PHOTO_H    72
+
+#pragma pack(push, 1)
+typedef struct {
+    uint16_t type; uint32_t size; uint16_t r1, r2; uint32_t offset;
+} PhotoFileHeader;
+typedef struct {
+    uint32_t size; int32_t w, h; uint16_t planes, bits;
+    uint32_t compression, image_bytes;
+    int32_t  xppm, yppm; uint32_t used, important;
+} PhotoInfoHeader;
+#pragma pack(pop)
+
+/* One photograph is cached at a time: the screen shows one at a time, and
+ * re-reading the file every frame while a player scrolls the grid would be
+ * a silly amount of disk work. */
+static uint32_t s_photo[PHOTO_W * PHOTO_H];
+static int      s_photo_team = -1;
+static bool     s_photo_ok;
+
+static bool photo_load(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    PhotoFileHeader fh;
+    PhotoInfoHeader ih;
+    if (fread(&fh, sizeof fh, 1, f) != 1 || fread(&ih, sizeof ih, 1, f) != 1 ||
+        fh.type != 0x4D42 || ih.bits != 32 || ih.compression > 3) {
+        fclose(f);
+        return false;
+    }
+    const int w = ih.w;
+    const int h = ih.h < 0 ? -ih.h : ih.h;
+    if (w <= 0 || h <= 0 || (long)w * h > 4L * 1024 * 1024) { fclose(f); return false; }
+
+    uint32_t *src = (uint32_t *)malloc((size_t)w * h * sizeof(uint32_t));
+    if (!src) { fclose(f); return false; }
+    if (fseek(f, (long)fh.offset, SEEK_SET) != 0 ||
+        fread(src, sizeof(uint32_t), (size_t)w * h, f) != (size_t)w * h) {
+        free(src); fclose(f); return false;
+    }
+    fclose(f);
+
+    for (int y = 0; y < PHOTO_H; y++) {
+        int sy = y * h / PHOTO_H;
+        if (ih.h > 0) sy = h - 1 - sy;          /* bottom-up, as most save */
+        for (int x = 0; x < PHOTO_W; x++) {
+            const int sx = x * w / PHOTO_W;
+            s_photo[y * PHOTO_W + x] = 0xFF000000u | src[sy * w + sx];
+        }
+    }
+    free(src);
+    return true;
+}
+
+void issd_menu_render_team_photo(uint32_t *fb, int width, int height,
+                                 int margin) {
+    if (!fb) return;
+    if (!on_team_select()) return;
+
+    const int team = g_ram[TEAM_SELECTOR] / 2;
+    if (team != s_photo_team) {
+        char path[512];
+        s_photo_team = team;
+        s_photo_ok = issd_mod_team_photo_path(team, path, sizeof path) &&
+                     photo_load(path);
+        if (!s_photo_ok && path[0] && issd_mod_team_photo_path(team, path, sizeof path))
+            fprintf(stderr, "[Mods] cannot read the squad photograph '%s'.\n", path);
+    }
+    if (!s_photo_ok) return;                 /* the cartridge's own stands */
+
+    for (int y = 0; y < PHOTO_H; y++) {
+        const int py = PHOTO_Y0 + y;
+        if (py < 0 || py >= height) continue;
+        for (int x = 0; x < PHOTO_W; x++) {
+            const int px = margin + PHOTO_X0 + x;
+            if (px < 0 || px >= width) continue;
+            fb[(size_t)py * width + px] = s_photo[y * PHOTO_W + x];
+        }
+    }
+}

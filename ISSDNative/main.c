@@ -1506,6 +1506,12 @@ int main(int argc, char **argv) {
                 issd_menu_render_stadium_plate(g_pixel_buffer, cur_render_w,
                                               cur_render_h,
                                               g_ws_active ? g_ws_extra : 0);
+                issd_menu_render_team_photo(g_pixel_buffer, cur_render_w,
+                                            cur_render_h,
+                                            g_ws_active ? g_ws_extra : 0);
+                issd_menu_render_team_plate(g_pixel_buffer, cur_render_w,
+                                            cur_render_h,
+                                            g_ws_active ? g_ws_extra : 0);
                 if (g_dump_first >= 0 && (int)frame_count >= g_dump_first && (int)frame_count <= g_dump_last) {
                     char nm[64];
                     snprintf(nm, sizeof(nm), "f_%05u.bmp", frame_count);

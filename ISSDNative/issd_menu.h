@@ -66,6 +66,16 @@ void issd_menu_render_notification(uint32_t *framebuffer, int width, int height)
 void issd_menu_render_stadium_plate(uint32_t *framebuffer, int width,
                                     int height, int margin);
 
+/* Repaints the team select screen's name plate when a pack renamed the
+ * highlighted team. A no-op on every other screen. */
+void issd_menu_render_team_plate(uint32_t *fb, int width, int height,
+                                 int margin);
+
+/* Draws a pack's own squad photograph over the select screen's frame.
+ * A no-op when the highlighted team has none. */
+void issd_menu_render_team_photo(uint32_t *fb, int width, int height,
+                                 int margin);
+
 /* Provided by the host: save settings and start the process again, so a
  * newly chosen mod pack is applied to a fresh cartridge image. */
 void issd_restart_application(void);

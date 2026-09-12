@@ -8,7 +8,7 @@ There are two kinds:
 
 | Kind | What it is | What it changes |
 |---|---|---|
-| **Roster pack** | one `.json` file | team names, player names, stats, appearance, formations, tactics |
+| **Roster pack** | one `.json` file (and any images beside it) | player names, stats, appearance, formations, tactics, kit colours, the select screen's name plate and squad photograph, stadiums |
 | **Tile pack** | a folder of `.bmp` files | the background graphics, at higher resolution |
 
 ```text
@@ -16,7 +16,9 @@ ISSDNative/
   ISSDNative.exe
   mods/
     world_cup_2026_mexico.json      <- a roster pack
-    formation_showcase.json         <- another one
+    chivas_guadalajara.json         <- another one
+    chivas_guadalajara/             <- images it names
+      team_photo.bmp
     title_screen_hd/                <- a tile pack
       0a3f19c4b7e25d80.bmp
       ...
@@ -155,10 +157,38 @@ So list your keeper first, then your back line, then midfield, then
 forwards. If you list fewer than 20, the rest of the squad is left as the
 cartridge has it. More than 20 and the extras are ignored, with a warning.
 
-**Teams cannot be added.** The cartridge indexes a fixed table of 36, and
-nothing in the code reads a 37th. A pack that names `team_id: 40` gets a
-warning and that team is skipped. What you can do is replace any of the 36
-completely - name, squad, shape - which is how a World Cup pack is built.
+**There are 36 squads, and a 37th cannot be added.** What a pack does
+instead is take one of the 36 over completely - squad, shape, strip, name
+plate and squad photograph - which is how both a World Cup pack and a club
+side are built. `mods/chivas_guadalajara.json` is a worked example: it
+turns Uruguay into Chivas de Guadalajara and leaves everything else alone.
+
+### The seventh group
+
+The select screen can offer **42** teams, not 36. Behind the six groups
+there is a seventh - ALL STAR, EUROSTAR A and B, ASIAN STAR, AFRICAN STAR,
+ALL AMERICAN STAR - that the cartridge hides. A pack switches it on with
+
+```json
+  "unlock_bonus_teams": true
+```
+
+and they become team ids 36 to 41.
+
+They are not six spare squads. Each one is **assembled when the match
+loads** from the group it belongs to: team 36+g takes twenty players out of
+the six rosters of group g, which is why ALL AMERICAN STAR fields Brazil's
+keeper. So for ids 36-41:
+
+| | |
+|---|---|
+| `players` names | **ignored**, with a warning - there is no roster behind them |
+| attributes | applied; they are real and stored per team |
+| `formation` / `tactics` | applied |
+| `shirt` / `shorts` / `socks` | applied |
+| `plate_name` / `photo` | applied |
+
+To change who an all-star side fields, change the group it draws from.
 
 Team ids run 0 to 35 in the order the team select screen shows them,
 six per group. Read off the screen one team at a time:
@@ -208,8 +238,14 @@ half-read.
 
 | Key | Type | Notes |
 |---|---|---|
-| `team_id` | 0-35 | **Required.** Starts a team entry. A typo here is why a pack "loads but does nothing". |
-| `name` | text | For your own reference and the log. The name on the team select screen is a graphic and is not changed. |
+| `team_id` | 0-35, or 36-41 with the seventh group unlocked | **Required.** Starts a team entry. A typo here is why a pack "loads but does nothing". |
+| `name` | text | For your own reference and the log. |
+| `plate_name` | text, 12 max | What the **select screen's name plate** should read. The cartridge's plates are graphics, one per team, so the host draws this one instead. Leave it out and the cartridge's own stands. |
+| `photo` | filename | A 32-bit `.bmp` beside the pack, drawn over the **squad photograph**. Any size; it is sampled into the 96x72 the frame leaves. |
+| `shirt` | `"#RRGGBB"` | Shirt colour. The three shades the cartridge uses are derived from it. |
+| `shorts` | `"#RRGGBB"` | Shorts colour. |
+| `socks` | `"#RRGGBB"` | Sock colour. |
+| `kit_record` | 0-83 | Which of the 84 kit palettes to paint. Only needed for a team the measured table does not cover - see section 6a. |
 | `formation` | text | See section 6. Optional. |
 | `tactics` | text | `attacking`, `balanced`, `defensive`. Optional. |
 | `players` | array | Optional: leave it out to change only the shape. |
@@ -364,6 +400,67 @@ The label indices, all sixteen read off the screen one at a time, are:
 The label is independent of the record's own contents, so it has to be kept
 consistent by hand. `tests/test_formation.c` asserts that every entry in the
 library counts its roles the way its label claims.
+
+---
+
+## 6a. Strips, plates and squad photographs
+
+Three things carry a team's identity on screen, and each is reached a
+different way.
+
+### The strip
+
+```json
+  { "team_id": 35, "shirt": "#C8102E", "shorts": "#123A6B", "socks": "#FFFFFF" }
+```
+
+The cartridge keeps a seventeen-colour palette per kit: three shirt shades,
+three shorts shades, two sock shades, plus skin and hair it shares with
+everyone. Give the colour you want and the shades are derived from it the
+way the cartridge shades its own - the lit shade is your colour, the others
+roughly three quarters and three fifths of it. Leave a part out and it is
+not touched. `#RRGGBB`, with or without the hash, upper or lower case.
+
+It is one flat colour per part, so a striped shirt cannot be drawn this way
+- the stripes are in the sprite graphics, not the palette. Chivas' red is
+the colour the strip reads as on the pitch.
+
+**Some teams share a strip.** Which of the 84 palettes a team wears is not
+written down anywhere in the cartridge; it was measured a match at a time
+(see `docs/REVERSE_ENGINEERING.md`). Six teams - Swiss, Wales, Scotland,
+N. Ireland, Czech Rep. and Poland - turned out to share one palette, and
+Austria and Turkey another. Recolour one of those and you recolour them
+all; the loader says so in the results. England's own palette is one of
+the two it was seen wearing and could not be told apart, so it is the one
+team the table leaves blank - name `kit_record` to paint it.
+
+### The name plate
+
+```json
+  { "team_id": 35, "plate_name": "CHIVAS" }
+```
+
+The plate beside the flag on the select screen is a graphic, one per team,
+so there is no way to add a word. The host paints over it instead - the
+same trick the stadium plate uses. Twelve characters fit. The flag next to
+it is left as the cartridge drew it.
+
+The plate in the **match** HUD is a different graphic and still shows the
+cartridge's name.
+
+### The squad photograph
+
+```json
+  { "team_id": 35, "photo": "chivas_guadalajara/team_photo.bmp" }
+```
+
+A 32-bit BMP, anywhere beside the pack file, drawn into the frame on the
+select screen. The frame's inside is **96 x 72**; any size is accepted and
+sampled to fit, so author at 96x72 for pixel-exact work or larger if you
+would rather draw big. The cartridge's grey mount is left showing around
+it.
+
+Most editors save 32-bit BMPs bottom-up; both orders are read.
 
 ---
 
@@ -658,7 +755,14 @@ The console window carries the detail; the menu carries the summary.
 
 Being straight about the ceiling saves everyone time.
 
-- **New teams.** The table is 36 and fixed. Replace, do not add.
+- **New teams.** There are 36 squads and the seventh group's six are
+  assembled from them. Replace, do not add.
+- **Rosters for the all-star sides.** Ids 36-41 pick their twenty players
+  out of their group when the match loads; a pack's names cannot reach
+  them. Everything else about them can be changed.
+- **Striped or hooped shirts.** A kit is one colour per part.
+- **The team name in the match HUD**, and the flag beside it. The select
+  screen's plate can be renamed; those cannot.
 - **More than 20 players per squad.**
 - **Player names longer than 8 characters**, and no accents or digits.
 - **Team names on the team select screen**, which are drawn graphics rather
@@ -669,10 +773,9 @@ Being straight about the ceiling saves everyone time.
   text are objects, and are not covered.
 - **More than 32 stadiums.** The free space the tables move into would
   take about 190, but nobody needs that and 32 is tested.
-- **More than 36 teams.** The same trick works in principle - the counts
-  are literals and the tables can be moved - but a team is spread across
-  far more tables than a stadium, and the select screen's six-by-six grid
-  would have to grow too. Not attempted.
+- **More than 42 teams.** Forty-two is what the select screen's seven
+  groups of six hold, and the roster pointer table has exactly 43 entries.
+  Going past that would mean growing the grid as well as the tables.
 - **The name on the stadium select screen**, which is drawn from shared
   font tiles through a tilemap rather than from the name table. The
   pre-match screen does show a renamed stadium.

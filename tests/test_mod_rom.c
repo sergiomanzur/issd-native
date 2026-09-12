@@ -135,9 +135,30 @@ int main(void) {
     assert(issd_mod_apply_to_rom(rom, sizeof(rom)) > 0);
     assert(rom[TEST_RECORD_OFF] == 0xEE);
 
-    /* --- a team beyond the cartridge's table must be refused, not written
-     *     past the end of the roster data --- */
-    assert(rom[name_at(40, 0)] == 0xEE);   /* 36 teams: 40 is out of range */
+    /* --- the six all-star sides have ratings but no roster ------------
+     *
+     * The select screen offers 42 teams once the seventh group is
+     * unlocked, but only 36 of them have players written down: the last
+     * six pick theirs out of their group when the match loads. Writing
+     * names at team*160 past the 36th would land on whatever follows the
+     * table, so it must not happen - while ratings, which are real for
+     * all 42, must still go in. */
+    {
+        IssdModPack *bp = issd_mod_get_pack(fixture);
+        assert(bp);
+        bp->teams[0].team_id = 40;
+        bp->teams[0].formation[0] = '\0';
+        issd_mod_result_reset();
+        assert(issd_mod_apply_to_rom(rom, sizeof(rom)) > 0);
+        assert(rom[name_at(40, 0)] == 0xEE &&
+               "an all-star side has no roster to write names into");
+        assert(rom[attr_at(40, 0)] != 0xEE &&
+               "its ratings are real and must still be written");
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "and the pack is told its names went nowhere");
+        bp->teams[0].team_id = 0;
+    }
+
 
     /* --- a ROM too small to hold the tables is refused outright --- */
     assert(issd_mod_apply_to_rom(rom, 1024) == 0);
@@ -267,6 +288,84 @@ int main(void) {
         assert(issd_mod_last_result()->warnings > 0);
         xp->stadium_count = 0;
         xp->stadium_slots = 0;
+    }
+
+    /* --- kits ---------------------------------------------------------
+     *
+     * A strip is seventeen colours at $89:83C0 + record * 34, and which
+     * record a team wears was measured rather than found. Two things must
+     * hold: a cartridge that does not have a kit there is left alone, and
+     * the colour a pack asks for is what the lit shade becomes. */
+    {
+        const size_t KIT_BASE = 0x0483C0u;
+        const int URUGUAY_KIT = 27;      /* measured; Chivas replaces it */
+        const size_t rec = KIT_BASE + (size_t)URUGUAY_KIT * 34u;
+
+        issd_mod_init();
+        const int n = issd_mod_scan_and_load("tests/fixtures/mods");
+        assert(n > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *kp = issd_mod_get_pack(0);
+        assert(kp);
+        kp->team_count = 1;
+        memset(&kp->teams[0], 0, sizeof kp->teams[0]);
+        kp->teams[0].team_id = 35;
+        kp->teams[0].kit_record = -1;
+        kp->teams[0].shirt_rgb  = 0xFFC8102Eu;
+        kp->teams[0].shorts_rgb = 0xFF123A6Bu;
+        kp->teams[0].socks_rgb  = 0xFFFFFFFFu;
+
+        /* Wrong cartridge: the two constants every kit ends with are not
+         * there, so nothing is written. */
+        memset(rom, 0xEE, sizeof rom);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        for (unsigned w = 7; w < 15; w++)
+            assert(rom[rec + w * 2] == 0xEE &&
+                   "a cartridge without kits there is left alone");
+        assert(issd_mod_last_result()->warnings > 0);
+
+        /* With the tail the real cartridge has, the strip is repainted. */
+        rom[rec + 30] = 0x20; rom[rec + 31] = 0x01;
+        rom[rec + 32] = 0x1F; rom[rec + 33] = 0x00;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        /* #C8102E lit: red 200 -> 24 of 31, green 16 -> 1, blue 46 -> 5. */
+        const uint16_t lit = (uint16_t)(rom[rec + 9 * 2] |
+                                        (rom[rec + 9 * 2 + 1] << 8));
+        assert((lit & 31) == 200 * 31 / 255);
+        assert(((lit >> 5) & 31) == 16 * 31 / 255);
+        assert(((lit >> 10) & 31) == 46 * 31 / 255);
+
+        /* The other two shades are darker, which is how the cartridge
+         * shades its own strips. */
+        const uint16_t mid = (uint16_t)(rom[rec + 8 * 2] |
+                                        (rom[rec + 8 * 2 + 1] << 8));
+        const uint16_t dark = (uint16_t)(rom[rec + 7 * 2] |
+                                         (rom[rec + 7 * 2 + 1] << 8));
+        assert((dark & 31) < (mid & 31) && (mid & 31) < (lit & 31));
+
+        /* Socks are two shades, not three: words 13 and 14 and no further.
+         * Word 15 is the first of the two constants every kit ends with,
+         * and writing over it would be writing over the check itself. */
+        assert(rom[rec + 13 * 2] != 0xEE && rom[rec + 14 * 2] != 0xEE);
+        assert(rom[rec + 30] == 0x20 && rom[rec + 31] == 0x01 &&
+               "the tail the check reads must survive the paint");
+
+        /* A team the table has no measurement for is reported, not guessed. */
+        kp->teams[0].team_id = 2;          /* England: shares, so unmeasured */
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(issd_mod_last_result()->warnings > 0);
+
+        /* Naming the record directly overrides the table. */
+        kp->teams[0].kit_record = URUGUAY_KIT;
+        rom[rec + 9 * 2] = 0xEE; rom[rec + 9 * 2 + 1] = 0xEE;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(!(rom[rec + 9 * 2] == 0xEE && rom[rec + 9 * 2 + 1] == 0xEE) &&
+               "kit_record must reach a team the table cannot");
     }
 
     puts("mod rom tests passed");

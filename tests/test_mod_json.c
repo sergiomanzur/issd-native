@@ -126,6 +126,29 @@ int main(int argc, char **argv) {
     p = load(dir, "empty.json", "{ \"name\": \"Empty\", \"teams\": [] }");
     assert(p && p->team_count == 0);
 
+    /* --- kits, plates and photographs --------------------------------
+     *
+     * A colour is written the way everyone writes colours, with or
+     * without the hash and in either case. The high byte is set on
+     * anything valid so that black - a perfectly ordinary kit colour -
+     * does not read as 'not given'. */
+    p = load(dir, "kit.json", "{\"name\":\"Kit\",\"teams\":[{\"team_id\":35,\"plate_name\":\"CHIVAS\",\"photo\":\"chivas/team.bmp\",\"shirt\":\"#C8102E\",\"shorts\":\"123A6B\",\"socks\":\"#ffffff\",\"kit_record\":27}]}");
+    assert(p && p->team_count == 1);
+    assert(strcmp(p->teams[0].plate_name, "CHIVAS") == 0);
+    assert(strcmp(p->teams[0].photo, "chivas/team.bmp") == 0);
+    assert(p->teams[0].shirt_rgb  == 0xFFC8102Eu);
+    assert(p->teams[0].shorts_rgb == 0xFF123A6Bu && "the hash is optional");
+    assert(p->teams[0].socks_rgb  == 0xFFFFFFFFu && "lower case reads too");
+    assert(p->teams[0].kit_record == 27);
+
+    /* Anything that is not six hex digits leaves the part alone rather
+     * than painting a team some arbitrary colour. */
+    p = load(dir, "badkit.json", "{\"name\":\"BadKit\",\"teams\":[{\"team_id\":35,\"shirt\":\"red\",\"shorts\":\"#12\",\"socks\":12345}]}");
+    assert(p && p->team_count == 1);
+    assert(p->teams[0].shirt_rgb == 0 && p->teams[0].shorts_rgb == 0);
+    assert(p->teams[0].socks_rgb == 0);
+    assert(p->teams[0].kit_record == -1 && "unset means use the table");
+
     puts("mod json tests passed");
     return 0;
 }

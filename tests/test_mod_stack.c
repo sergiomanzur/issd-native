@@ -250,6 +250,74 @@ int main(void) {
     for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++)
         assert(fb[i] == 0 && "an unnamed stadium keeps its own plate");
 
+    /* --- the team plate the host draws -------------------------------
+     *
+     * The select screen names the highlighted team from a pre-rendered
+     * graphic, one per team, so a club the cartridge never heard of has
+     * no plate to show. The host paints one instead - but only on that
+     * screen, and only for a team a pack actually renamed.
+     *
+     * $7E1526 holds the team doubled; the four scroll positions tell the
+     * team screen from the stadium screen, which shares its game mode. */
+    {
+        IssdModPack *tp = issd_mod_get_pack(find_pack("Fixture Pack"));
+        assert(tp);
+        tp->team_count = 1;
+        tp->teams[0].team_id = 35;
+        snprintf(tp->teams[0].plate_name, sizeof tp->teams[0].plate_name,
+                 "CHIVAS");
+        assert(strcmp(issd_mod_team_plate_name(35), "CHIVAS") == 0);
+        assert(issd_mod_team_plate_name(34) == NULL);
+
+        memset(fb, 0, sizeof fb);
+        memset(g_ram, 0, sizeof g_ram);
+        g_ram[0x32] = 0x06; g_ram[0x70] = 0x0C;
+        g_ram[0x1526] = 35 * 2;
+
+        /* The stadium screen's scroll must leave the team plate alone. */
+        g_ram[0x18] = 52; g_ram[0x1A] = 44; g_ram[0x1C] = 48; g_ram[0x1E] = 40;
+        issd_menu_render_team_plate(fb, 256, 224, 0);
+        for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++)
+            assert(fb[i] == 0 && "the stadium screen keeps its own plate");
+
+        g_ram[0x18] = 20; g_ram[0x1A] = 36; g_ram[0x1C] = 16; g_ram[0x1E] = 32;
+        issd_menu_render_team_plate(fb, 256, 224, 0);
+        bool inked = false;
+        for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++) if (fb[i]) inked = true;
+        assert(inked && "the team screen gets its plate");
+        /* And only inside it: row 30 is above, row 50 below, and the flag
+         * to its left at x 140 is the team's own. */
+        for (int x = 0; x < 256; x++) {
+            assert(fb[30 * 256 + x] == 0);
+            assert(fb[50 * 256 + x] == 0);
+        }
+        for (int y = 32; y <= 46; y++) assert(fb[y * 256 + 140] == 0);
+
+        /* A team nobody renamed keeps the cartridge's plate. */
+        memset(fb, 0, sizeof fb);
+        g_ram[0x1526] = 34 * 2;
+        issd_menu_render_team_plate(fb, 256, 224, 0);
+        for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++) assert(fb[i] == 0);
+
+        /* --- the squad photograph ------------------------------------- */
+        char path[512];
+        assert(!issd_mod_team_photo_path(35, path, sizeof path));
+        snprintf(tp->teams[0].photo, sizeof tp->teams[0].photo,
+                 "chivas/team_photo.bmp");
+        assert(issd_mod_team_photo_path(35, path, sizeof path));
+        /* Resolved beside the pack, so a pack is one folder you can move. */
+        assert(strstr(path, "chivas/team_photo.bmp") != NULL);
+        assert(strstr(path, "fixtures") != NULL);
+
+        /* A photograph that is not there leaves the cartridge's showing
+         * rather than painting a hole in the screen. */
+        memset(fb, 0, sizeof fb);
+        g_ram[0x1526] = 35 * 2;
+        issd_menu_render_team_photo(fb, 256, 224, 0);
+        for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++)
+            assert(fb[i] == 0 && "a missing photograph draws nothing");
+    }
+
     puts("mod stack tests passed");
     return 0;
 }
