@@ -60,17 +60,22 @@ typedef struct {
  * table: one can be replaced but none added. A stadium is its name, which
  * the pre-match screen prints, and the size of its pitch, which the game
  * really does play differently on - 114 by 74 yards up to 138 by 90. */
-/* The cartridge ships eight, and the tables that hold them can be moved
- * into free space and extended - see issd_mod_rom.c. Sixteen is where the
- * useful part stops: the name plate on the select screen is picked by slot
- * number from a longer list the cartridge already has, and only the ninth
- * entry of that list (ALL STAR) is a finished graphic. */
-#define ISSD_MAX_STADIUMS 16
+/* The cartridge ships eight. Its tables move into free space and extend -
+ * see issd_mod_rom.c - and the host draws the name plate itself, so the
+ * ceiling is now just how much free space the two banks have: 1187 bytes
+ * in $82 at six per stadium, 1336 in $87 at seven. Thirty-two is a round
+ * number well inside both and more grounds than anyone has asked for. */
+#define ISSD_MAX_STADIUMS 32
 #define ISSD_STOCK_STADIUMS 8
 
 typedef struct {
     int8_t  stadium_id;      /* 0-7, or -1 for an entry with none */
-    char    name[16];        /* 7 characters reach the screen */
+    char    name[16];        /* 7 characters reach the cartridge */
+    /* What the select screen's plate shows. The cartridge picks that
+     * plate from a list of pre-rendered graphics by slot number, so past
+     * the ninth there is nothing to show; the host draws it instead, and
+     * can therefore fit a few more characters than the cartridge can. */
+    char    display_name[20];
     uint8_t pitch_length;    /* yards; 0 leaves the cartridge's own */
     uint8_t pitch_width;
 } IssdModStadium;
@@ -113,6 +118,10 @@ typedef struct {
     int  errors;            /* a pack could not be used at all */
     char detail[96];        /* the first thing that went wrong */
 } IssdModResult;
+
+/* The plate text for a stadium slot, or NULL when no enabled pack names
+ * it. Later packs in the stack win, as everywhere else. */
+const char *issd_mod_stadium_plate_name(int slot);
 
 const IssdModResult *issd_mod_last_result(void);
 void issd_mod_result_reset(void);

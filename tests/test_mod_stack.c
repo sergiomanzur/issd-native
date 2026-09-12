@@ -191,6 +191,65 @@ int main(void) {
     for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++) if (fb[i]) drawn = true;
     assert(!drawn && "a notification must expire");
 
+    /* --- the stadium plate the host draws ------------------------- */
+    issd_mod_init();
+    issd_mod_scan_and_load("tests/fixtures/mods");
+    issd_mod_enable_from_list("Fixture Pack|Fixture Overlay");
+
+    /* Nothing to say for a slot no pack named. */
+    assert(issd_mod_stadium_plate_name(3) == NULL);
+
+    IssdModPack *sp = issd_mod_get_pack(find_pack("Fixture Pack"));
+    assert(sp);
+    sp->stadium_count = 1;
+    sp->stadiums[0].stadium_id = 9;
+    snprintf(sp->stadiums[0].name, sizeof sp->stadiums[0].name, "AZTECA");
+    assert(strcmp(issd_mod_stadium_plate_name(9), "AZTECA") == 0);
+
+    /* display_name is what the plate shows when both are given: the
+     * cartridge only stores seven characters, the plate fits more. */
+    snprintf(sp->stadiums[0].display_name, sizeof sp->stadiums[0].display_name,
+             "EST. AZTECA");
+    assert(strcmp(issd_mod_stadium_plate_name(9), "EST. AZTECA") == 0);
+
+    /* Later packs in the stack win here as everywhere else. */
+    IssdModPack *op = issd_mod_get_pack(find_pack("Fixture Overlay"));
+    assert(op);
+    op->stadium_count = 1;
+    op->stadiums[0].stadium_id = 9;
+    snprintf(op->stadiums[0].name, sizeof op->stadiums[0].name, "BBVA");
+    assert(strcmp(issd_mod_stadium_plate_name(9), "BBVA") == 0);
+
+    /* The overlay must not paint over a screen that is not the stadium
+     * one. Team select shares the same game mode, so the check is the
+     * four background scroll positions. */
+    memset(fb, 0, sizeof fb);
+    memset(g_ram, 0, sizeof g_ram);
+    g_ram[0x32] = 0x06; g_ram[0x70] = 0x0C;
+    g_ram[0x18] = 20; g_ram[0x1A] = 36; g_ram[0x1C] = 16; g_ram[0x1E] = 32;
+    g_ram[0x154C] = 9;
+    issd_menu_render_stadium_plate(fb, 256, 224, 0);
+    for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++)
+        assert(fb[i] == 0 && "team select must be left alone");
+
+    g_ram[0x18] = 52; g_ram[0x1A] = 44; g_ram[0x1C] = 48; g_ram[0x1E] = 40;
+    issd_menu_render_stadium_plate(fb, 256, 224, 0);
+    bool painted = false;
+    for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++) if (fb[i]) painted = true;
+    assert(painted && "the stadium screen gets its plate");
+    /* And only inside the plate: row 40 is above it, row 70 below. */
+    for (int x = 0; x < 256; x++) {
+        assert(fb[40 * 256 + x] == 0);
+        assert(fb[70 * 256 + x] == 0);
+    }
+
+    /* A slot nobody named leaves the cartridge's own plate alone. */
+    memset(fb, 0, sizeof fb);
+    g_ram[0x154C] = 3;
+    issd_menu_render_stadium_plate(fb, 256, 224, 0);
+    for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++)
+        assert(fb[i] == 0 && "an unnamed stadium keeps its own plate");
+
     puts("mod stack tests passed");
     return 0;
 }

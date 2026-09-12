@@ -456,7 +456,7 @@ art goes in the same folder under the same names.
 ## 8. Stadiums
 
 The cartridge ships eight stadiums. Any of them can be replaced, and
-`stadium_count` adds more - up to sixteen.
+`stadium_count` adds more - up to thirty-two.
 
 ```json
 {
@@ -492,15 +492,28 @@ the cartridge's own, so one you have not customised still works.
 Across a stack of packs the **largest** `stadium_count` wins, so a pack
 that only replaces a stadium does not need to care how many there are.
 
-**Nine is the practical limit.** The name plate on the select screen is
-picked by slot number from a longer list the cartridge already contains,
-and only its ninth entry - `ALL STAR` - is a finished graphic. Past that
-the plates are unused and broken, which is why the validator warns above
-nine even though sixteen slots will allocate.
+Name a stadium you have added and the game draws its plate for you, so
+there is no ceiling from the cartridge's supply of plate graphics. A slot
+you add but never name keeps whatever unused graphic the cartridge has at
+that index, which the validator warns about.
 
 If this cartridge is not the USA revision the tables were measured on,
 every patch site is checked before anything is written and the expansion
 is refused rather than applied to the wrong bytes.
+
+### Two names
+
+```json
+  { "stadium_id": 8, "name": "AKRON", "display_name": "EST. AKRON" }
+```
+
+`name` goes into the cartridge and is what the **pre-match** screen prints:
+seven characters, because that is the size of the field it lives in.
+
+`display_name` is what the **select screen's plate** shows, and the host
+draws that, so it holds twelve. Leave it out and the plate shows `name`.
+Anything over nine characters is drawn at a tighter pitch so it still fits.
+
 
 | id | stadium | pitch |
 |---|---|---|
@@ -530,7 +543,7 @@ Be clear about this before building a pack around it.
 | Pre-match screen (`AKRON STADIUM 115y`) | **yes** |
 | Pitch dimensions printed on the select screen | **yes** |
 | Pitch preview drawn on the select screen | **yes** |
-| The name plate on the select screen | no - it comes from the slot number |
+| The name plate on the select screen | **yes** - the host draws it |
 | The turf pattern | **yes** - via the table a new slot inherits |
 | How the pitch actually plays | **no** |
 
@@ -654,8 +667,8 @@ Being straight about the ceiling saves everyone time.
   sixteen it knows are fixed. The shape itself is free - see section 6.
 - **Sprites.** Tile packs replace backgrounds; players, the ball and most UI
   text are objects, and are not covered.
-- **More than sixteen stadiums**, and in practice more than nine: past
-  the ninth there is no finished name plate to show. See section 8.
+- **More than 32 stadiums.** The free space the tables move into would
+  take about 190, but nobody needs that and 32 is tested.
 - **More than 36 teams.** The same trick works in principle - the counts
   are literals and the tables can be moved - but a team is spread across
   far more tables than a stadium, and the select screen's six-by-six grid

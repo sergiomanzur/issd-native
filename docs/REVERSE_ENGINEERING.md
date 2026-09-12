@@ -247,9 +247,34 @@ its one instruction re-pointed. Every site is verified against the bytes
 it should hold first, so a different revision is refused rather than
 corrupted.
 
+### The plate, drawn host-side instead
+
+The plate is the one thing a ROM patch cannot reach: it is a pre-rendered
+graphic chosen by slot number, and the cartridge only has so many. Since
+this is a recompilation rather than an emulator, the host can simply draw
+it - the same way the pause menu and the mod notification are drawn.
+
+That needed three measurements:
+
+- **The selector.** Diffing WRAM between two stadium selections gave 19
+  differing bytes, of which `$7E154C` held 0 for JAPAN and 2 for SPAIN.
+- **The rectangle.** Printing an is-it-grey map of the screen put the plate
+  at x 56-127, y 48-63 in native coordinates, with the grey gradient down
+  its rows and its lettering in `$1039B5`.
+- **Which screen we are on.** This took two attempts. `$7E0076` looked like
+  a screen id across one pair of captures and turned out to be a frame
+  counter - it read $024F, $02B3, $032B and $03AD on the same screen at
+  four different frames. The four background scroll positions at `$7E0018`
+  onwards are the real signature: 52, 44, 48, 40 on the stadium screen at
+  every frame and for every stadium, and different on team select, which
+  shares the same game mode.
+
+The check is worth the care. Team select is the same game mode, so a weaker
+test would paint a grey slab over it.
+
 ### What this does not reach
 
-The name plate, as above. And the same approach applied to teams would be
+The same approach applied to teams would be
 much larger: a team is spread across the roster name and attribute tables,
 a formation record behind a pointer table, flags, kit palettes and name
 plates, and the roster base is computed through a dispatcher in bank $83

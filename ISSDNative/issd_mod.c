@@ -262,6 +262,7 @@ static bool stadium_member(JsonReader *r, const char *key, void *ctx) {
         return true;
     }
     if (strcmp(key, "name") == 0)         return JSON_STR_FIELD(r, st->name);
+    if (strcmp(key, "display_name") == 0) return JSON_STR_FIELD(r, st->display_name);
     if (strcmp(key, "pitch_length") == 0) return json_u8(r, &st->pitch_length);
     if (strcmp(key, "pitch_width") == 0)  return json_u8(r, &st->pitch_width);
     return json_skip_value(r);
@@ -534,6 +535,23 @@ void issd_mod_enable_from_list(const char *list) {
 /* --------------------------------------------------------------- result -- */
 
 static IssdModResult g_result_public;
+
+const char *issd_mod_stadium_plate_name(int slot) {
+    const char *found = NULL;
+    for (int i = 0; ; i++) {
+        const int pi = issd_mod_pack_at_order(i);
+        if (pi < 0) break;
+        const IssdModPack *pack = issd_mod_get_pack(pi);
+        if (!pack) continue;
+        for (int k = 0; k < pack->stadium_count; k++) {
+            const IssdModStadium *st = &pack->stadiums[k];
+            if (st->stadium_id != slot) continue;
+            if (st->display_name[0]) found = st->display_name;
+            else if (st->name[0]) found = st->name;
+        }
+    }
+    return found;
+}
 
 const IssdModResult *issd_mod_last_result(void) {
     g_result_public = g_result;

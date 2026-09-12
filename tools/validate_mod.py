@@ -29,8 +29,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TEAM_COUNT = 36
 STADIUM_COUNT = 8          # what the cartridge ships
-STADIUM_MAX = 16           # what its tables can be extended to
-STADIUM_CLEAN_PLATE = 9    # slots past this have no finished plate
+STADIUM_MAX = 32           # what its tables can be extended to
+PLATE_CHARS = 12           # what fits on the select screen's name plate
 STADIUM_NAME_CHARS = 7
 # The range the cartridge's own stadiums span.
 PITCH_LENGTH = (100, 140)
@@ -224,6 +224,15 @@ def check_stadium(report, st, index, seen_ids):
             report.error(where, "listed twice in this pack")
         seen_ids.add(sid)
 
+    display = st.get("display_name")
+    if display is not None:
+        if not isinstance(display, str):
+            report.error(where, "display_name must be text")
+        elif len(display) > PLATE_CHARS:
+            report.error(where, 'display_name "%s" is %d characters; the plate'
+                                ' holds %d'
+                         % (display, len(display), PLATE_CHARS))
+
     name = st.get("name")
     if name is not None:
         if not isinstance(name, str):
@@ -252,7 +261,8 @@ def check_stadium(report, st, index, seen_ids):
                                "stadiums use, and will be clamped"
                         % (key, v, limits[0], limits[1]))
 
-    if name is None and "pitch_length" not in st and "pitch_width" not in st:
+    if (name is None and display is None and "pitch_length" not in st
+            and "pitch_width" not in st):
         report.warn(where, "changes nothing")
 
 
@@ -276,10 +286,14 @@ def check_stadium_count(report, path, pack, stadiums):
     if highest >= slots:
         report.error(path, "stadium_id %d needs stadium_count of at least %d"
                      % (highest, highest + 1))
-    if slots > STADIUM_CLEAN_PLATE:
-        report.warn(path, "stadium_count %d: only slot %d has a finished name"
-                          " plate on the select screen, the rest are unused"
-                          " graphics" % (slots, STADIUM_COUNT))
+    # Past the cartridge's own eight there is no plate graphic, so the host
+    # draws one - but only for a slot the pack actually names.
+    named = {st.get("stadium_id") for st in stadiums
+             if isinstance(st, dict) and (st.get("name") or st.get("display_name"))}
+    for sid in range(STADIUM_COUNT, slots):
+        if sid not in named:
+            report.warn(path, "stadium %d is added but never named, so its"
+                              " plate will be an unused cartridge graphic" % sid)
 
 
 def validate(path, report):

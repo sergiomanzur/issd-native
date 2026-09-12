@@ -763,3 +763,79 @@ void issd_menu_render_notification(uint32_t *fb, int width, int height) {
     for (int i = 0; i < lines; i++)
         DrawString(fb, width, height, x + 6, y + 3 + i * 9, line[i], colour);
 }
+
+/* ------------------------------------------- stadium name plate ------ */
+
+/* The cartridge draws a stadium's name on the select screen from a list of
+ * pre-rendered plate graphics, chosen by slot number. There are more of
+ * them than there are stadiums - the ninth reads ALL STAR - but only so
+ * many, and none of them says what a mod pack called its stadium. That is
+ * the one thing that capped how many stadiums were worth adding.
+ *
+ * So the host repaints the plate. The rectangle, the grey gradient down it
+ * and the blue of its lettering were all measured off the real screen.
+ * Everything else about the screen is left exactly as the game drew it.
+ */
+#define PLATE_X0      56
+#define PLATE_X1     127
+#define PLATE_Y0      48
+#define PLATE_Y1      63
+#define PLATE_INK   0xFF1039B5u
+
+/* Row shades sampled from a letter-free column of the real plate. */
+static const uint8_t kPlateRow[PLATE_Y1 - PLATE_Y0 + 1] = {
+    255, 231, 231, 214, 214, 214, 231, 231,
+    198, 198, 198, 173, 173, 173, 198,  99
+};
+
+/* Identifying the screen took two attempts. $7E0076 looked like a screen
+ * id across one pair of captures and turned out to be a frame counter.
+ * The four background scroll positions are the real signature: 52, 44, 48
+ * and 40 on this screen, at every frame and for every stadium, and
+ * different on team select - which shares the same game mode - as well as
+ * on the pre-match screen and in play. */
+#define STADIUM_SELECTOR 0x154Cu
+
+static bool on_stadium_select(void) {
+    static const uint8_t kScroll[4] = { 52, 44, 48, 40 };
+    if (g_ram[0x32] != 0x06 || g_ram[0x70] != 0x0C) return false;
+    for (int i = 0; i < 4; i++)
+        if (g_ram[0x18 + i * 2] != kScroll[i]) return false;
+    return true;
+}
+
+void issd_menu_render_stadium_plate(uint32_t *fb, int width, int height,
+                                    int margin) {
+    if (!fb) return;
+    if (!on_stadium_select()) return;
+
+    const int slot = g_ram[STADIUM_SELECTOR];
+    const char *name = issd_mod_stadium_plate_name(slot);
+    if (!name || !name[0]) return;        /* the cartridge's own plate stands */
+
+    /* Condense before truncating: the plate is nine characters wide at the
+     * normal pitch and twelve at the tighter one, which is enough for the
+     * kind of name a ground actually has. */
+    int len = (int)strlen(name);
+    const int room = PLATE_X1 - PLATE_X0 + 1;
+    int advance = 8;
+    if (len * advance > room) advance = 6;
+    if (len * advance > room) len = room / advance;
+
+    for (int y = PLATE_Y0; y <= PLATE_Y1; y++) {
+        if (y < 0 || y >= height) continue;
+        const uint8_t v = kPlateRow[y - PLATE_Y0];
+        const uint32_t shade = 0xFF000000u | ((uint32_t)v << 16) |
+                               ((uint32_t)v << 8) | v;
+        for (int x = PLATE_X0; x <= PLATE_X1; x++) {
+            const int px = margin + x;
+            if (px < 0 || px >= width) continue;
+            fb[(size_t)y * width + px] = shade;
+        }
+    }
+
+    int x = margin + PLATE_X0 + (room - len * advance) / 2;
+    const int y = PLATE_Y0 + 4;
+    for (int i = 0; i < len; i++, x += advance)
+        DrawChar(fb, width, height, x, y, name[i], PLATE_INK);
+}
