@@ -267,6 +267,17 @@ static bool team_member(JsonReader *r, const char *key, void *ctx) {
         strcmp(key, "strategy") == 0)     return JSON_STR_FIELD(r, t->tactics);
     if (strcmp(key, "plate_name") == 0)   return JSON_STR_FIELD(r, t->plate_name);
     if (strcmp(key, "photo") == 0)        return JSON_STR_FIELD(r, t->photo);
+    if (strcmp(key, "new_team") == 0) {
+        json_skip_ws(r);
+        if (*r->p == 't' || *r->p == 'f') {
+            t->new_team = (*r->p == 't');
+            return json_skip_value(r);
+        }
+        long v = 0;
+        if (!json_number(r, &v)) return false;
+        t->new_team = (v != 0);
+        return true;
+    }
     if (strcmp(key, "shirt") == 0)        return json_colour(r, &t->shirt_rgb);
     if (strcmp(key, "shorts") == 0)       return json_colour(r, &t->shorts_rgb);
     if (strcmp(key, "socks") == 0)        return json_colour(r, &t->socks_rgb);
@@ -287,6 +298,7 @@ static bool team_element(JsonReader *r, void *ctx) {
     memset(t, 0, sizeof *t);
     t->team_id = 0xFF;            /* so a missing team_id is detectable */
     t->kit_record = -1;           /* -1: whatever the measured table says */
+    t->assigned_slot = -1;        /* set when the pack is applied */
     if (!json_object(r, team_member, t)) return false;
     pack->team_count++;
     return true;
@@ -404,10 +416,12 @@ int issd_mod_load_pack(const char *json_filepath) {
     }
 
     /* A team with no team_id names nothing, and would silently rewrite team
-     * 0 if it defaulted to zero. Drop it and say so. */
+     * 0 if it defaulted to zero. Drop it and say so. An added team is the
+     * exception: it is given a slot when the stack is applied, so naming
+     * one here would be naming a slot it may not get. */
     int kept = 0;
     for (int i = 0; i < pack->team_count; i++) {
-        if (pack->teams[i].team_id == 0xFF) {
+        if (pack->teams[i].team_id == 0xFF && !pack->teams[i].new_team) {
             char why[96];
             snprintf(why, sizeof why, "%s: a team has no team_id",
                      pack->name[0] ? pack->name : base_name(json_filepath));
@@ -594,8 +608,10 @@ bool issd_mod_team_photo_path(int team_id, char *out, size_t cap) {
         const IssdModPack *pack = issd_mod_get_pack(pi);
         if (!pack) continue;
         for (int k = 0; k < pack->team_count; k++) {
-            if (pack->teams[k].team_id != team_id) continue;
-            if (!pack->teams[k].photo[0]) continue;
+            const IssdModTeam *t = &pack->teams[k];
+            const int slot = t->new_team ? t->assigned_slot : (int)t->team_id;
+            if (slot != team_id) continue;
+            if (!t->photo[0]) continue;
             /* The photograph sits beside the pack that names it, so a
              * pack is one folder a player can move around. */
             char dir[256];
@@ -604,8 +620,8 @@ bool issd_mod_team_photo_path(int team_id, char *out, size_t cap) {
             char *alt = strrchr(dir, '\\');
             if (alt && (!cut || alt > cut)) cut = alt;
             if (cut) *cut = '\0'; else dir[0] = '\0';
-            if (dir[0]) snprintf(out, cap, "%s/%s", dir, pack->teams[k].photo);
-            else        snprintf(out, cap, "%s", pack->teams[k].photo);
+            if (dir[0]) snprintf(out, cap, "%s/%s", dir, t->photo);
+            else        snprintf(out, cap, "%s", t->photo);
             found = true;
         }
     }
@@ -619,11 +635,26 @@ const char *issd_mod_team_plate_name(int team_id) {
         if (pi < 0) break;
         const IssdModPack *pack = issd_mod_get_pack(pi);
         if (!pack) continue;
-        for (int k = 0; k < pack->team_count; k++)
-            if (pack->teams[k].team_id == team_id && pack->teams[k].plate_name[0])
-                found = pack->teams[k].plate_name;
+        for (int k = 0; k < pack->team_count; k++) {
+            const IssdModTeam *t = &pack->teams[k];
+            const int slot = t->new_team ? t->assigned_slot : (int)t->team_id;
+            if (slot == team_id && t->plate_name[0]) found = t->plate_name;
+        }
     }
     return found;
+}
+
+int issd_mod_added_team_count(void) {
+    int n = 0;
+    for (int i = 0; ; i++) {
+        const int pi = issd_mod_pack_at_order(i);
+        if (pi < 0) break;
+        const IssdModPack *pack = issd_mod_get_pack(pi);
+        if (!pack) continue;
+        for (int k = 0; k < pack->team_count; k++)
+            if (pack->teams[k].new_team) n++;
+    }
+    return n;
 }
 
 bool issd_mod_wants_bonus_teams(void) {
@@ -634,6 +665,8 @@ bool issd_mod_wants_bonus_teams(void) {
         if (!pack) continue;
         /* A pack that edits one of the six implies it wants them offered. */
         if (pack->unlock_bonus_teams) return true;
+        for (int k = 0; k < pack->team_count; k++)
+            if (pack->teams[k].new_team) return true;
         for (int k = 0; k < pack->team_count; k++)
             if (pack->teams[k].team_id >= ISSD_ROM_STOCK_TEAMS) return true;
     }

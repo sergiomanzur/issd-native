@@ -1,11 +1,11 @@
 {
   "name": "Chivas de Guadalajara",
   "author": "ISSD Native",
-  "version": "1.0.0",
-  "description": "Club Deportivo Guadalajara in place of Uruguay, in the N.S. AMERICA group: the red-and-white strip, a 4-3-3, and a squad of twenty. Stacks with the World Cup 2026 Mexico pack, which leaves Uruguay alone.",
+  "version": "2.0.0",
+  "description": "Club Deportivo Guadalajara as a 37th team - added, not replacing anyone. It takes the first of the six cells in the seventh group, with a squad of twenty, a 4-3-3, the red-and-white strip and its own squad photograph.",
   "teams": [
     {
-      "team_id": 35,
+      "new_team": true,
       "name": "Chivas de Guadalajara",
       "short_name": "CHI",
       "country_code": "MEX",

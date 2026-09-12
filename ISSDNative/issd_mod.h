@@ -53,6 +53,17 @@ typedef struct {
 
 typedef struct {
     uint8_t  team_id;
+    /* True when this is a team to be added rather than one to replace.
+     * The six cells of the seventh group are real slots the cartridge
+     * already has - they are only unusable because the squad loader
+     * assembles their players from their group instead of reading a
+     * roster. A pack that says so gets the next of them, with a roster
+     * of its own written into free cartridge space.
+     *
+     * `team_id` is ignored for these; `assigned_slot` is where it landed,
+     * and is what the plate, the photograph and the strip are keyed on. */
+    bool     new_team;
+    int      assigned_slot;          /* -1 until the pack is applied */
     char     name[32];
     char     short_name[4];
     char     country_code[4];
@@ -161,6 +172,11 @@ const char *issd_mod_stadium_plate_name(int slot);
 
 /* The plate text for a team, or NULL when no enabled pack renames it. */
 const char *issd_mod_team_plate_name(int team_id);
+
+/* How many teams the enabled packs add, and where each landed. Six is the
+ * ceiling: that is how many cells the seventh group has. */
+#define ISSD_MAX_ADDED_TEAMS 6
+int         issd_mod_added_team_count(void);
 
 /* The full path of the squad photograph a pack gives a team, resolved
  * against the pack's own directory. False when no enabled pack has one. */

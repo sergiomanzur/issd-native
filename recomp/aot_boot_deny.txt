@@ -1,1 +1,12 @@
 # Empty deny list
+# The squad loader at $80:CF2A decides, from a compare against 36, whether a
+# team has a roster of its own or is one of the six all-star sides the game
+# assembles from its group. That compare is a baked-in immediate in the
+# generated C, so patching the cartridge cannot reach it - which is what
+# stops a pack from adding a team rather than replacing one. Tiering the
+# routine down to the interpreter makes the cartridge bytes authoritative
+# again. It runs twice per match load, so the cost is nothing.
+# The file is matched on all 24 bits, so both mirrors are listed: the game
+# calls it in bank $80.
+00CF2A
+80CF2A

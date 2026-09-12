@@ -157,38 +157,52 @@ So list your keeper first, then your back line, then midfield, then
 forwards. If you list fewer than 20, the rest of the squad is left as the
 cartridge has it. More than 20 and the extras are ignored, with a warning.
 
-**There are 36 squads, and a 37th cannot be added.** What a pack does
-instead is take one of the 36 over completely - squad, shape, strip, name
-plate and squad photograph - which is how both a World Cup pack and a club
-side are built. `mods/chivas_guadalajara.json` is a worked example: it
-turns Uruguay into Chivas de Guadalajara and leaves everything else alone.
+A pack can **replace** one of the 36, or **add** up to six more.
 
-### The seventh group
+### Replacing
 
-The select screen can offer **42** teams, not 36. Behind the six groups
-there is a seventh - ALL STAR, EUROSTAR A and B, ASIAN STAR, AFRICAN STAR,
-ALL AMERICAN STAR - that the cartridge hides. A pack switches it on with
+Name the `team_id` and the team is taken over completely - squad, shape,
+strip, name plate and squad photograph. That is how a World Cup pack is
+built: the countries are already there and only need rewriting.
+
+### Adding
 
 ```json
-  "unlock_bonus_teams": true
+  { "new_team": true, "name": "Chivas de Guadalajara", "players": [ ... ] }
 ```
 
-and they become team ids 36 to 41.
+No `team_id`: the pack is given one of six slots and told which in the log.
+Nothing is replaced - all 36 countries stay exactly as they are.
 
-They are not six spare squads. Each one is **assembled when the match
-loads** from the group it belongs to: team 36+g takes twenty players out of
-the six rosters of group g, which is why ALL AMERICAN STAR fields Brazil's
-keeper. So for ids 36-41:
+`mods/chivas_guadalajara.json` is the worked example. It adds a 37th team
+with its own squad, a 4-3-3, the red-and-white strip, a name plate and a
+squad photograph, and touches no existing team.
+
+The six slots are the seventh group the cartridge hides - ALL STAR,
+EUROSTAR A and B, ASIAN STAR, AFRICAN STAR, ALL AMERICAN STAR. Adding a
+team switches that group on and turns its first cell into a real team;
+add two and the first two cells become real, and so on. Cells you do not
+take stay as they were.
+
+**They are not spare squads to begin with.** Each is assembled when the
+match loads out of the group it belongs to - team 36+g takes twenty
+players from the six rosters of group g, which is why ALL AMERICAN STAR
+fields Brazil's keeper. `new_team` is what gives one a roster of its own,
+written into free cartridge space.
+
+So, if you would rather leave them as all-star sides and just adjust them,
+name the `team_id` (36-41) and give **no** `players`:
 
 | | |
 |---|---|
-| `players` names | **ignored**, with a warning - there is no roster behind them |
+| `players` | use `new_team` instead - listing them here is an error |
 | attributes | applied; they are real and stored per team |
 | `formation` / `tactics` | applied |
 | `shirt` / `shorts` / `socks` | applied |
 | `plate_name` / `photo` | applied |
 
-To change who an all-star side fields, change the group it draws from.
+A pack that only wants the group visible can still say
+`"unlock_bonus_teams": true` without adding anything.
 
 Team ids run 0 to 35 in the order the team select screen shows them,
 six per group. Read off the screen one team at a time:
@@ -238,7 +252,8 @@ half-read.
 
 | Key | Type | Notes |
 |---|---|---|
-| `team_id` | 0-35, or 36-41 with the seventh group unlocked | **Required.** Starts a team entry. A typo here is why a pack "loads but does nothing". |
+| `new_team` | true | **Adds** a team instead of replacing one. Leave `team_id` out; a slot is assigned and named in the log. Six are available. |
+| `team_id` | 0-35, or 36-41 for an all-star side | Required unless `new_team` is set. A typo here is why a pack "loads but does nothing". |
 | `name` | text | For your own reference and the log. |
 | `plate_name` | text, 12 max | What the **select screen's name plate** should read. The cartridge's plates are graphics, one per team, so the host draws this one instead. Leave it out and the cartridge's own stands. |
 | `photo` | filename | A 32-bit `.bmp` beside the pack, drawn over the **squad photograph**. Any size; it is sampled into the 96x72 the frame leaves. |
@@ -755,11 +770,10 @@ The console window carries the detail; the menu carries the summary.
 
 Being straight about the ceiling saves everyone time.
 
-- **New teams.** There are 36 squads and the seventh group's six are
-  assembled from them. Replace, do not add.
-- **Rosters for the all-star sides.** Ids 36-41 pick their twenty players
-  out of their group when the match loads; a pack's names cannot reach
-  them. Everything else about them can be changed.
+- **More than six added teams.** The seventh group has six cells and that
+  is what there is. Past 42 the grid itself would have to grow.
+- **Keeping an all-star side *and* adding a team in its cell.** A cell is
+  one or the other.
 - **Striped or hooped shirts.** A kit is one colour per part.
 - **The team name in the match HUD**, and the flag beside it. The select
   screen's plate can be renamed; those cannot.

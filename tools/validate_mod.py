@@ -32,6 +32,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # they belong to, so a pack's names cannot reach them.
 TEAM_COUNT = 36
 TEAM_SLOTS = 42
+# The seventh group's six cells can be turned into teams of their own.
+ADDED_SLOTS = 6
 STADIUM_COUNT = 8          # what the cartridge ships
 STADIUM_MAX = 32           # what its tables can be extended to
 PLATE_CHARS = 12           # what fits on the select screen's name plate
@@ -171,14 +173,22 @@ def check_team(report, team, index, formations, seen_ids):
         report.error(where, "each team must be an object")
         return
 
+    added = bool(team.get("new_team"))
     team_id = team.get("team_id")
-    if team_id is None:
-        report.error(where, "no team_id, so it names no team and is dropped")
+    if added and team_id is not None:
+        report.warn(where, "new_team gives it one of the six added slots, "
+                           "so team_id is ignored")
+        team_id = None
+    if added:
+        where = "added team %r" % (team.get("name") or "?",)
+    elif team_id is None:
+        report.error(where, "no team_id and no new_team, so it names no "
+                            "team and is dropped")
     elif not isinstance(team_id, int) or isinstance(team_id, bool):
         report.error(where, "team_id must be a number, not %r" % (team_id,))
     elif not 0 <= team_id < TEAM_SLOTS:
         report.error(where, "team_id %d does not exist; there are %d team slots "
-                            "(0 to %d) and none can be added"
+                            "(0 to %d); to add one, say new_team"
                      % (team_id, TEAM_SLOTS, TEAM_SLOTS - 1))
     else:
         where = "team %d" % team_id
@@ -186,10 +196,10 @@ def check_team(report, team, index, formations, seen_ids):
             report.error(where, "listed twice in this pack; the later one wins")
         seen_ids.add(team_id)
         if team_id >= TEAM_COUNT and team.get("players"):
-            report.warn(where, "this is one of the six all-star sides; it "
-                               "picks its players from its group when the "
-                               "match loads, so these names are ignored "
-                               "(ratings, shape and strip still apply)")
+            report.error(where, "team_id %d is an all-star side, which picks "
+                                "its players from its group. To add a team "
+                                "with a squad of its own, drop team_id and "
+                                "say \"new_team\": true" % team_id)
 
     formation = team.get("formation")
     if formation is not None:
@@ -395,6 +405,11 @@ def validate(path, report):
 
     formations = known_formations()
     seen = set()
+    added = sum(1 for t in teams if isinstance(t, dict) and t.get("new_team"))
+    if added > ADDED_SLOTS:
+        report.error("teams", "%d added teams; there are %d slots for them"
+                     % (added, ADDED_SLOTS))
+
     for i, team in enumerate(teams):
         check_team(report, team, i, formations, seen)
 

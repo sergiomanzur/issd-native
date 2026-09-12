@@ -368,6 +368,102 @@ int main(void) {
                "kit_record must reach a team the table cannot");
     }
 
+    /* --- adding a team rather than replacing one ----------------------
+     *
+     * The seventh group's six cells are real slots; what stops them
+     * holding a squad is the compare at $80:CF2A, which sends anything
+     * from 36 up to the code that assembles a side from its group. A pack
+     * that adds a team raises that compare by exactly the number of teams
+     * added - never further, or a slot with no roster behind it would read
+     * the pointer table's dead entry - writes a roster into free space at
+     * the end of bank $87, and points the table at it. */
+    {
+        const size_t GATE_A = 0x004F2Eu, GATE_B = 0x004F50u;
+        const size_t PTRS = 0x038138u, PTRS_COPY = 0x0398AEu;
+        const size_t ROSTERS = 0x03FC40u;
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *ap = issd_mod_get_pack(0);
+        assert(ap);
+        ap->team_count = 1;
+        memset(&ap->teams[0], 0, sizeof ap->teams[0]);
+        ap->teams[0].new_team = true;
+        ap->teams[0].assigned_slot = -1;
+        ap->teams[0].kit_record = -1;
+        ap->teams[0].player_count = 2;
+        snprintf(ap->teams[0].name, sizeof ap->teams[0].name, "Chivas");
+        snprintf(ap->teams[0].players[0].name,
+                 sizeof ap->teams[0].players[0].name, "Rangel");
+        snprintf(ap->teams[0].players[1].name,
+                 sizeof ap->teams[0].players[1].name, "Mozo");
+
+        /* A cartridge whose squad loader is not where it was measured is
+         * refused outright rather than written to. */
+        memset(rom, 0xEE, sizeof rom);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(issd_mod_last_result()->errors > 0);
+        assert(rom[GATE_A] == 0xEE && "the gate is left alone");
+        assert(ap->teams[0].assigned_slot < 0 && "and no slot handed out");
+
+        /* Now with the bytes the real cartridge has. */
+        rom[GATE_A - 1] = 0xE0; rom[GATE_A] = 0x48; rom[GATE_A + 1] = 0x00;
+        rom[GATE_B - 1] = 0xE0; rom[GATE_B] = 0x48; rom[GATE_B + 1] = 0x00;
+        rom[PTRS] = 0x8E; rom[PTRS + 1] = 0x81;      /* entry 0 = $818E */
+        rom[0x02A567u - 1] = 0xA2; rom[0x02A567u] = 6;
+
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(ap->teams[0].assigned_slot == 36 &&
+               "an added team takes the first free slot");
+        /* One team added, so the gate moves to 37 doubled and no further:
+         * slot 37 upwards must still assemble from its group. */
+        const uint16_t gate =
+            (uint16_t)(rom[GATE_A] | (rom[GATE_A + 1] << 8));
+        assert(gate == 37 * 2);
+        assert((uint16_t)(rom[GATE_B] | (rom[GATE_B + 1] << 8)) == 37 * 2 &&
+               "both sides of the match use the same loader");
+
+        /* The table now names the block, in both of its copies. */
+        const uint16_t addr = (uint16_t)(0x8000u + (ROSTERS - 0x38000u));
+        const size_t entry = 36 * 2;
+        assert((uint16_t)(rom[PTRS + entry] |
+                          (rom[PTRS + entry + 1] << 8)) == addr);
+        assert((uint16_t)(rom[PTRS_COPY + entry] |
+                          (rom[PTRS_COPY + entry + 1] << 8)) == addr);
+
+        /* And the names are in the block, not in the 36-team table. */
+        assert(rom[ROSTERS + 0] == 0x79 && rom[ROSTERS + 1] == 0x82);  /* R a */
+        assert(rom[name_at(36, 0)] == 0xEE &&
+               "an added team must not write past the cartridge's table");
+
+        /* Its ratings, shape and strip go where every team's do. */
+        assert(rom[attr_at(36, 0)] != 0xEE);
+
+        /* Asking for more than the seventh group holds is reported, and
+         * the ones that fit still work. */
+        ap->team_count = ISSD_MAX_ADDED_TEAMS + 1;
+        for (int i = 1; i < ap->team_count; i++) {
+            ap->teams[i] = ap->teams[0];
+            ap->teams[i].assigned_slot = -1;
+        }
+        memset(rom + ROSTERS, 0xEE, ISSD_MAX_ADDED_TEAMS * 160);
+        rom[GATE_A] = 0x48; rom[GATE_A + 1] = 0x00;
+        rom[GATE_B] = 0x48; rom[GATE_B + 1] = 0x00;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(issd_mod_last_result()->warnings > 0);
+        assert(ap->teams[ISSD_MAX_ADDED_TEAMS - 1].assigned_slot ==
+               36 + ISSD_MAX_ADDED_TEAMS - 1);
+        assert(ap->teams[ISSD_MAX_ADDED_TEAMS].assigned_slot < 0 &&
+               "the one that does not fit gets no slot");
+        assert((uint16_t)(rom[GATE_A] | (rom[GATE_A + 1] << 8)) ==
+               (36 + ISSD_MAX_ADDED_TEAMS) * 2);
+    }
+
     puts("mod rom tests passed");
     return 0;
 }

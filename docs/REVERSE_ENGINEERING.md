@@ -320,8 +320,59 @@ $87:980E, one past the end of the 36 rosters. There is a second, identical
 copy at 0x398AE.
 
 Twenty names, no roster of its own, seven dummy pointers: three independent
-facts saying the same thing. A pack can give these six ratings, a shape, a
-strip, a plate and a photograph - all real per-team data - but not players.
+facts saying the same thing.
+
+### Making them real teams
+
+That is a description of the *default*, not a limit. The squad loader is
+`$80:CF2A`, and it is nine instructions:
+
+```
+  LDX $0DA0          ; the team, doubled
+  CPX #$0048         ; 72 - that is 36 teams
+  BCC normal
+  TXA / LDY #$D478 / JSL $A49C89     ; assemble one from the group
+normal:
+  LDA $878138,X      ; the roster pointer table
+  TAX / LDA #$009F / LDY #$D478
+  MVN $87,$7E        ; 160 bytes of names into WRAM
+```
+
+Raise that compare and slot 36 reads a roster like any other team. There
+are two copies, one per side of the match, at file offsets 0x4F2E and
+0x4F50. Point the table's entry 36 at 160 bytes of free space - bank $87
+ends with 1336 spare bytes, exactly six squads' worth - and the slot is a
+real team, added rather than replacing anyone.
+
+The gate only ever moves as far as the teams actually added. Raising it
+past a slot with no roster behind it would leave that slot reading the
+table's dead entry, so the all-star sides above the added ones keep
+working.
+
+### Why the cartridge patch did nothing at first
+
+Writing the new compare into the cartridge changed nothing, and the trace
+said why: the reads came from `CODE_80CF2A_M0X0`, a **generated C**
+function, where the immediate is a baked-in constant:
+
+```c
+  uint16 _v2 = 0x48;
+```
+
+Cartridge patching only reaches code that runs interpreted. This is the
+first time in this project that mattered, and it is worth remembering: an
+immediate that lives in a recompiled body is not in the ROM any more.
+
+The fix is the runner's own deny set. Listing the routine in
+`recomp/aot_boot_deny.txt` tiers it down to the interpreter, and the
+cartridge bytes are authoritative again. Two details cost a run each:
+the file is matched on all 24 bits, so the bank-$80 mirror has to be
+listed as well as `00CF2A`; and the file is read once, at startup.
+
+It runs twice per match load, so interpreting it costs nothing.
+
+A pack can therefore give these six ratings, a shape, a strip, a plate, a
+photograph **and** a squad of their own.
 
 Searching for the pick list as a table found nothing under any encoding
 tried: (team, player) pairs either way round, packed indices, sixteen-bit

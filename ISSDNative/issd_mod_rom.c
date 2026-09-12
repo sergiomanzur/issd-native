@@ -31,6 +31,51 @@
  * in WRAM and following the interpreter's PC back. */
 #define ROM_GROUP_COUNT_OPERAND 0x02A567u
 #define ROM_PLAYERS_PER_TEAM  20
+
+/* Adding a team rather than replacing one.
+ *
+ * The seventh group's six cells are real slots. What makes them unusable
+ * is the squad loader at $80:CF2A:
+ *
+ *     LDX $0DA0          ; the team, doubled
+ *     CPX #$0048         ; 72 - that is 36 teams
+ *     BCC normal
+ *     TXA / LDY #$D478 / JSL $A49C89     ; assemble from the group
+ *   normal:
+ *     LDA $878138,X      ; the roster pointer table
+ *     TAX / LDA #$009F / LDY #$D478
+ *     MVN $87,$7E        ; 160 bytes of names into WRAM
+ *
+ * Raise that compare and the slot reads a roster like any other team.
+ * There are two of them, one per side of the match.
+ *
+ * The compare is an immediate, so in the generated C it is a baked-in
+ * constant that no cartridge patch can reach - which is why this looked
+ * impossible at first. recomp/aot_boot_deny.txt tiers the routine down to
+ * the interpreter, and the cartridge bytes become authoritative again.
+ *
+ * Raising it past a slot that has no roster would leave that slot reading
+ * the table's dead entry, so the gate only ever moves as far as the teams
+ * actually added, and the all-star sides above them keep working.
+ */
+#define ROM_ALLSTAR_GATE_A    0x004F2Eu   /* CPX #$0048 operand */
+#define ROM_ALLSTAR_GATE_B    0x004F50u   /* and the one for side B */
+#define ROM_ALLSTAR_GATE_WAS  0x0048u     /* 36 teams, doubled */
+
+/* 43 sixteen-bit pointers into bank $87, one per team, stride $A0. The
+ * last seven are dummies, all naming the same address one past the end of
+ * the 36 rosters. There is an identical second copy; nothing was seen
+ * reading it, but keeping the two the same costs nothing. */
+#define ROM_ROSTER_PTRS       0x038138u
+#define ROM_ROSTER_PTRS_COPY  0x0398AEu
+#define ROM_ROSTER_PTR_FIRST  0x818Eu     /* what entry 0 must hold */
+
+/* Where the new rosters go: the tail of bank $87, which ends exactly six
+ * squads later. The stadium name table moves into the same bank's free
+ * space and stops well short of this. */
+#define ROM_ADDED_ROSTERS     0x03FC40u
+#define ROM_ADDED_BANK        0x87u
+#define ROM_ROSTER_BYTES      (ROM_PLAYERS_PER_TEAM * ROM_NAME_BYTES)
 #define ROM_NAME_BYTES         8
 #define ROM_ATTR_BYTES         7
 /* The editor overstates both table bases by exactly 512 bytes. Walking the
@@ -477,6 +522,62 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
     return true;
 }
 
+/* Turn `count` of the seventh group's cells into teams with rosters of
+ * their own. Returns how many were made real - 0 if this cartridge is not
+ * the one the offsets were measured on, in which case nothing is written. */
+static int open_added_slots(uint8_t *rom, size_t rom_size, int count) {
+    if (count <= 0) return 0;
+    if (count > ISSD_MAX_ADDED_TEAMS) count = ISSD_MAX_ADDED_TEAMS;
+    if (ROM_ADDED_ROSTERS + (size_t)ISSD_MAX_ADDED_TEAMS * ROM_ROSTER_BYTES >
+        rom_size)
+        return 0;
+
+    /* Every site is checked before anything is written, so a cartridge
+     * that is not this revision is left alone rather than scribbled on. */
+    const size_t gates[2] = { ROM_ALLSTAR_GATE_A, ROM_ALLSTAR_GATE_B };
+    for (int i = 0; i < 2; i++) {
+        const uint16_t was = (uint16_t)(rom[gates[i]] | (rom[gates[i] + 1] << 8));
+        if (rom[gates[i] - 1] != 0xE0 || was != ROM_ALLSTAR_GATE_WAS) {
+            issd_mod_result_note_error(
+                "cannot add teams: the squad loader is not where it was measured");
+            fprintf(stderr,
+                    "[ModLoader] The squad loader at $80:CF2A is not the one these "
+                    "offsets were measured on. No teams added.\n");
+            return 0;
+        }
+    }
+    const uint16_t first = (uint16_t)(rom[ROM_ROSTER_PTRS] |
+                                      (rom[ROM_ROSTER_PTRS + 1] << 8));
+    if (first != ROM_ROSTER_PTR_FIRST) {
+        issd_mod_result_note_error("cannot add teams: no roster pointer table");
+        return 0;
+    }
+
+    const uint16_t gate = (uint16_t)((ROM_STOCK_TEAMS + count) * 2);
+    for (int i = 0; i < 2; i++) {
+        rom[gates[i]] = (uint8_t)(gate & 0xFF);
+        rom[gates[i] + 1] = (uint8_t)(gate >> 8);
+    }
+
+    /* A fresh roster each, and both copies of the table pointed at it. The
+     * blocks start as the cartridge's own squad 0 so a slot whose pack
+     * lists no players still shows names rather than rubbish. */
+    for (int i = 0; i < count; i++) {
+        const size_t block = ROM_ADDED_ROSTERS + (size_t)i * ROM_ROSTER_BYTES;
+        memcpy(rom + block, rom + ROM_NAME_BASE, ROM_ROSTER_BYTES);
+        const uint16_t addr =
+            (uint16_t)(0x8000u + (block - (size_t)(ROM_ADDED_BANK & 0x7Fu) * 0x8000u));
+        const size_t entry = (size_t)(ROM_STOCK_TEAMS + i) * 2u;
+        rom[ROM_ROSTER_PTRS + entry]          = (uint8_t)(addr & 0xFF);
+        rom[ROM_ROSTER_PTRS + entry + 1]      = (uint8_t)(addr >> 8);
+        rom[ROM_ROSTER_PTRS_COPY + entry]     = (uint8_t)(addr & 0xFF);
+        rom[ROM_ROSTER_PTRS_COPY + entry + 1] = (uint8_t)(addr >> 8);
+    }
+    printf("[ModLoader] %d team(s) added: slots %d-%d now have rosters.\n",
+           count, ROM_STOCK_TEAMS, ROM_STOCK_TEAMS + count - 1);
+    return count;
+}
+
 /* Offer the seventh group. Checked against the bytes it should hold, so a
  * cartridge that is not this revision is left alone. */
 static bool unlock_bonus_teams(uint8_t *rom, size_t rom_size) {
@@ -710,6 +811,20 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
 
     if (issd_mod_wants_bonus_teams()) unlock_bonus_teams(rom, rom_size);
 
+    /* Adding teams rewrites the cartridge's code, so like the stadium
+     * expansion it happens once, before any pack writes a squad. Slots go
+     * out in stack order, which is the order the Mods page shows. */
+    int added_wanted = issd_mod_added_team_count();
+    if (added_wanted > ISSD_MAX_ADDED_TEAMS) {
+        char why[112];
+        snprintf(why, sizeof why, "%d teams added; only %d slots exist",
+                 added_wanted, ISSD_MAX_ADDED_TEAMS);
+        issd_mod_result_note_warning(why);
+        added_wanted = ISSD_MAX_ADDED_TEAMS;
+    }
+    const int added_open = open_added_slots(rom, rom_size, added_wanted);
+    int next_slot = ROM_STOCK_TEAMS;
+
     /* Which pack last wrote each team, so an overlap can be named rather
      * than silently resolved. Stacking two packs that both rewrite Mexico
      * is legal - the later one wins - but it is almost never intended. */
@@ -725,7 +840,26 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
         issd_mod_result_mutable()->packs_applied++;
 
         for (int ti = 0; ti < pack->team_count; ti++) {
-            const IssdModTeam *team = &pack->teams[ti];
+            IssdModTeam *team = &pack->teams[ti];
+
+            /* An added team takes the next opened slot. It is resolved
+             * here rather than at load time because the stack decides the
+             * order, and the stack can change without reloading. */
+            team->assigned_slot = -1;
+            if (team->new_team) {
+                if (next_slot >= ROM_STOCK_TEAMS + added_open) {
+                    char why[112];
+                    snprintf(why, sizeof why, "%s: no slot left to add '%s'",
+                             pack->name, team->name);
+                    issd_mod_result_note_warning(why);
+                    continue;
+                }
+                team->assigned_slot = next_slot++;
+                team->team_id = (uint8_t)team->assigned_slot;
+                printf("[ModLoader] Added team '%s' as slot %d.\n",
+                       team->name, team->assigned_slot);
+            }
+
             if (team->team_id >= ROM_TEAMS) {
                 char why[96];
                 snprintf(why, sizeof why, "%s: team %u does not exist",
@@ -733,8 +867,9 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                 issd_mod_result_note_warning(why);
                 fprintf(stderr,
                         "[ModLoader] '%s': team_id %u is out of range. The "
-                        "cartridge indexes a fixed table of %d teams, so a "
-                        "team can be replaced but not added.\n",
+                        "select screen holds %d teams. To add one rather "
+                        "than replace it, say \"new_team\": true and leave "
+                        "team_id out.\n",
                         pack->name, team->team_id, ROM_TEAMS);
                 continue;
             }
@@ -762,7 +897,19 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
              * write to, and the eight bytes per player past the table
              * belong to something else. Ratings and shape are real for all
              * of them, so those still go in. */
-            const bool has_roster = team->team_id < ROM_STOCK_TEAMS;
+            const bool has_roster = team->team_id < ROM_STOCK_TEAMS ||
+                                    team->assigned_slot >= 0;
+            /* An added team's names live in the block opened for it, not
+             * in the cartridge's own table - that table has 36 squads in
+             * it and whatever follows is not a 37th. */
+            const size_t roster_base =
+                team->assigned_slot >= 0
+                    ? ROM_ADDED_ROSTERS +
+                          (size_t)(team->assigned_slot - ROM_STOCK_TEAMS) *
+                              ROM_ROSTER_BYTES
+                    : ROM_NAME_BASE +
+                          (size_t)team->team_id * ROM_PLAYERS_PER_TEAM *
+                              ROM_NAME_BYTES;
             if (!has_roster && n > 0) {
                 char why[112];
                 snprintf(why, sizeof why,
@@ -779,8 +926,7 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
             const size_t slot = (size_t)team->team_id * ROM_PLAYERS_PER_TEAM;
             for (int p = 0; p < n; p++) {
                 if (has_roster)
-                    patch_name(rom,
-                               ROM_NAME_BASE + (slot + p) * ROM_NAME_BYTES,
+                    patch_name(rom, roster_base + (size_t)p * ROM_NAME_BYTES,
                                team->players[p].name);
                 patch_attributes(rom, ROM_ATTR_BASE + (slot + p) * ROM_ATTR_BYTES,
                                  &team->players[p]);
