@@ -43,6 +43,17 @@ int main(void) {
         return 0;
     }
 
+    /* Packs are off until asked for, so a clean install runs vanilla. This
+     * test is about the encoding one pack produces, so it enables that one
+     * and leaves the others alone - stacking has its own test. */
+    int fixture = -1;
+    for (int i = 0; i < packs; i++) {
+        const IssdModPack *p = issd_mod_get_pack(i);
+        if (p && strcmp(p->name, "Fixture Pack") == 0) fixture = i;
+    }
+    assert(fixture >= 0);
+    issd_mod_set_pack_enabled(fixture, true);
+
     memset(rom, 0xEE, sizeof(rom));
     /* Byte 5 of each attribute record is an index we do not understand and
      * must survive untouched. */
@@ -112,7 +123,7 @@ int main(void) {
 
     /* An unknown formation leaves the team's own shape alone rather than
      * writing a broken record. */
-    IssdModPack *pack = issd_mod_get_pack(0);
+    IssdModPack *pack = issd_mod_get_pack(fixture);
     assert(pack != NULL);
     memset(rom + TEST_RECORD_OFF, 0xEE, 32);
     strcpy(pack->teams[0].formation, "6-6-6");

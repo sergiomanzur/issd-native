@@ -10,15 +10,15 @@
 #include <stdio.h>
 #include <string.h>
 
-/* issd_menu.c reaches for saves and mod packs on confirm; navigation never
- * does, so these keep the link closed without touching the filesystem. */
+/* issd_menu.c reaches for saves and for a restart on confirm; navigation
+ * never does, so these keep the link closed without touching anything.
+ * The mod and tile registries are linked for real: stubbing them drifted
+ * out of date every time the menu grew a row. */
+uint8_t g_ram[0x20000];
 bool issd_save_to_slot(int s, const char *l) { (void)s; (void)l; return true; }
 bool issd_load_from_slot(int s) { (void)s; return true; }
 bool issd_save_get_info(int s, char *o, size_t n) { (void)s; snprintf(o, n, "Empty Slot"); return false; }
-int issd_mod_get_pack_count(void) { return 0; }
-int issd_mod_get_active_pack_index(void) { return -1; }
-void issd_mod_set_active_pack(int i) { (void)i; }
-IssdModPack *issd_mod_get_pack(int i) { (void)i; return NULL; }
+void issd_restart_application(void) { }
 
 #define ROW_INTERNAL_RES 5
 

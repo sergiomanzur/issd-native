@@ -152,6 +152,9 @@ static size_t formation_record_offset(const uint8_t *rom, uint8_t team_id) {
 }
 
 static void warn_unknown_formation(const char *pack, const char *name) {
+    char why[96];
+    snprintf(why, sizeof why, "%s: unknown formation %s", pack, name);
+    issd_mod_result_note_warning(why);
     fprintf(stderr, "[ModLoader] '%s': unknown formation \"%s\". Known: ",
             pack, name);
     for (int i = 0; i < issd_formation_count(); i++)
@@ -246,6 +249,9 @@ void issd_mod_rom_set_image(uint8_t *rom, size_t rom_size) {
 
 int issd_mod_reapply(void) {
   if (!s_live || !s_pristine) return 0;
+  /* Counts describe the stack as it is now, not as it was before the
+   * player changed it, so they start from zero every time. */
+  issd_mod_result_reset();
   memcpy(s_live, s_pristine, s_size);      /* back to vanilla first */
   return issd_mod_apply_to_rom(s_live, s_size);
 }
@@ -267,13 +273,27 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
 
     int players_patched = 0, teams_patched = 0, formations_patched = 0;
 
-    for (int pi = 0; pi < issd_mod_get_pack_count(); pi++) {
+    /* Which pack last wrote each team, so an overlap can be named rather
+     * than silently resolved. Stacking two packs that both rewrite Mexico
+     * is legal - the later one wins - but it is almost never intended. */
+    const char *owner[ROM_TEAMS];
+    memset(owner, 0, sizeof owner);
+
+    /* In stack order, not scan order: the pack enabled last wins. */
+    for (int slot = 0; ; slot++) {
+        const int pi = issd_mod_pack_at_order(slot);
+        if (pi < 0) break;
         IssdModPack *pack = issd_mod_get_pack(pi);
-        if (!pack || !pack->is_active) continue;
+        if (!pack) continue;
+        issd_mod_result_mutable()->packs_applied++;
 
         for (int ti = 0; ti < pack->team_count; ti++) {
             const IssdModTeam *team = &pack->teams[ti];
             if (team->team_id >= ROM_TEAMS) {
+                char why[96];
+                snprintf(why, sizeof why, "%s: team %u does not exist",
+                         pack->name, team->team_id);
+                issd_mod_result_note_warning(why);
                 fprintf(stderr,
                         "[ModLoader] '%s': team_id %u is out of range. The "
                         "cartridge indexes a fixed table of %d teams, so a "
@@ -281,6 +301,14 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                         pack->name, team->team_id, ROM_TEAMS);
                 continue;
             }
+            if (owner[team->team_id]) {
+                char why[96];
+                snprintf(why, sizeof why, "%s overrides %s on team %u",
+                         pack->name, owner[team->team_id], team->team_id);
+                issd_mod_result_note_warning(why);
+                fprintf(stderr, "[ModLoader] %s.\n", why);
+            }
+            owner[team->team_id] = pack->name;
 
             int n = team->player_count;
             if (n > ROM_PLAYERS_PER_TEAM) {
@@ -288,6 +316,7 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                         "[ModLoader] '%s': team %u lists %d players; only the "
                         "first %d fit the cartridge's squad slots.\n",
                         pack->name, team->team_id, n, ROM_PLAYERS_PER_TEAM);
+                issd_mod_result_note_warning("squad longer than 20");
                 n = ROM_PLAYERS_PER_TEAM;
             }
 
@@ -320,5 +349,10 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                "cartridge image.\n", players_patched, teams_patched);
     if (formations_patched)
         printf("[ModLoader] Reshaped %d team(s).\n", formations_patched);
+
+    IssdModResult *r = issd_mod_result_mutable();
+    r->teams_patched = teams_patched;
+    r->players_patched = players_patched;
+    r->formations_patched = formations_patched;
     return players_patched;
 }

@@ -1,0 +1,14 @@
+{
+ "name": "Fixture Overlay",
+ "author": "tests",
+ "version": "1.0.0",
+ "description": "stacks on top of Fixture Pack and changes team 0's shape only",
+ "teams": [
+  {
+   "team_id": 0,
+   "name": "Overlay",
+   "formation": "5-3-2",
+   "tactics": "defensive"
+  }
+ ]
+}

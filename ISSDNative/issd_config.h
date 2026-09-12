@@ -75,10 +75,12 @@ typedef struct {
     /* Name of the active mod pack, empty for vanilla. Stored by name rather
      * than index so adding or removing a pack cannot silently select a
      * different one. */
-    char active_mod_pack[64];
-    /* Directory under mods/ holding replacement background tiles.
-     * Empty renders the cartridge's own graphics. */
-    char hd_texture_pack[64];
+    /* Mods stack, so both of these are '|' separated lists in the order
+     * they are applied: the last one wins where two of them collide.
+     * Empty is vanilla. The old single-value keys are still read, so a
+     * config written by an earlier build keeps working. */
+    char active_mod_packs[512];    /* roster and formation packs, by name */
+    char hd_texture_packs[512];    /* tile pack directories under mods/ */
 
     /* Controls (P1 Scancodes / Buttons) */
     int key_p1_up;

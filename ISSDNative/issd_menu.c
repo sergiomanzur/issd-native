@@ -114,60 +114,56 @@ static const uint8_t s_font8x8[96][8] = {
 
 #define MENU_TOTAL_ITEMS 17
 
-/* Cycle the active mod pack: -1 is vanilla, then each loaded pack.
- * Re-patching restores the pristine cartridge first, so switching packs
- * never leaves fields from the previous one behind. Rosters are read when
- * a match loads, so the change shows from the next match rather than
- * mid-play. */
-static void issd_menu_cycle_mod_pack(int direction) {
-    const int count = issd_mod_get_pack_count();
-    const int states = count + 1;                 /* vanilla + each pack */
-    int cur = issd_mod_get_active_pack_index();   /* -1 .. count-1 */
-    int slot = ((cur + 1) + direction + states) % states;
-    int want = slot - 1;
-
-    issd_mod_set_active_pack(want);
-    issd_mod_reapply();
-
-    if (want < 0) {
-        g_issd_config.active_mod_pack[0] = 0;
-    } else {
-        IssdModPack *pack = issd_mod_get_pack(want);
-        if (pack) {
-            strncpy(g_issd_config.active_mod_pack, pack->name,
-                    sizeof(g_issd_config.active_mod_pack) - 1);
-            g_issd_config.active_mod_pack[
-                sizeof(g_issd_config.active_mod_pack) - 1] = 0;
-        }
-    }
+/* The mod list is one row per pack, roster packs first, then tile packs,
+ * then the actions. Everything is addressed by row index so the same
+ * navigation code serves both kinds. */
+static int mods_roster_count(void) { return issd_mod_get_pack_count(); }
+static int mods_tile_count(void)   { return issd_hd_available_count(); }
+static int mods_row_count(void) {
+    /* two headers, the packs, then Apply and Back */
+    return 2 + mods_roster_count() + mods_tile_count() + 2;
 }
 
-/* Cycle the high resolution tile pack: off, then each directory under
- * mods/ holding tiles. A pack is only images, so unlike a roster mod it
- * can be swapped while the game runs. The directories are rescanned each
- * time, so one dropped in mid-session is picked up without a restart. */
-static void issd_menu_cycle_hd_pack(int direction) {
-    const int count = issd_hd_scan_packs("mods");
-    const int states = count + 1;                 /* off, then each pack */
-    int cur = -1;
-    if (issd_hd_active()) {
-        for (int i = 0; i < count; i++)
-            if (strcmp(issd_hd_available_name(i), issd_hd_pack_name()) == 0)
-                cur = i;
-    }
+/* Rows that are only labels: the cursor skips over them. */
+static bool mods_row_is_header(int row) {
+    return row == 0 || row == 1 + mods_roster_count();
+}
 
-    const int want = ((cur + 1) + direction + states) % states - 1;
-    if (want < 0) {
-        g_issd_config.hd_texture_pack[0] = 0;
-        issd_hd_load_pack(NULL);
+static int mods_row_apply(void)  { return mods_row_count() - 2; }
+static int mods_row_back(void)   { return mods_row_count() - 1; }
+
+/* Remember the stack in the config. It is what a restart reads, and a
+ * restart is the only moment a roster mod can take effect. */
+static void mods_store_selection(void) {
+    issd_mod_enabled_list(g_issd_config.active_mod_packs,
+                          sizeof(g_issd_config.active_mod_packs));
+    issd_hd_enabled_list(g_issd_config.hd_texture_packs,
+                         sizeof(g_issd_config.hd_texture_packs));
+}
+
+static void mods_toggle_row(int row) {
+    const int rosters = mods_roster_count();
+    if (row >= 1 && row < 1 + rosters) {
+        const int i = row - 1;
+        issd_mod_set_pack_enabled(i, !issd_mod_is_pack_enabled(i));
     } else {
-        char dir[256];
-        snprintf(dir, sizeof(dir), "mods/%s", issd_hd_available_name(want));
-        strncpy(g_issd_config.hd_texture_pack, issd_hd_available_name(want),
-                sizeof(g_issd_config.hd_texture_pack) - 1);
-        g_issd_config.hd_texture_pack[sizeof(g_issd_config.hd_texture_pack) - 1] = 0;
-        issd_hd_load_pack(dir);
+        const int i = row - (2 + rosters);
+        if (i < 0 || i >= mods_tile_count()) return;
+        issd_hd_set_enabled(i, !issd_hd_is_enabled(i));
+        /* Tiles are only images, so they can be swapped without a restart
+         * and the change is visible the moment the menu closes. */
+        issd_hd_apply("mods");
+        issd_mod_result_note_tiles(issd_hd_texture_count());
     }
+    mods_store_selection();
+}
+
+static void mods_open(void) {
+    issd_hd_scan_packs("mods");   /* pick up anything dropped in since boot */
+    issd_hd_enable_from_list(g_issd_config.hd_texture_packs);
+    g_overlay_menu.page = ISSD_MENU_PAGE_MODS;
+    g_overlay_menu.current_item = 1;
+    g_overlay_menu.scroll = 0;
 }
 
 /* Replacements are drawn into the enlarged frame, so at 1x there is nothing
@@ -178,11 +174,17 @@ static const char *issd_menu_hd_pack_label(void) {
     return issd_hd_pack_name();
 }
 
-static const char *issd_menu_mod_pack_label(void) {
-    int cur = issd_mod_get_active_pack_index();
-    if (cur < 0) return "VANILLA";
-    IssdModPack *pack = issd_mod_get_pack(cur);
-    return (pack && pack->name[0]) ? pack->name : "VANILLA";
+/* What the main menu's Mods row says: enough to know whether anything is
+ * on without opening the page. */
+static const char *issd_menu_mods_label(void) {
+    static char label[40];
+    const int rosters = issd_mod_enabled_count();
+    const int tiles = issd_hd_enabled_count();
+    if (!rosters && !tiles) return "none";
+    if (rosters && tiles) snprintf(label, sizeof label, "%d + %d tile", rosters, tiles);
+    else if (rosters)     snprintf(label, sizeof label, "%d pack%s", rosters, rosters == 1 ? "" : "s");
+    else                  snprintf(label, sizeof label, "%d tile pack%s", tiles, tiles == 1 ? "" : "s");
+    return label;
 }
 
 static void DrawChar(uint32_t *fb, int fb_w, int fb_h, int x, int y, char c, uint32_t color) {
@@ -231,10 +233,13 @@ void issd_menu_init(void) {
     g_overlay_menu.current_slot = 0;
     g_overlay_menu.control_schema = ISSD_SCHEMA_CLASSIC;
     g_overlay_menu.status_timer = 0;
+    g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
+    g_overlay_menu.scroll = 0;
 }
 
 void issd_menu_toggle(void) {
     g_overlay_menu.is_open = !g_overlay_menu.is_open;
+    if (!g_overlay_menu.is_open) g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
     if (g_overlay_menu.is_open) {
         printf("[Overlay] Modern Menu opened.\n");
     } else {
@@ -262,14 +267,38 @@ bool issd_menu_internal_res_applies(void) {
     return g_issd_config.scaling_filter == ISSD_FILTER_CRT;
 }
 
+/* Rows visible at once on the mods page; the list scrolls past that. */
+#define MODS_VISIBLE_ROWS 16
+
+static void mods_step(int direction) {
+    const int rows = mods_row_count();
+    int row = g_overlay_menu.current_item;
+    /* Headers are labels, not choices, so the cursor passes over them.
+     * The loop is bounded by the row count so an all-header list (no packs
+     * installed at all) cannot spin. */
+    for (int guard = 0; guard < rows; guard++) {
+        row = (row + direction + rows) % rows;
+        if (!mods_row_is_header(row)) break;
+    }
+    g_overlay_menu.current_item = row;
+
+    if (row < g_overlay_menu.scroll)
+        g_overlay_menu.scroll = row;
+    else if (row >= g_overlay_menu.scroll + MODS_VISIBLE_ROWS)
+        g_overlay_menu.scroll = row - MODS_VISIBLE_ROWS + 1;
+    if (g_overlay_menu.scroll < 0) g_overlay_menu.scroll = 0;
+}
+
 bool issd_menu_navigate_up(void) {
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(-1); return true; }
     g_overlay_menu.current_item = (g_overlay_menu.current_item - 1 + MENU_TOTAL_ITEMS) % MENU_TOTAL_ITEMS;
     return true;
 }
 
 bool issd_menu_navigate_down(void) {
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(1); return true; }
     g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % MENU_TOTAL_ITEMS;
     return true;
 }
@@ -279,12 +308,16 @@ static const int s_fps_presets[] = { 60, 120, 144, 165, 240, 0 };
 
 bool issd_menu_navigate_left(void) {
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
+        mods_toggle_row(g_overlay_menu.current_item);
+        return true;
+    }
     switch (g_overlay_menu.current_item) {
         case 1: /* Schema */
             g_overlay_menu.control_schema = (IssdControlSchema)((g_overlay_menu.control_schema - 1 + 3) % 3);
             break;
-        case 2: /* Mod Pack */
-            issd_menu_cycle_mod_pack(-1);
+        case 2: /* Mods page */
+            mods_open();
             break;
         case 3: /* Aspect Ratio */
             g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio - 1 + ISSD_ASPECT_COUNT) % ISSD_ASPECT_COUNT);
@@ -321,8 +354,8 @@ bool issd_menu_navigate_left(void) {
         case 12: /* Engine Mode */
             g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
             break;
-        case 14: /* HD Tiles */
-            issd_menu_cycle_hd_pack(-1);
+        case 14: /* HD Tiles: shown here, chosen on the Mods page */
+            mods_open();
             break;
         case 13: /* Debug & Japanese Unhooked Code */
             g_issd_config.debug_unhooked_code = !g_issd_config.debug_unhooked_code;
@@ -344,12 +377,16 @@ bool issd_menu_navigate_left(void) {
 
 bool issd_menu_navigate_right(void) {
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
+        mods_toggle_row(g_overlay_menu.current_item);
+        return true;
+    }
     switch (g_overlay_menu.current_item) {
         case 1: /* Schema */
             g_overlay_menu.control_schema = (IssdControlSchema)((g_overlay_menu.control_schema + 1) % 3);
             break;
-        case 2: /* Mod Pack */
-            issd_menu_cycle_mod_pack(1);
+        case 2: /* Mods page */
+            mods_open();
             break;
         case 3: /* Aspect Ratio */
             g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio + 1) % ISSD_ASPECT_COUNT);
@@ -386,8 +423,8 @@ bool issd_menu_navigate_right(void) {
         case 12: /* Engine Mode */
             g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
             break;
-        case 14: /* HD Tiles */
-            issd_menu_cycle_hd_pack(1);
+        case 14: /* HD Tiles: shown here, chosen on the Mods page */
+            mods_open();
             break;
         case 13: /* Debug & Japanese Unhooked Code */
             g_issd_config.debug_unhooked_code = !g_issd_config.debug_unhooked_code;
@@ -409,12 +446,28 @@ bool issd_menu_navigate_right(void) {
 
 bool issd_menu_confirm(void) {
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
+        const int row = g_overlay_menu.current_item;
+        if (row == mods_row_back()) {
+            g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
+            g_overlay_menu.current_item = 2;
+        } else if (row == mods_row_apply()) {
+            mods_store_selection();
+            issd_config_save(&g_issd_config, NULL);
+            issd_restart_application();
+        } else {
+            mods_toggle_row(row);
+        }
+        return true;
+    }
     switch (g_overlay_menu.current_item) {
         case 0: /* Resume */
             issd_menu_close();
             break;
+        case 2: /* Mods page */
+            mods_open();
+            break;
         case 1: /* Next Schema */
-        case 2: /* Mod Pack */
         case 3: /* Aspect */
         case 4: /* True Widescreen */
         case 5: /* Res */
@@ -468,8 +521,78 @@ bool issd_menu_confirm(void) {
 
 bool issd_menu_cancel(void) {
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
+        g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
+        g_overlay_menu.current_item = 2;
+        return true;
+    }
     issd_menu_close();
     return true;
+}
+
+/* One row per pack, with the stack position shown so the order two packs
+ * are applied in - which decides who wins where they overlap - is visible
+ * rather than something to be inferred. */
+static void issd_menu_render_mods(uint32_t *fb, int width, int height,
+                                  int box_x, int box_y, int box_h) {
+    DrawString(fb, width, height, box_x + 70, box_y + 4, "MODS", 0xFFFFD700);
+
+    const int rosters = mods_roster_count();
+    const int tiles = mods_tile_count();
+    const int rows = mods_row_count();
+    const int first = g_overlay_menu.scroll;
+    int y = box_y + 16;
+
+    for (int row = first; row < rows && row < first + MODS_VISIBLE_ROWS; row++, y += 11) {
+        char text[44];
+        uint32_t colour = 0xFFE0E0E0;
+
+        if (row == 0) {
+            snprintf(text, sizeof text, "-- TEAMS, STATS, FORMATIONS --");
+            colour = 0xFF66CCFF;
+        } else if (row == 1 + rosters) {
+            snprintf(text, sizeof text, "-- HD TILES --");
+            colour = 0xFF66CCFF;
+        } else if (row == mods_row_apply()) {
+            snprintf(text, sizeof text, "SAVE & RESTART (apply)");
+            colour = 0xFFFFD700;
+        } else if (row == mods_row_back()) {
+            snprintf(text, sizeof text, "Back");
+        } else if (row < 1 + rosters) {
+            const int i = row - 1;
+            const IssdModPack *pack = issd_mod_get_pack(i);
+            const bool on = issd_mod_is_pack_enabled(i);
+            snprintf(text, sizeof text, "[%c] %.30s", on ? 'x' : ' ',
+                     pack && pack->name[0] ? pack->name : "(unnamed)");
+            if (!on) colour = 0xFF909090;
+        } else {
+            const int i = row - (2 + rosters);
+            const bool on = (i >= 0 && i < tiles) && issd_hd_is_enabled(i);
+            snprintf(text, sizeof text, "[%c] %.30s", on ? 'x' : ' ',
+                     issd_hd_available_name(i));
+            if (!on) colour = 0xFF909090;
+        }
+
+        if (row == g_overlay_menu.current_item) {
+            colour = 0xFF00FF66;
+            DrawChar(fb, width, height, box_x + 4, y, '>', colour);
+        }
+        DrawString(fb, width, height, box_x + 14, y, text, colour);
+    }
+
+    if (!rosters && !tiles)
+        DrawString(fb, width, height, box_x + 14, box_y + 30,
+                   "Nothing in mods/ yet.", 0xFF909090);
+
+    char headline[32], detail[32];
+    issd_mod_result_lines(headline, sizeof headline, detail, sizeof detail);
+    const IssdModResult *res = issd_mod_last_result();
+    const uint32_t tone = res->errors ? 0xFFFF5555 :
+                          res->warnings ? 0xFFFFAA00 : 0xFF88FF88;
+    DrawString(fb, width, height, box_x + 8, box_y + box_h - 33, headline, tone);
+    DrawString(fb, width, height, box_x + 8, box_y + box_h - 22, detail, 0xFFB0B0B0);
+    DrawString(fb, width, height, box_x + 8, box_y + box_h - 11,
+               "A/< >:Toggle  ESC:Back", 0xFF888888);
 }
 
 void issd_menu_render(uint32_t *fb, int width, int height) {
@@ -494,6 +617,11 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
 
     DrawBox(fb, width, height, box_x, box_y, box_w, box_h, 0xFF00E5FF);
     DrawBox(fb, width, height, box_x + 1, box_y + 1, box_w - 2, box_h - 2, 0xFF002244);
+
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
+        issd_menu_render_mods(fb, width, height, box_x, box_y, box_h);
+        return;
+    }
 
     /* 3. Title */
     DrawString(fb, width, height, box_x + 44, box_y + 4, "ISSD NATIVE MENU", 0xFFFFD700);
@@ -531,8 +659,7 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     char items[MENU_TOTAL_ITEMS][44];
     snprintf(items[0], sizeof(items[0]), "Resume Match");
     snprintf(items[1], sizeof(items[1]), "Controls:   <%s>", schema_str);
-    snprintf(items[2], sizeof(items[2]), "Mod Pack:   <%s>",
-             issd_menu_mod_pack_label());
+    snprintf(items[2], sizeof(items[2]), "Mods...     <%s>", issd_menu_mods_label());
     snprintf(items[3], sizeof(items[3]), "Aspect:     <%s>", aspect_str);
     snprintf(items[4], sizeof(items[4]), "Widescreen: <%s>", g_issd_config.true_widescreen ? "ON (TRUE FOV)" : "OFF (4:3 NATIVE)");
     snprintf(items[5], sizeof(items[5]), "Internal:   <%s>",
@@ -545,8 +672,7 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[11], sizeof(items[11]), "Volume:     <%d%%>", g_issd_config.master_volume);
     snprintf(items[12], sizeof(items[12]), "Engine:     <%s>", mode_str);
     snprintf(items[13], sizeof(items[13]), "Debug/JPN:  <%s>", g_issd_config.debug_unhooked_code ? "ENABLED" : "DISABLED");
-    snprintf(items[14], sizeof(items[14]), "HD Tiles:   <%s>",
-             issd_menu_hd_pack_label());
+    snprintf(items[14], sizeof(items[14]), "HD Tiles:   <%s>", issd_menu_hd_pack_label());
     snprintf(items[15], sizeof(items[15]), "Save & Restart (applies mods)");
     snprintf(items[16], sizeof(items[16]), "Save & Quit to Desktop");
 
@@ -567,4 +693,73 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     } else {
         DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, "A:Select  < >:Change  ESC:Back", 0xFF888888);
     }
+}
+
+/* A line over the game itself, for things the player must see even with
+ * the menu closed - above all whether the mods they just restarted for
+ * actually applied. */
+static char s_notice[96];
+static int  s_notice_frames;
+
+void issd_menu_notify(const char *message, int frames) {
+    if (!message) return;
+    snprintf(s_notice, sizeof s_notice, "%s", message);
+    s_notice_frames = frames;
+}
+
+void issd_menu_render_notification(uint32_t *fb, int width, int height) {
+    if (!fb || s_notice_frames <= 0 || !s_notice[0]) return;
+    s_notice_frames--;
+
+    /* The message is as long as it needs to be to say what happened, and
+     * the screen is 256 pixels wide in 4:3 - so it wraps rather than
+     * running off the edge, which would cut off exactly the part that says
+     * something went wrong. */
+    const int glyph = 8;
+    int fit = (width - 16) / glyph;
+    if (fit < 8) fit = 8;
+
+    char line[2][96];
+    int lines = 1;
+    const int len = (int)strlen(s_notice);
+    if (len <= fit) {
+        snprintf(line[0], sizeof line[0], "%s", s_notice);
+    } else {
+        int split = fit;
+        while (split > 0 && s_notice[split] != ' ') split--;
+        if (split == 0) split = fit;          /* one long word: hard break */
+        snprintf(line[0], sizeof line[0], "%.*s", split, s_notice);
+        const char *rest = s_notice + split;
+        while (*rest == ' ') rest++;
+        snprintf(line[1], sizeof line[1], "%.*s", fit, rest);
+        lines = 2;
+    }
+
+    int text_w = 0;
+    for (int i = 0; i < lines; i++) {
+        const int w = (int)strlen(line[i]) * glyph;
+        if (w > text_w) text_w = w;
+    }
+    const int w = text_w + 12;
+    const int h = 6 + lines * 9;
+    int x = (width - w) / 2;
+    const int y = height - h - 6;
+    if (x < 2) x = 2;
+
+    /* Darken behind the text rather than filling it: the message sits over
+     * whatever is on screen at boot, which is rarely a flat colour. */
+    for (int py = y; py < y + h && py < height; py++)
+        for (int px = x; px < x + w && px < width; px++) {
+            const uint32_t p = fb[py * width + px];
+            fb[py * width + px] = 0xFF000000 |
+                ((((p >> 16) & 0xFF) / 4) << 16) |
+                ((((p >> 8) & 0xFF) / 4) << 8) |
+                (((p & 0xFF) / 4));
+        }
+
+    const IssdModResult *r = issd_mod_last_result();
+    const uint32_t colour = r->errors ? 0xFFFF5555 :
+                            r->warnings ? 0xFFFFAA00 : 0xFF88FF88;
+    for (int i = 0; i < lines; i++)
+        DrawString(fb, width, height, x + 6, y + 3 + i * 9, line[i], colour);
 }

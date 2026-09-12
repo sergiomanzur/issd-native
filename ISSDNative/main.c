@@ -1179,14 +1179,16 @@ int main(int argc, char **argv) {
      * dump directory is set before the first frame so the very first
      * screen's tiles are captured too. */
     {
-        char hd_dir[512];
-        const char *pack = g_hd_pack_dir;
-        if (!pack && g_issd_config.hd_texture_pack[0]) {
-            snprintf(hd_dir, sizeof hd_dir, "mods/%s",
-                     g_issd_config.hd_texture_pack);
-            pack = hd_dir;
+        issd_hd_scan_packs("mods");
+        if (g_hd_pack_dir) {
+            /* A directory named on the command line is used on its own,
+             * so a pack can be tried without touching the saved stack. */
+            issd_hd_load_pack(g_hd_pack_dir);
+        } else {
+            issd_hd_enable_from_list(g_issd_config.hd_texture_packs);
+            issd_hd_apply("mods");
         }
-        if (pack) issd_hd_load_pack(pack);
+        issd_mod_result_note_tiles(issd_hd_active() ? issd_hd_texture_count() : 0);
         if (g_hd_dump_dir) {
             issd_hd_set_dump_dir(g_hd_dump_dir);
             issd_hd_set_dump_start(g_hd_dump_from);
@@ -1246,19 +1248,20 @@ int main(int argc, char **argv) {
      * boots and reads any of it. The pristine copy lets the pack be changed
      * later from the menu without stacking one patch on top of another. */
     issd_mod_rom_set_image(rom_data, rom_size);
+    issd_mod_enable_from_list(g_issd_config.active_mod_packs);
+    issd_mod_reapply();
+
+    /* Mods take effect during a restart, which is exactly when nobody is
+     * watching a console. Report the outcome on screen - and do it after
+     * everything has actually been applied, or the counts are all zero. */
     {
-        int want = -1;   /* -1 is vanilla */
-        if (g_issd_config.active_mod_pack[0]) {
-            for (int i = 0; i < issd_mod_get_pack_count(); i++) {
-                IssdModPack *mp = issd_mod_get_pack(i);
-                if (mp && strcmp(mp->name, g_issd_config.active_mod_pack) == 0) { want = i; break; }
-            }
-            if (want < 0)
-                fprintf(stderr, "[ModLoader] Config selects mod pack '%s' but no such pack is installed; starting vanilla.\n",
-                        g_issd_config.active_mod_pack);
-        }
-        issd_mod_set_active_pack(want);
-        issd_mod_reapply();
+        char summary[96];
+        /* Re-applying the roster stack resets the counters, and the tile
+         * stack was loaded before that, so its total is restated here. */
+        issd_mod_result_note_tiles(issd_hd_texture_count());
+        issd_mod_result_summary(summary, sizeof summary);
+        printf("[ModLoader] %s\n", summary);
+        issd_menu_notify(summary, 300);
     }
 
     if (SDL_Init(SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
@@ -1495,6 +1498,11 @@ int main(int argc, char **argv) {
 
                 /* Render SNES PPU scanlines */
                 IssdDrawPpuFrame();
+                /* Over the game, not inside the menu: the one thing the
+                 * player has to see after a restart is whether the mods
+                 * they restarted for actually applied. */
+                issd_menu_render_notification(g_pixel_buffer, cur_render_w,
+                                              cur_render_h);
                 if (g_dump_first >= 0 && (int)frame_count >= g_dump_first && (int)frame_count <= g_dump_last) {
                     char nm[64];
                     snprintf(nm, sizeof(nm), "f_%05u.bmp", frame_count);

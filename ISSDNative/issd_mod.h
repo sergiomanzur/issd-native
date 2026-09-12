@@ -63,9 +63,43 @@ typedef struct {
     char        description[128];
     char        filepath[256];
     bool        is_active;
+    /* Packs stack. This is the order they are applied in, so when two
+     * of them change the same team the higher number wins. Enabling a
+     * pack puts it last, which is what 'this one on top' means. */
+    int         apply_order;
     int         team_count;
     IssdModTeam teams[ISSD_MAX_TEAMS_PER_PACK];
 } IssdModPack;
+
+/* What the last application of the enabled packs actually did.
+ *
+ * A mod that silently does nothing is the worst outcome, so the result is
+ * kept rather than only printed: the menu reports it, and a pack that
+ * failed to parse or named a team that does not exist says so on screen
+ * instead of only in a log nobody reads. */
+typedef struct {
+    int  packs_applied;
+    int  teams_patched;
+    int  players_patched;
+    int  formations_patched;
+    int  tiles_loaded;      /* filled in by the host, not the roster patcher */
+    int  warnings;          /* applied, but something was ignored */
+    int  errors;            /* a pack could not be used at all */
+    char detail[96];        /* the first thing that went wrong */
+} IssdModResult;
+
+const IssdModResult *issd_mod_last_result(void);
+void issd_mod_result_reset(void);
+void issd_mod_result_note_tiles(int textures);
+
+/* One line, for the console and the on-screen notification, which is as
+ * wide as the game. */
+void issd_mod_result_summary(char *out, size_t cap);
+
+/* The same thing split to fit the menu box, which is 28 characters wide.
+ * `headline` says whether it worked; `detail` says what changed. */
+void issd_mod_result_lines(char *headline, size_t hcap,
+                           char *detail, size_t dcap);
 
 /* Lifecycle & Registry */
 bool        issd_mod_init(void);
@@ -74,6 +108,25 @@ int         issd_mod_scan_and_load(const char *mods_directory);
 int         issd_mod_get_pack_count(void);
 IssdModPack* issd_mod_get_pack(int index);
 int         issd_mod_get_active_pack_index(void);
+
+/* Stacking. Packs are independent switches rather than one choice. */
+void        issd_mod_set_pack_enabled(int index, bool enabled);
+bool        issd_mod_is_pack_enabled(int index);
+int         issd_mod_enabled_count(void);
+
+/* The enabled packs as a '|' separated list of names, in apply order, and
+ * the reverse. This is what the config file stores, so the stack and its
+ * order survive a restart - which is when mods actually take effect. */
+void        issd_mod_enabled_list(char *out, size_t cap);
+void        issd_mod_enable_from_list(const char *list);
+
+/* Index of the pack applied `slot` places into the stack, -1 past the end. */
+int         issd_mod_pack_at_order(int slot);
+
+/* Used by the patcher to fold problems into the result the menu reports. */
+void        issd_mod_result_note_error(const char *detail);
+void        issd_mod_result_note_warning(const char *detail);
+IssdModResult *issd_mod_result_mutable(void);
 void        issd_mod_set_active_pack(int index);
 
 /* Lookup & Runtime Patching */

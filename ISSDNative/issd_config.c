@@ -55,8 +55,8 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->skip_intro = false;
     cfg->fast_menus = false;
     cfg->debug_unhooked_code = false;
-    cfg->active_mod_pack[0] = 0;
-    cfg->hd_texture_pack[0] = 0;
+    cfg->active_mod_packs[0] = 0;
+    cfg->hd_texture_packs[0] = 0;
 
     if (issd_config_is_steam_deck()) {
         cfg->aspect_ratio = ISSD_ASPECT_16_10;   /* 1280x800 native */
@@ -164,8 +164,11 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     else if (strcmp(key, "skip_intro") == 0) cfg->skip_intro = (ival != 0);
     else if (strcmp(key, "fast_menus") == 0) cfg->fast_menus = (ival != 0);
     else if (strcmp(key, "debug_unhooked_code") == 0) cfg->debug_unhooked_code = (ival != 0);
-    else if (strcmp(key, "active_mod_pack") == 0) { strncpy(cfg->active_mod_pack, value, sizeof(cfg->active_mod_pack)-1); cfg->active_mod_pack[sizeof(cfg->active_mod_pack)-1]=0; }
-    else if (strcmp(key, "hd_texture_pack") == 0) { strncpy(cfg->hd_texture_pack, value, sizeof(cfg->hd_texture_pack)-1); cfg->hd_texture_pack[sizeof(cfg->hd_texture_pack)-1]=0; }
+    else if (strcmp(key, "active_mod_packs") == 0) { strncpy(cfg->active_mod_packs, value, sizeof(cfg->active_mod_packs)-1); cfg->active_mod_packs[sizeof(cfg->active_mod_packs)-1]=0; }
+    else if (strcmp(key, "hd_texture_packs") == 0) { strncpy(cfg->hd_texture_packs, value, sizeof(cfg->hd_texture_packs)-1); cfg->hd_texture_packs[sizeof(cfg->hd_texture_packs)-1]=0; }
+    /* Written by builds that only supported one pack of each kind. */
+    else if (strcmp(key, "active_mod_pack") == 0) { strncpy(cfg->active_mod_packs, value, sizeof(cfg->active_mod_packs)-1); cfg->active_mod_packs[sizeof(cfg->active_mod_packs)-1]=0; }
+    else if (strcmp(key, "hd_texture_pack") == 0) { strncpy(cfg->hd_texture_packs, value, sizeof(cfg->hd_texture_packs)-1); cfg->hd_texture_packs[sizeof(cfg->hd_texture_packs)-1]=0; }
     else if (strcmp(key, "key_p1_up") == 0) cfg->key_p1_up = ival;
     else if (strcmp(key, "key_p1_down") == 0) cfg->key_p1_down = ival;
     else if (strcmp(key, "key_p1_left") == 0) cfg->key_p1_left = ival;
@@ -233,8 +236,8 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "skip_intro=%d\n", cfg->skip_intro ? 1 : 0);
     fprintf(f, "fast_menus=%d\n", cfg->fast_menus ? 1 : 0);
     fprintf(f, "debug_unhooked_code=%d\n", cfg->debug_unhooked_code ? 1 : 0);
-    fprintf(f, "active_mod_pack=%s\n", cfg->active_mod_pack);
-    fprintf(f, "hd_texture_pack=%s\n", cfg->hd_texture_pack);
+    fprintf(f, "active_mod_packs=%s\n", cfg->active_mod_packs);
+    fprintf(f, "hd_texture_packs=%s\n", cfg->hd_texture_packs);
     fprintf(f, "key_p1_up=%d\n", cfg->key_p1_up);
     fprintf(f, "key_p1_down=%d\n", cfg->key_p1_down);
     fprintf(f, "key_p1_left=%d\n", cfg->key_p1_left);

@@ -187,6 +187,23 @@ static bool hd_table_alloc(size_t want) {
     return true;
 }
 
+static HdTexture *hd_table_slot(uint64_t key);
+
+/* Open addressing never terminates on a full table, and stacked packs can
+ * hold far more tiles than one. Double before that can happen. */
+static bool hd_table_grow(void) {
+    HdTexture *old = s_table;
+    const size_t old_cap = s_table_mask + 1;
+    const size_t cap = old_cap * 2;
+    s_table = (HdTexture *)calloc(cap, sizeof(HdTexture));
+    if (!s_table) { s_table = old; return false; }
+    s_table_mask = cap - 1;
+    for (size_t i = 0; i < old_cap; i++)
+        if (old[i].key) *hd_table_slot(old[i].key) = old[i];
+    free(old);
+    return true;
+}
+
 static HdTexture *hd_table_slot(uint64_t key) {
     size_t i = (size_t)key & s_table_mask;
     for (;;) {
@@ -393,12 +410,20 @@ static void hd_add_texture(const char *directory, const char *filename) {
                         "multiple of 8. Skipped.\n", filename);
         return;
     }
+    if ((size_t)(s_texture_count + 1) * 10u > (s_table_mask + 1) * 7u)
+        if (!hd_table_grow()) { free(px); return; }
+
     HdTexture *slot = hd_table_slot(key);
-    if (slot->key) { free(px); return; }        /* duplicate name */
-    slot->key = key;
+    if (slot->key) {
+        /* A later pack in the stack wins, so a small pack can override a
+         * few tiles of a big one without duplicating it. */
+        free(slot->pixels);
+    } else {
+        slot->key = key;
+        s_texture_count++;
+    }
     slot->pixels = px;
     slot->size = size;
-    s_texture_count++;
 }
 
 /* Packs found under mods/. Names only: the directory is rebuilt when one is
@@ -473,11 +498,110 @@ const char *issd_hd_available_name(int index) {
     return (index >= 0 && index < s_available_count) ? s_available[index] : "";
 }
 
-int issd_hd_load_pack(const char *directory) {
+/* Which packs are switched on, and in what order they are stacked. Order is
+ * a small integer per pack rather than a separate list, so a pack that
+ * disappears from mods/ simply stops being enabled. */
+static int s_enable_order[HD_MAX_PACKS];
+static int s_next_enable_order = 1;
+
+void issd_hd_set_enabled(int index, bool enabled) {
+    if (index < 0 || index >= HD_MAX_PACKS) return;
+    if ((s_enable_order[index] != 0) == enabled) return;
+    s_enable_order[index] = enabled ? s_next_enable_order++ : 0;
+}
+
+bool issd_hd_is_enabled(int index) {
+    return index >= 0 && index < HD_MAX_PACKS && s_enable_order[index] != 0;
+}
+
+int issd_hd_enabled_count(void) {
+    int n = 0;
+    for (int i = 0; i < s_available_count; i++) if (s_enable_order[i]) n++;
+    return n;
+}
+
+/* Index of the pack `slot` places into the stack, or -1 past the end. */
+static int hd_pack_at_order(int slot) {
+    int best = 0, seen = 0;
+    for (;;) {
+        int next = -1;
+        for (int i = 0; i < s_available_count; i++) {
+            if (!s_enable_order[i] || s_enable_order[i] <= best) continue;
+            if (next < 0 || s_enable_order[i] < s_enable_order[next]) next = i;
+        }
+        if (next < 0) return -1;
+        if (seen == slot) return next;
+        best = s_enable_order[next];
+        seen++;
+    }
+}
+
+void issd_hd_enabled_list(char *out, size_t cap) {
+    if (!out || !cap) return;
+    out[0] = '\0';
+    size_t used = 0;
+    for (int slot = 0; ; slot++) {
+        const int i = hd_pack_at_order(slot);
+        if (i < 0) break;
+        const size_t len = strlen(s_available[i]);
+        if (used + len + (used ? 1u : 0u) >= cap) break;
+        if (used) out[used++] = '|';
+        memcpy(out + used, s_available[i], len);
+        used += len;
+        out[used] = '\0';
+    }
+}
+
+void issd_hd_enable_from_list(const char *list) {
+    memset(s_enable_order, 0, sizeof s_enable_order);
+    s_next_enable_order = 1;
+    if (!list || !list[0]) return;
+    const char *p = list;
+    while (*p) {
+        const char *end = strchr(p, '|');
+        const size_t len = end ? (size_t)(end - p) : strlen(p);
+        for (int i = 0; i < s_available_count; i++)
+            if (strlen(s_available[i]) == len &&
+                strncmp(s_available[i], p, len) == 0) {
+                issd_hd_set_enabled(i, true);
+                break;
+            }
+        if (!end) break;
+        p = end + 1;
+    }
+}
+
+int issd_hd_apply(const char *mods_dir) {
+    issd_hd_clear();
+    if (!mods_dir || !mods_dir[0]) mods_dir = "mods";
+    for (int slot = 0; ; slot++) {
+        const int i = hd_pack_at_order(slot);
+        if (i < 0) break;
+        char dir[512];
+        snprintf(dir, sizeof dir, "%s/%s", mods_dir, s_available[i]);
+        issd_hd_add_pack(dir);
+    }
+    /* The stack's name is what the menu shows when only one pack is on; with
+     * several, the count is the honest summary. */
+    const int n = issd_hd_enabled_count();
+    if (n > 1) snprintf(s_pack_name, sizeof s_pack_name, "%d packs", n);
+    return s_texture_count;
+}
+
+void issd_hd_clear(void) {
     hd_table_free();
     s_pack_name[0] = '\0';
+}
+
+int issd_hd_load_pack(const char *directory) {
+    issd_hd_clear();
+    return directory && directory[0] ? issd_hd_add_pack(directory) : 0;
+}
+
+int issd_hd_add_pack(const char *directory) {
     if (!directory || !directory[0]) return 0;
-    if (!hd_table_alloc(1024)) return 0;
+    if (!s_table && !hd_table_alloc(1024)) return 0;
+    const int before = s_texture_count;
 
 #ifdef _WIN32
     char pattern[1024];
@@ -504,18 +628,18 @@ int issd_hd_load_pack(const char *directory) {
     }
 #endif
 
-    if (s_texture_count) {
+    if (s_texture_count > before) {
         hd_note_pack_name(directory);
-        printf("[HD] Loaded %d replacement tile(s) from '%s'.\n",
-               s_texture_count, directory);
+        printf("[HD] %s: %d tile(s), %d in the stack.\n", directory,
+               s_texture_count - before, s_texture_count);
     } else {
-        hd_table_free();
         printf("[HD] No replacement tiles in '%s'.\n", directory);
     }
     return s_texture_count;
 }
 
 bool issd_hd_active(void) { return s_texture_count > 0; }
+int  issd_hd_texture_count(void) { return s_texture_count; }
 const char *issd_hd_pack_name(void) { return s_pack_name; }
 int issd_hd_last_frame_hits(void) { return s_last_hits; }
 

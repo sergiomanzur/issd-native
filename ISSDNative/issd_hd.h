@@ -2,6 +2,7 @@
 #define ISSD_HD_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -28,8 +29,27 @@ typedef struct Ppu Ppu;
  * to switch packs. Returns the number of textures loaded. */
 int  issd_hd_load_pack(const char *directory);
 
+/* Packs stack. Later ones win a tile the earlier ones also replace, so a
+ * small pack can sit on top of a big one and override a few tiles. */
+void issd_hd_clear(void);
+int  issd_hd_add_pack(const char *directory);
+
+/* Which of the available packs are switched on, and in what order. The
+ * enabled set is a '|' separated list of directory names - the same shape
+ * the roster packs use, and what the config file stores. */
+void issd_hd_set_enabled(int index, bool enabled);
+bool issd_hd_is_enabled(int index);
+int  issd_hd_enabled_count(void);
+void issd_hd_enabled_list(char *out, size_t cap);
+void issd_hd_enable_from_list(const char *list);
+
+/* Load every enabled pack, in order, replacing whatever is loaded now.
+ * Returns the number of tiles available afterwards. */
+int  issd_hd_apply(const char *mods_dir);
+
 /* True once a pack with at least one texture is loaded. */
 bool issd_hd_active(void);
+int  issd_hd_texture_count(void);
 
 /* Find the pack directories under `mods_dir`: a subdirectory holding at
  * least one .bmp is a pack. Returns how many were found, so the menu can

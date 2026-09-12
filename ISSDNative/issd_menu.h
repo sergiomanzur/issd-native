@@ -15,8 +15,17 @@ typedef enum {
     ISSD_SCHEMA_PES = 2        /* Modern PES: A=Pass, X=Shoot, B=Cross, Y=Through, RB=Sprint */
 } IssdControlSchema;
 
+/* The menu has two pages. Mods needs a list of its own: one row per pack,
+ * more of them than fit, and a cursor that has to skip headers. */
+typedef enum {
+    ISSD_MENU_PAGE_MAIN = 0,
+    ISSD_MENU_PAGE_MODS = 1
+} IssdMenuPage;
+
 typedef struct {
     bool is_open;
+    IssdMenuPage page;
+    int scroll;               /* first visible row on the mods page */
     int current_item;
     int current_slot;
     IssdControlSchema control_schema;
@@ -45,6 +54,12 @@ bool issd_menu_cancel(void);
 
 /* Render overlay on top of 256x224 32-bit ARGB framebuffer */
 void issd_menu_render(uint32_t *framebuffer, int width, int height);
+
+/* A short line shown over the game for `frames` frames, whether or not the
+ * menu is open. Mods apply during a restart, when nobody is looking at a
+ * console, so the outcome has to arrive on screen. */
+void issd_menu_notify(const char *message, int frames);
+void issd_menu_render_notification(uint32_t *framebuffer, int width, int height);
 
 /* Provided by the host: save settings and start the process again, so a
  * newly chosen mod pack is applied to a fresh cartridge image. */
