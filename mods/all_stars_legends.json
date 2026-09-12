@@ -9,8 +9,6 @@
       "name": "World Legends XI",
       "short_name": "ALL",
       "country_code": "ALL",
-      "formation": 0,
-      "strategy": 0,
       "home_shirt_rgb": 16766720,
       "home_shorts_rgb": 0,
       "away_shirt_rgb": 16777215,
@@ -52,7 +50,7 @@
         },
         {
           "shirt_number": 9,
-          "name": "Ronaldo R9",
+          "name": "Ronaldo",
           "position": "FW",
           "skin_tone": 1,
           "hair_style": 2,

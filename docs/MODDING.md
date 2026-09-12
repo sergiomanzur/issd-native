@@ -160,17 +160,39 @@ nothing in the code reads a 37th. A pack that names `team_id: 40` gets a
 warning and that team is skipped. What you can do is replace any of the 36
 completely - name, squad, shape - which is how a World Cup pack is built.
 
-Team ids run 0 to 35 in the order the team select screen shows them, six
-per group. The N.S. America group is 30-35: Brazil, Argentina, Columbia,
-Mexico, U.S.A, Uruguay.
+Team ids run 0 to 35 in the order the team select screen shows them,
+six per group. Read off the screen one team at a time:
+
+| id | team | id | team | id | team |
+|---|---|---|---|---|---|
+| 0 | Italy | 1 | Holland | 2 | England |
+| 3 | Norway | 4 | Spain | 5 | Ireland |
+| 6 | Portugal | 7 | Denmark | 8 | Germany |
+| 9 | France | 10 | Belgium | 11 | Sweden |
+| 12 | Romania | 13 | Bulgaria | 14 | Russia |
+| 15 | Swiss | 16 | Greece | 17 | Croatia |
+| 18 | Austria | 19 | Wales | 20 | Scotland |
+| 21 | N. Ireland | 22 | The Czech Rep. | 23 | Poland |
+| 24 | Japan | 25 | S. Korea | 26 | Turkey |
+| 27 | Nigeria | 28 | Cameroon | 29 | Morocco |
+| 30 | Brazil | 31 | Argentina | 32 | Columbia |
+| 33 | Mexico | 34 | U.S.A | 35 | Uruguay |
+
+The groups are, in the order the screen pages through them: 0-5 Europe 1,
+6-11 Europe 2, 12-17 **Europe 4**, 18-23 **Europe 3**, 24-29 Asia-Africa,
+30-35 N.S. America. Three and four really are that way round.
 
 ---
 
 ## 5. Roster pack reference
 
-The parser reads one `"key": value` per line, so keep the file formatted
-the way the examples are - one key per line, no arrays or objects packed
-onto a single line. Any key it does not recognise is skipped silently.
+A pack is ordinary JSON. Key order does not matter, whitespace does not
+matter, and any key the game does not recognise is skipped - so a pack can
+carry whatever an editor wants to keep alongside it. Line (`//`) and block
+(`/* */`) comments are accepted too, which JSON does not strictly allow.
+
+A file that will not parse is refused with a line number rather than
+half-read.
 
 ### Pack
 
@@ -429,7 +451,79 @@ art goes in the same folder under the same names.
 
 ---
 
-## 8. When something does not work
+## 8. Generating packs with a tool
+
+If a script or an AI agent is writing the pack, three things matter more
+than anything in the syntax.
+
+### Check it before you ship it
+
+```sh
+python tools/validate_mod.py mods/my_pack.json
+```
+
+It exits non-zero on anything that would break, and warns about the things
+that load fine and then disappoint. `--strict` fails on warnings too, which
+is what you want in a generate-and-check loop. The formation names it
+checks against are read out of the game's own source, so it cannot drift.
+
+### Slots are positional
+
+The order of the `players` array **is** the team sheet. `shirt_number` is a
+label. Slot 0 is the goalkeeper, 1-10 are the rest of the eleven in
+formation order, 11 is the reserve keeper, 12-19 are substitutes.
+
+The commonest generated-pack mistake is a squad sorted by shirt number.
+That gives you a goalkeeper at right back.
+
+### Ratings quantise to eight steps
+
+0-99 is the scale you write; the cartridge stores four bits and uses only
+eight of the sixteen values. A squad rated 78-98 - which is what "these are
+all world class players" naturally produces - lands on **two** steps, and
+every one of them plays the same.
+
+Spread a squad across the whole range. If your best player is 95, your
+worst at that attribute should be near 20, not near 80. The validator
+warns when an attribute uses two steps or fewer.
+
+This is the mapping:
+
+| You write | Stored as | Roughly |
+|---|---|---|
+| 0-7 | 2 | hopeless |
+| 8-21 | 3 | poor |
+| 22-35 | 4 | below average |
+| 36-49 | 5 | average |
+| 50-63 | 6 | good |
+| 64-77 | 7 | very good |
+| 78-91 | 8 | excellent |
+| 92-99 | 9 | the best the game has |
+
+Goalkeeping is the exception: it only means anything in slots 0 and 11, so
+two clusters there is correct.
+
+### A worked prompt
+
+If you are asking a model for a pack, this is the shape of instruction that
+produces a working one:
+
+> Write a mod pack replacing team 30 with the 1970 Brazil squad. Output
+> JSON only. `team_id` must be 30. The `players` array is positional:
+> slot 0 is the goalkeeper, slots 1-4 defenders, 5-8 midfielders, 9-10
+> forwards, slot 11 the reserve goalkeeper, 12-19 substitutes. Names are
+> at most 8 characters, letters and spaces only - use surnames. Ratings
+> are 0-99 and must span that range: the weakest player at an attribute
+> should be near 20 where the strongest is near 95, because the game
+> stores only eight steps. Set `formation` to one of: 4-4-2, 4-4-2
+> diamond, 4-3-3, 4-2-3-1, 4-1-4-1, 4-5-1, 3-5-2, 3-4-3, 3-4-2-1, 5-3-2,
+> 5-4-1, 4-2-4, 3-3-4, 2-3-5.
+
+Then run the validator and feed any errors back.
+
+---
+
+## 9. When something does not work
 
 The console window carries the detail; the menu carries the summary.
 
@@ -447,7 +541,7 @@ The console window carries the detail; the menu carries the summary.
 
 ---
 
-## 9. What cannot be modded
+## 10. What cannot be modded
 
 Being straight about the ceiling saves everyone time.
 
@@ -466,7 +560,7 @@ Being straight about the ceiling saves everyone time.
 
 ---
 
-## 10. Sharing a pack
+## 11. Sharing a pack
 
 A pack is just files. Zip the `.json`, or the tile folder, and say which
 version of ISSD Native you built it against.

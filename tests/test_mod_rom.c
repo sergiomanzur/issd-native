@@ -142,6 +142,23 @@ int main(void) {
     /* --- a ROM too small to hold the tables is refused outright --- */
     assert(issd_mod_apply_to_rom(rom, 1024) == 0);
 
+    /* The band boundaries are published in docs/MODDING.md so a pack
+     * author can see what a rating will actually become. Pin them here so
+     * the table and the code cannot drift apart in silence. */
+    {
+        const struct { uint8_t rating, stored; } bands[] = {
+            {0, 2}, {7, 2}, {8, 3}, {21, 3}, {22, 4}, {35, 4},
+            {36, 5}, {49, 5}, {50, 6}, {63, 6}, {64, 7}, {77, 7},
+            {78, 8}, {91, 8}, {92, 9}, {99, 9},
+        };
+        IssdModPack *bp = issd_mod_get_pack(fixture);
+        for (unsigned i = 0; i < sizeof bands / sizeof bands[0]; i++) {
+            bp->teams[0].players[0].attributes.acceleration = bands[i].rating;
+            issd_mod_apply_to_rom(rom, sizeof(rom));
+            assert((rom[attr_at(0, 0)] >> 4) == bands[i].stored);
+        }
+    }
+
     puts("mod rom tests passed");
     return 0;
 }

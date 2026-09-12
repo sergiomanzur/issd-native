@@ -28,14 +28,249 @@ bool issd_mod_init(void) {
     return true;
 }
 
-static char* TrimWhitespace(char *str) {
-    if (!str) return NULL;
-    while (isspace((unsigned char)*str)) str++;
-    if (*str == 0) return str;
-    char *end = str + strlen(str) - 1;
-    while (end > str && isspace((unsigned char)*end)) end--;
-    end[1] = '\0';
-    return str;
+/* ------------------------------------------------------------ parsing -- */
+
+/* A small recursive-descent JSON reader, enough for a mod pack: objects,
+ * arrays, strings, numbers, true/false/null. Values whose keys we do not
+ * recognise are skipped whole, so a pack may carry anything it likes for
+ * an editor's benefit without the game caring.
+ *
+ * It replaced a line scanner that inferred structure from key order. That
+ * mattered more than it sounds: a pack whose team object listed "name"
+ * before "team_id" - ordinary JSON - silently ended up with the team's
+ * name on the pack and the player's name on the team. */
+typedef struct {
+    const char *p;
+    int line;
+    const char *error;   /* first failure, or NULL */
+    int error_line;
+} JsonReader;
+
+static void json_fail(JsonReader *r, const char *why) {
+    if (!r->error) { r->error = why; r->error_line = r->line; }
+}
+
+static void json_skip_ws(JsonReader *r) {
+    for (;;) {
+        const char c = *r->p;
+        if (c == '\n') { r->line++; r->p++; }
+        else if (c == ' ' || c == '\t' || c == '\r') r->p++;
+        /* Line and block comments are not JSON, but hand-written packs
+         * have always had them and the old scanner skipped them. */
+        else if (c == '/' && r->p[1] == '/') { while (*r->p && *r->p != '\n') r->p++; }
+        else if (c == '/' && r->p[1] == '*') {
+            r->p += 2;
+            while (*r->p && !(*r->p == '*' && r->p[1] == '/')) {
+                if (*r->p == '\n') r->line++;
+                r->p++;
+            }
+            if (*r->p) r->p += 2;
+        }
+        else return;
+    }
+}
+
+static bool json_eat(JsonReader *r, char c) {
+    json_skip_ws(r);
+    if (*r->p != c) return false;
+    r->p++;
+    return true;
+}
+
+/* Reads a string into `out` when given, or skips it. Escapes are resolved
+ * for the handful JSON defines; \u is accepted and becomes '?', since the
+ * cartridge has no characters outside A-Z anyway. */
+static bool json_string(JsonReader *r, char *out, size_t cap) {
+    if (!json_eat(r, '"')) { json_fail(r, "expected a string"); return false; }
+    size_t n = 0;
+    while (*r->p && *r->p != '"') {
+        char c = *r->p++;
+        if (c == '\n') r->line++;
+        if (c == '\\' && *r->p) {
+            const char esc = *r->p++;
+            switch (esc) {
+                case 'n': c = '\n'; break;
+                case 't': c = '\t'; break;
+                case 'r': c = '\r'; break;
+                case 'b': c = '\b'; break;
+                case 'f': c = '\f'; break;
+                case 'u':
+                    for (int i = 0; i < 4 && *r->p; i++) r->p++;
+                    c = '?';
+                    break;
+                default: c = esc; break;   /* \" \\ \/ and anything else */
+            }
+        }
+        if (out && n + 1 < cap) out[n++] = c;
+    }
+    if (out && cap) out[n] = '\0';
+    if (*r->p != '"') { json_fail(r, "unterminated string"); return false; }
+    r->p++;
+    return true;
+}
+
+static bool json_number(JsonReader *r, long *out) {
+    json_skip_ws(r);
+    char *end = NULL;
+    const double v = strtod(r->p, &end);
+    if (end == r->p) { json_fail(r, "expected a number"); return false; }
+    r->p = end;
+    if (out) *out = (long)v;
+    return true;
+}
+
+static bool json_skip_value(JsonReader *r);
+
+/* Runs `body` for each "key": value of an object. */
+typedef bool (*JsonMember)(JsonReader *r, const char *key, void *ctx);
+
+static bool json_object(JsonReader *r, JsonMember body, void *ctx) {
+    if (!json_eat(r, '{')) { json_fail(r, "expected an object"); return false; }
+    json_skip_ws(r);
+    if (json_eat(r, '}')) return true;
+    for (;;) {
+        char key[64];
+        if (!json_string(r, key, sizeof key)) return false;
+        if (!json_eat(r, ':')) { json_fail(r, "expected ':'"); return false; }
+        if (!body(r, key, ctx)) return false;
+        json_skip_ws(r);
+        if (json_eat(r, ',')) { json_skip_ws(r); continue; }
+        if (json_eat(r, '}')) return true;
+        json_fail(r, "expected ',' or '}'");
+        return false;
+    }
+}
+
+/* Runs `body` for each element of an array. */
+typedef bool (*JsonElement)(JsonReader *r, void *ctx);
+
+static bool json_array(JsonReader *r, JsonElement body, void *ctx) {
+    if (!json_eat(r, '[')) { json_fail(r, "expected an array"); return false; }
+    json_skip_ws(r);
+    if (json_eat(r, ']')) return true;
+    for (;;) {
+        if (!body(r, ctx)) return false;
+        json_skip_ws(r);
+        if (json_eat(r, ',')) { json_skip_ws(r); continue; }
+        if (json_eat(r, ']')) return true;
+        json_fail(r, "expected ',' or ']'");
+        return false;
+    }
+}
+
+static bool json_skip_member(JsonReader *r, const char *key, void *ctx) {
+    (void)key; (void)ctx;
+    return json_skip_value(r);
+}
+static bool json_skip_element(JsonReader *r, void *ctx) {
+    (void)ctx;
+    return json_skip_value(r);
+}
+
+static bool json_skip_value(JsonReader *r) {
+    json_skip_ws(r);
+    switch (*r->p) {
+        case '"': return json_string(r, NULL, 0);
+        case '{': return json_object(r, json_skip_member, NULL);
+        case '[': return json_array(r, json_skip_element, NULL);
+        case 't': r->p += 4; return true;
+        case 'f': r->p += 5; return true;
+        case 'n': r->p += 4; return true;
+        default: return json_number(r, NULL);
+    }
+}
+
+/* Convenience: read a string member straight into a fixed field. */
+#define JSON_STR_FIELD(r, dst) json_string((r), (dst), sizeof(dst))
+
+static bool json_u8(JsonReader *r, uint8_t *dst) {
+    long v = 0;
+    if (!json_number(r, &v)) return false;
+    if (v < 0) v = 0;
+    if (v > 255) v = 255;
+    *dst = (uint8_t)v;
+    return true;
+}
+
+/* ------------------------------------------------------- the pack shape -- */
+
+static bool player_member(JsonReader *r, const char *key, void *ctx) {
+    IssdModPlayer *p = (IssdModPlayer *)ctx;
+    IssdPlayerAttributes *a = &p->attributes;
+    if (strcmp(key, "name") == 0)              return JSON_STR_FIELD(r, p->name);
+    if (strcmp(key, "position") == 0)          return JSON_STR_FIELD(r, p->position);
+    if (strcmp(key, "shirt_number") == 0)      return json_u8(r, &p->shirt_number);
+    if (strcmp(key, "skin_tone") == 0)         return json_u8(r, &p->skin_tone);
+    if (strcmp(key, "hair_style") == 0)        return json_u8(r, &p->hair_style);
+    if (strcmp(key, "acceleration") == 0)      return json_u8(r, &a->acceleration);
+    if (strcmp(key, "speed") == 0)             return json_u8(r, &a->speed);
+    if (strcmp(key, "shooting") == 0)          return json_u8(r, &a->shooting);
+    if (strcmp(key, "technique") == 0)         return json_u8(r, &a->technique);
+    if (strcmp(key, "balance") == 0)           return json_u8(r, &a->balance);
+    if (strcmp(key, "intelligence") == 0)      return json_u8(r, &a->intelligence);
+    if (strcmp(key, "dribbling") == 0)         return json_u8(r, &a->dribbling);
+    if (strcmp(key, "jumping") == 0)           return json_u8(r, &a->jumping);
+    if (strcmp(key, "stamina") == 0)           return json_u8(r, &a->stamina);
+    if (strcmp(key, "goalkeeping") == 0)       return json_u8(r, &a->goalkeeping);
+    return json_skip_value(r);
+}
+
+static bool player_element(JsonReader *r, void *ctx) {
+    IssdModTeam *team = (IssdModTeam *)ctx;
+    if (team->player_count >= ISSD_MAX_PLAYERS_PER_TEAM) {
+        /* Counted as a warning when the team is applied; here it is simply
+         * read past so the rest of the file still parses. */
+        return json_skip_value(r);
+    }
+    IssdModPlayer *p = &team->players[team->player_count];
+    memset(p, 0, sizeof *p);
+    if (!json_object(r, player_member, p)) return false;
+    team->player_count++;
+    return true;
+}
+
+static bool team_member(JsonReader *r, const char *key, void *ctx) {
+    IssdModTeam *t = (IssdModTeam *)ctx;
+    if (strcmp(key, "team_id") == 0)      return json_u8(r, &t->team_id);
+    if (strcmp(key, "name") == 0)         return JSON_STR_FIELD(r, t->name);
+    if (strcmp(key, "short_name") == 0)   return JSON_STR_FIELD(r, t->short_name);
+    if (strcmp(key, "country_code") == 0) return JSON_STR_FIELD(r, t->country_code);
+    if (strcmp(key, "formation") == 0)    return JSON_STR_FIELD(r, t->formation);
+    if (strcmp(key, "tactics") == 0 ||
+        strcmp(key, "strategy") == 0)     return JSON_STR_FIELD(r, t->tactics);
+    if (strcmp(key, "players") == 0)      return json_array(r, player_element, t);
+    return json_skip_value(r);
+}
+
+static bool team_element(JsonReader *r, void *ctx) {
+    IssdModPack *pack = (IssdModPack *)ctx;
+    if (pack->team_count >= ISSD_MAX_TEAMS_PER_PACK) return json_skip_value(r);
+    IssdModTeam *t = &pack->teams[pack->team_count];
+    memset(t, 0, sizeof *t);
+    t->team_id = 0xFF;            /* so a missing team_id is detectable */
+    if (!json_object(r, team_member, t)) return false;
+    pack->team_count++;
+    return true;
+}
+
+static bool pack_member(JsonReader *r, const char *key, void *ctx) {
+    IssdModPack *pack = (IssdModPack *)ctx;
+    if (strcmp(key, "name") == 0)        return JSON_STR_FIELD(r, pack->name);
+    if (strcmp(key, "author") == 0)      return JSON_STR_FIELD(r, pack->author);
+    if (strcmp(key, "version") == 0)     return JSON_STR_FIELD(r, pack->version);
+    if (strcmp(key, "description") == 0) return JSON_STR_FIELD(r, pack->description);
+    if (strcmp(key, "teams") == 0)       return json_array(r, team_element, pack);
+    return json_skip_value(r);
+}
+
+/* The menu shows `detail` in a box 28 characters wide, and a full path
+ * eats all of it - leaving the part that says what is wrong on the floor.
+ * The path still goes to the console. */
+static const char *base_name(const char *path) {
+    const char *base = path;
+    for (const char *p = path; *p; p++)
+        if (*p == '/' || *p == '\\') base = p + 1;
+    return base;
 }
 
 int issd_mod_load_pack(const char *json_filepath) {
@@ -47,14 +282,23 @@ int issd_mod_load_pack(const char *json_filepath) {
         return -1;
     }
 
-    FILE *f = fopen(json_filepath, "r");
+    FILE *f = fopen(json_filepath, "rb");
     if (!f) {
         char why[96];
-        snprintf(why, sizeof why, "cannot open %s", json_filepath);
+        snprintf(why, sizeof why, "cannot open %s", base_name(json_filepath));
         issd_mod_result_note_error(why);
         fprintf(stderr, "[ModLoader] %s\n", why);
         return -1;
     }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (size < 0) size = 0;
+    char *text = (char *)malloc((size_t)size + 1);
+    if (!text) { fclose(f); return -1; }
+    const size_t got = fread(text, 1, (size_t)size, f);
+    text[got] = '\0';
+    fclose(f);
 
     IssdModPack *pack = &g_mod_packs[g_mod_pack_count];
     memset(pack, 0, sizeof(*pack));
@@ -63,87 +307,46 @@ int issd_mod_load_pack(const char *json_filepath) {
      * install quietly ran whichever mod sorted first. */
     pack->is_active = false;
 
-    char line[512];
-    IssdModTeam *cur_team = NULL;
-    IssdModPlayer *cur_player = NULL;
+    JsonReader r = { text, 1, NULL, 0 };
+    const bool ok = json_object(&r, pack_member, pack);
+    free(text);
 
-    while (fgets(line, sizeof(line), f)) {
-        char *p = TrimWhitespace(line);
-        if (!p || !*p || *p == '/' || *p == '#') continue;
-
-        char key[64], sval[128];
-        int ival = 0;
-
-        if (sscanf(p, "\"%63[^\"]\" : \"%127[^\"]\"", key, sval) == 2 ||
-            sscanf(p, "\"%63[^\"]\": \"%127[^\"]\"", key, sval) == 2 ||
-            sscanf(p, "\"%63[^\"]\":\"%127[^\"]\"", key, sval) == 2) {
-            
-            if (strcmp(key, "name") == 0) {
-                if (!cur_team) strncpy(pack->name, sval, sizeof(pack->name) - 1);
-                else if (!cur_player) strncpy(cur_team->name, sval, sizeof(cur_team->name) - 1);
-                else strncpy(cur_player->name, sval, sizeof(cur_player->name) - 1);
-            } else if (strcmp(key, "author") == 0) {
-                strncpy(pack->author, sval, sizeof(pack->author) - 1);
-            } else if (strcmp(key, "version") == 0) {
-                strncpy(pack->version, sval, sizeof(pack->version) - 1);
-            } else if (strcmp(key, "description") == 0) {
-                strncpy(pack->description, sval, sizeof(pack->description) - 1);
-            } else if (strcmp(key, "short_name") == 0 && cur_team) {
-                strncpy(cur_team->short_name, sval, sizeof(cur_team->short_name) - 1);
-            } else if (strcmp(key, "country_code") == 0 && cur_team) {
-                strncpy(cur_team->country_code, sval, sizeof(cur_team->country_code) - 1);
-            } else if (strcmp(key, "position") == 0 && cur_player) {
-                strncpy(cur_player->position, sval, sizeof(cur_player->position) - 1);
-            } else if (strcmp(key, "formation") == 0 && cur_team && !cur_player) {
-                strncpy(cur_team->formation, sval, sizeof(cur_team->formation) - 1);
-            } else if ((strcmp(key, "tactics") == 0 ||
-                        strcmp(key, "strategy") == 0) && cur_team && !cur_player) {
-                strncpy(cur_team->tactics, sval, sizeof(cur_team->tactics) - 1);
-            }
-        } else if (sscanf(p, "\"%63[^\"]\" : %d", key, &ival) == 2 ||
-                   sscanf(p, "\"%63[^\"]\": %d", key, &ival) == 2 ||
-                   sscanf(p, "\"%63[^\"]\":%d", key, &ival) == 2) {
-            
-            if (strcmp(key, "team_id") == 0) {
-                if (pack->team_count < ISSD_MAX_TEAMS_PER_PACK) {
-                    cur_team = &pack->teams[pack->team_count++];
-                    cur_team->team_id = (uint8_t)ival;
-                    cur_player = NULL;
-                }
-            } else if (strcmp(key, "shirt_number") == 0) {
-                if (cur_team && cur_team->player_count < ISSD_MAX_PLAYERS_PER_TEAM) {
-                    cur_player = &cur_team->players[cur_team->player_count++];
-                    cur_player->shirt_number = (uint8_t)ival;
-                }
-            } else if (cur_player) {
-                if (strcmp(key, "acceleration") == 0) cur_player->attributes.acceleration = (uint8_t)ival;
-                else if (strcmp(key, "speed") == 0) cur_player->attributes.speed = (uint8_t)ival;
-                else if (strcmp(key, "shooting") == 0) cur_player->attributes.shooting = (uint8_t)ival;
-                else if (strcmp(key, "technique") == 0) cur_player->attributes.technique = (uint8_t)ival;
-                else if (strcmp(key, "balance") == 0) cur_player->attributes.balance = (uint8_t)ival;
-                else if (strcmp(key, "intelligence") == 0) cur_player->attributes.intelligence = (uint8_t)ival;
-                else if (strcmp(key, "dribbling") == 0) cur_player->attributes.dribbling = (uint8_t)ival;
-                else if (strcmp(key, "jumping") == 0) cur_player->attributes.jumping = (uint8_t)ival;
-                else if (strcmp(key, "stamina") == 0) cur_player->attributes.stamina = (uint8_t)ival;
-                else if (strcmp(key, "goalkeeping") == 0) cur_player->attributes.goalkeeping = (uint8_t)ival;
-                else if (strcmp(key, "skin_tone") == 0) cur_player->skin_tone = (uint8_t)ival;
-                else if (strcmp(key, "hair_style") == 0) cur_player->hair_style = (uint8_t)ival;
-            }
-        }
+    if (!ok || r.error) {
+        char why[96];
+        snprintf(why, sizeof why, "%s line %d: %s", base_name(json_filepath),
+                 r.error_line, r.error ? r.error : "malformed");
+        issd_mod_result_note_error(why);
+        fprintf(stderr, "[ModLoader] %s\n", why);
+        return -1;
     }
 
-    fclose(f);
+    /* A team with no team_id names nothing, and would silently rewrite team
+     * 0 if it defaulted to zero. Drop it and say so. */
+    int kept = 0;
+    for (int i = 0; i < pack->team_count; i++) {
+        if (pack->teams[i].team_id == 0xFF) {
+            char why[96];
+            snprintf(why, sizeof why, "%s: a team has no team_id",
+                     pack->name[0] ? pack->name : base_name(json_filepath));
+            issd_mod_result_note_error(why);
+            fprintf(stderr, "[ModLoader] %s\n", why);
+            continue;
+        }
+        if (kept != i) pack->teams[kept] = pack->teams[i];
+        kept++;
+    }
+    pack->team_count = kept;
+
     if (pack->team_count == 0) {
-        /* Every key is optional, so a file with a typo in "team_id" parses
-         * happily and changes nothing. Saying so beats a silent no-op. */
         char why[96];
         snprintf(why, sizeof why, "%s has no teams",
-                 pack->name[0] ? pack->name : json_filepath);
+                 pack->name[0] ? pack->name : base_name(json_filepath));
         issd_mod_result_note_error(why);
-        fprintf(stderr, "[ModLoader] %s - check the team_id keys.\n", why);
+        fprintf(stderr, "[ModLoader] %s - is the \"teams\" array there?\n", why);
     }
     printf("[ModLoader] Loaded pack '%s' (%d teams) from '%s'\n",
-           pack->name[0] ? pack->name : "Unnamed Mod", pack->team_count, json_filepath);
+           pack->name[0] ? pack->name : "Unnamed Mod", pack->team_count,
+           json_filepath);
 
     g_mod_pack_count++;
     return g_mod_pack_count - 1;

@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Check a mod pack before the game sees it.
+
+    python tools/validate_mod.py mods/world_cup_2026_mexico.json
+
+Exits non-zero if anything is wrong. Written for whoever - or whatever - is
+generating packs: most of what goes wrong with a pack is not a syntax error
+but a silent one, where the file loads and the game plays as if you had not
+written it.
+
+The four that actually happen:
+
+  * a team with no `team_id`, which names nothing
+  * more players than the 20 slots a squad has
+  * names longer than the 8 characters the cartridge stores
+  * every rating between 70 and 90, which quantises to two or three steps and
+    makes a whole squad play identically
+
+The formation names come from ISSDNative/issd_formation.c so this file cannot
+drift away from what the game accepts.
+"""
+import argparse
+import json
+import os
+import re
+import sys
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+TEAM_COUNT = 36
+SQUAD_SLOTS = 20
+NAME_CHARS = 8
+POSITIONS = ("GK", "DF", "MF", "FW")
+TACTICS = ("attacking", "balanced", "normal", "defensive", "defence", "defense")
+ATTRIBUTES = ("acceleration", "speed", "shooting", "technique", "balance",
+              "intelligence", "dribbling", "jumping", "stamina", "goalkeeping")
+
+# The cartridge stores each attribute in four bits and only ever uses 2..9.
+RATING_MIN, RATING_MAX = 2, 9
+
+
+def rating_to_step(rating):
+    """Mirror of rating_to_nibble in ISSDNative/issd_mod_rom.c."""
+    rating = max(0, min(99, int(rating)))
+    span = RATING_MAX - RATING_MIN
+    return min(RATING_MAX, RATING_MIN + (rating * span + 49) // 99)
+
+
+def known_formations():
+    path = os.path.join(REPO, "ISSDNative", "issd_formation.c")
+    try:
+        with open(path, encoding="utf-8") as f:
+            source = f.read()
+    except OSError:
+        return None
+    names = re.findall(r'^\s*\{\s*"([^"]+)",\s*"', source, re.M)
+    return names or None
+
+
+class Report:
+    def __init__(self):
+        self.errors = []
+        self.warnings = []
+
+    def error(self, where, message):
+        self.errors.append("%s: %s" % (where, message))
+
+    def warn(self, where, message):
+        self.warnings.append("%s: %s" % (where, message))
+
+
+def check_name(report, where, name):
+    if not isinstance(name, str):
+        report.error(where, "name must be text")
+        return
+    if len(name) > NAME_CHARS:
+        report.error(where, 'name "%s" is %d characters; the cartridge stores %d'
+                     % (name, len(name), NAME_CHARS))
+    bad = sorted({c for c in name if not (c.isascii() and (c.isalpha() or c == " "))})
+    if bad:
+        report.error(where, 'name "%s" has characters the cartridge cannot show: %s'
+                     % (name, " ".join(repr(c) for c in bad)))
+
+
+def check_player(report, where, player, slot):
+    if not isinstance(player, dict):
+        report.error(where, "each player must be an object")
+        return
+    if "shirt_number" not in player:
+        report.warn(where, "no shirt_number")
+    if "name" in player:
+        check_name(report, where, player["name"])
+    else:
+        report.warn(where, "no name; the cartridge's own will be left in place")
+
+    position = player.get("position")
+    if position is not None and position not in POSITIONS:
+        report.error(where, 'position "%s" is not one of %s'
+                     % (position, ", ".join(POSITIONS)))
+    if slot == 0 and position not in (None, "GK"):
+        report.warn(where, "slot 0 is the goalkeeper, but this player is %s" % position)
+    if slot == 11 and position not in (None, "GK"):
+        report.warn(where, "slot 11 is the reserve goalkeeper, but this player is %s"
+                    % position)
+
+    for key in ATTRIBUTES:
+        if key not in player:
+            continue
+        value = player[key]
+        if not isinstance(value, int) or isinstance(value, bool):
+            report.error(where, "%s must be a whole number" % key)
+        elif not 0 <= value <= 99:
+            report.error(where, "%s is %s; the scale is 0 to 99" % (key, value))
+
+    for key in ("skin_tone", "hair_style"):
+        if key in player:
+            limit = 2 if key == "skin_tone" else 15
+            value = player[key]
+            if not isinstance(value, int) or not 0 <= value <= limit:
+                report.error(where, "%s is %s; the range is 0 to %d"
+                             % (key, value, limit))
+
+
+def check_spread(report, where, players):
+    """Ratings that all sit in the same band come out as the same player.
+
+    Eight steps cover 0..99, so anything closer together than about 12 points
+    is the same number once it reaches the cartridge.
+    """
+    for key in ATTRIBUTES:
+        # Goalkeeping is two clusters by design - the keeper and everyone
+        # else - so a narrow spread there is correct, not a mistake.
+        if key == "goalkeeping":
+            continue
+        values = [p[key] for p in players
+                  if isinstance(p, dict) and isinstance(p.get(key), int)]
+        if len(values) < 6:
+            continue
+        steps = {rating_to_step(v) for v in values}
+        if len(steps) <= 2:
+            report.warn(where,
+                        "%s uses %d of the 8 steps the cartridge has (%s) - "
+                        "these players will feel identical"
+                        % (key, len(steps),
+                           "%d..%d" % (min(values), max(values))))
+
+
+def check_team(report, team, index, formations, seen_ids):
+    where = "team[%d]" % index
+    if not isinstance(team, dict):
+        report.error(where, "each team must be an object")
+        return
+
+    team_id = team.get("team_id")
+    if team_id is None:
+        report.error(where, "no team_id, so it names no team and is dropped")
+    elif not isinstance(team_id, int) or isinstance(team_id, bool):
+        report.error(where, "team_id must be a number, not %r" % (team_id,))
+    elif not 0 <= team_id < TEAM_COUNT:
+        report.error(where, "team_id %d does not exist; the cartridge has %d teams "
+                            "(0 to %d) and none can be added"
+                     % (team_id, TEAM_COUNT, TEAM_COUNT - 1))
+    else:
+        where = "team %d" % team_id
+        if team_id in seen_ids:
+            report.error(where, "listed twice in this pack; the later one wins")
+        seen_ids.add(team_id)
+
+    formation = team.get("formation")
+    if formation is not None:
+        if formations is None:
+            report.warn(where, "cannot check the formation name from here")
+        elif formation not in formations:
+            report.error(where, 'formation "%s" is not one the game knows.\n'
+                                '    Known: %s'
+                         % (formation, ", ".join(formations)))
+
+    tactics = team.get("tactics", team.get("strategy"))
+    if tactics is not None and str(tactics).lower() not in TACTICS:
+        report.error(where, 'tactics "%s" is not attacking, balanced or defensive'
+                     % tactics)
+
+    players = team.get("players")
+    if players is None:
+        if formation is None:
+            report.warn(where, "no players and no formation, so it changes nothing")
+        return
+    if not isinstance(players, list):
+        report.error(where, "players must be an array")
+        return
+    if len(players) > SQUAD_SLOTS:
+        report.error(where, "%d players; a squad has %d slots and the rest are "
+                            "ignored" % (len(players), SQUAD_SLOTS))
+    for slot, player in enumerate(players):
+        check_player(report, "%s slot %d" % (where, slot), player, slot)
+    check_spread(report, where, players[:SQUAD_SLOTS])
+
+
+def validate(path, report):
+    try:
+        with open(path, encoding="utf-8") as f:
+            pack = json.load(f)
+    except FileNotFoundError:
+        report.error(path, "no such file")
+        return
+    except json.JSONDecodeError as exc:
+        report.error(path, "line %d: %s" % (exc.lineno, exc.msg))
+        return
+
+    if not isinstance(pack, dict):
+        report.error(path, "the file must hold one object")
+        return
+    if not pack.get("name"):
+        report.error(path, 'no "name"; it is how the menu lists the pack and how '
+                           "the saved selection finds it again")
+
+    teams = pack.get("teams")
+    if teams is None:
+        report.error(path, 'no "teams" array, so the pack changes nothing')
+        return
+    if not isinstance(teams, list):
+        report.error(path, '"teams" must be an array')
+        return
+    if not teams:
+        report.warn(path, '"teams" is empty, so the pack changes nothing')
+
+    formations = known_formations()
+    seen = set()
+    for i, team in enumerate(teams):
+        check_team(report, team, i, formations, seen)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("packs", nargs="+", help="one or more .json mod packs")
+    ap.add_argument("--strict", action="store_true",
+                    help="treat warnings as failures too")
+    args = ap.parse_args()
+
+    failed = False
+    for path in args.packs:
+        report = Report()
+        validate(path, report)
+        print("== %s" % path)
+        for message in report.errors:
+            print("   ERROR   %s" % message)
+        for message in report.warnings:
+            print("   warning %s" % message)
+        if not report.errors and not report.warnings:
+            print("   looks good")
+        if report.errors or (args.strict and report.warnings):
+            failed = True
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
