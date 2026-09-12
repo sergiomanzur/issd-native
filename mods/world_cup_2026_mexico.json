@@ -1,8 +1,8 @@
 {
   "name": "World Cup 2026 - Mexico",
   "author": "ISSD Native",
-  "version": "1.4.0",
-  "description": "Mexico's 2026 squad in a 4-2-3-1, and Chivas' Estadio Akron in place of the Nigeria stadium.",
+  "version": "1.5.0",
+  "description": "Mexico's 2026 squad in a 4-2-3-1, and Chivas' Estadio Akron added as a ninth stadium rather than replacing one.",
   "teams": [
     {
       "team_id": 33,
@@ -341,10 +341,11 @@
   ],
   "stadiums": [
     {
-      "stadium_id": 7,
+      "stadium_id": 8,
       "name": "AKRON",
       "pitch_length": 115,
       "pitch_width": 74
     }
-  ]
+  ],
+  "stadium_count": 9
 }

@@ -455,8 +455,8 @@ art goes in the same folder under the same names.
 
 ## 8. Stadiums
 
-The cartridge has eight stadiums, and like the teams they are a fixed
-table: one can be replaced, none added.
+The cartridge ships eight stadiums. Any of them can be replaced, and
+`stadium_count` adds more - up to sixteen.
 
 ```json
 {
@@ -473,6 +473,34 @@ table: one can be replaced, none added.
 ```
 
 A pack may hold only `stadiums` and no `teams` at all.
+
+### Adding stadiums
+
+```json
+  "stadium_count": 9,
+  "stadiums": [
+    { "stadium_id": 8, "name": "AKRON", "pitch_length": 115, "pitch_width": 74 }
+  ]
+```
+
+`stadium_count` is how many the game offers at all. Raising it moves four
+tables into free space, extends them, and re-points the code that reads
+them - so slot 8 is a real ninth stadium with its own name, size and turf,
+not a slot reading past the end of a table. New slots start as copies of
+the cartridge's own, so one you have not customised still works.
+
+Across a stack of packs the **largest** `stadium_count` wins, so a pack
+that only replaces a stadium does not need to care how many there are.
+
+**Nine is the practical limit.** The name plate on the select screen is
+picked by slot number from a longer list the cartridge already contains,
+and only its ninth entry - `ALL STAR` - is a finished graphic. Past that
+the plates are unused and broken, which is why the validator warns above
+nine even though sixteen slots will allocate.
+
+If this cartridge is not the USA revision the tables were measured on,
+every patch site is checked before anything is written and the expansion
+is refused rather than applied to the wrong bytes.
 
 | id | stadium | pitch |
 |---|---|---|
@@ -502,7 +530,8 @@ Be clear about this before building a pack around it.
 | Pre-match screen (`AKRON STADIUM 115y`) | **yes** |
 | Pitch dimensions printed on the select screen | **yes** |
 | Pitch preview drawn on the select screen | **yes** |
-| The name plate on the select screen | no - still the original |
+| The name plate on the select screen | no - it comes from the slot number |
+| The turf pattern | **yes** - via the table a new slot inherits |
 | How the pitch actually plays | **no** |
 
 That last row is measured, not assumed: the same match played on the
@@ -625,9 +654,12 @@ Being straight about the ceiling saves everyone time.
   sixteen it knows are fixed. The shape itself is free - see section 6.
 - **Sprites.** Tile packs replace backgrounds; players, the ball and most UI
   text are objects, and are not covered.
-- **A ninth stadium.** The eight can be renamed and resized (section 8);
-  a ninth would need every per-stadium table extended, and they are packed
-  against their neighbours.
+- **More than sixteen stadiums**, and in practice more than nine: past
+  the ninth there is no finished name plate to show. See section 8.
+- **More than 36 teams.** The same trick works in principle - the counts
+  are literals and the tables can be moved - but a team is spread across
+  far more tables than a stadium, and the select screen's six-by-six grid
+  would have to grow too. Not attempted.
 - **The name on the stadium select screen**, which is drawn from shared
   font tiles through a tilemap rather than from the name table. The
   pre-match screen does show a renamed stadium.

@@ -203,6 +203,72 @@ int main(void) {
         sp->stadium_count = 0;
     }
 
+    /* --- more than eight stadiums ---------------------------------
+     *
+     * The tables move into free space and the instructions that index
+     * them are re-pointed. Everything is checked against the bytes it is
+     * expected to hold first, so a cartridge that does not match is left
+     * alone rather than corrupted. */
+    {
+        const size_t COUNT_OP = 0x121F6Du, NAME_OP = 0x03448Bu;
+        const size_t FREE82 = 0x017B5Du, FREE87 = 0x03FAC8u;
+        IssdModPack *xp = issd_mod_get_pack(fixture);
+
+        /* A cartridge whose stadium code is not where we measured it must
+         * be refused outright. */
+        memset(rom, 0xEE, sizeof rom);
+        xp->stadium_slots = 12;
+        xp->stadium_count = 0;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof(rom));
+        assert(issd_mod_last_result()->errors > 0);
+        assert(rom[COUNT_OP] == 0xEE && "a mismatched cartridge is not written");
+
+        /* Now with the bytes the real cartridge has. */
+        rom[COUNT_OP - 1] = 0xC9; rom[COUNT_OP] = 8; rom[COUNT_OP + 1] = 0;
+        rom[NAME_OP - 1] = 0x69; rom[NAME_OP] = 0x9B; rom[NAME_OP + 1] = 0xCA;
+        const size_t ops[4] = { 0x121FA0u, 0x12200Au, 0x12201Du, 0x12203Fu };
+        const uint16_t was[4] = { 0xFADDu, 0xFAEDu, 0xFAEEu, 0xFAFDu };
+        for (int i = 0; i < 4; i++) {
+            rom[ops[i] - 1] = 0xBF;
+            rom[ops[i]] = (uint8_t)(was[i] & 0xFF);
+            rom[ops[i] + 1] = (uint8_t)(was[i] >> 8);
+        }
+        memset(rom + FREE82, 0xFF, 16 * 6);
+        memset(rom + FREE87, 0xFF, 16 * 7);
+
+        /* Expanding rewrites the very bytes it checks, so it runs once per
+         * apply against a pristine image - which is what issd_mod_reapply
+         * does. Ask for the new slot in the same pass. */
+        xp->stadium_count = 1;
+        xp->stadiums[0].stadium_id = 8;
+        snprintf(xp->stadiums[0].name, sizeof xp->stadiums[0].name, "AKRON");
+        xp->stadiums[0].pitch_length = 115;
+        xp->stadiums[0].pitch_width = 74;
+
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof(rom));
+        assert(rom[COUNT_OP] == 12 && "the count literal is raised");
+        for (int i = 0; i < 4; i++) {
+            const uint16_t now = (uint16_t)(rom[ops[i]] | (rom[ops[i]+1] << 8));
+            assert(now != was[i] && "each table reference is re-pointed");
+        }
+        const uint16_t nm = (uint16_t)(rom[NAME_OP] | (rom[NAME_OP+1] << 8));
+        assert(nm != 0xCA9B && "the name base is re-pointed");
+
+        /* A slot past the cartridge's own eight really was written. */
+        const uint8_t *n8 = rom + FREE87 + 8 * 7;
+        assert(n8[2] == 0x68 && n8[3] == 0x72);      /* A K */
+
+        /* One the expansion did not reach for is refused. */
+        xp->stadiums[0].stadium_id = 15;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof(rom));
+        assert(issd_mod_last_result()->warnings > 0);
+        xp->stadium_count = 0;
+        xp->stadium_slots = 0;
+    }
+
     puts("mod rom tests passed");
     return 0;
 }

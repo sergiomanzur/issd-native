@@ -186,3 +186,72 @@ Three mutations, each changing one thing:
   in-match radar - so the pairs drive real positioning, not just the
   formation screen. Shifting every pair's depth by the same amount and
   watching which way the side moved established that negative is upfield.
+
+---
+
+## Raising a fixed count: more stadiums than the cartridge has
+
+"Eight stadiums" turned out to be one 16-bit literal and four packed
+tables, none of it load-bearing.
+
+The first thing worth knowing is that **cartridge code is patchable in this
+build**. Changing `CMP #$0008` to `#$0009` at 0x121F6D immediately produced
+a ninth entry on the stadium select screen, which means the routine runs
+interpreted rather than being baked into the recompiled C. That single
+experiment is what makes everything below possible.
+
+It also surfaced something already in the data: the ninth name plate reads
+**ALL STAR**, and beyond it are country plates (NORWAY and others). The
+plate is picked by slot number from a list far longer than eight, which is
+why renaming a stadium never changed it.
+
+### Finding the tables
+
+Four instructions index per-stadium data, all found by searching for the
+long-addressing byte pattern `lo FA 82` - a reference into $82:FAxx:
+
+| Address | Instruction | Holds |
+|---|---|---|
+| 0x121F9F | `LDA $82FADD,X` | turf pattern |
+| 0x122009 | `LDA $82FAED,X` | pitch length |
+| 0x12201C | `LDA $82FAEE,X` | pitch width |
+| 0x12203E | `LDA $82FAFD,X` | unidentified, but per stadium |
+
+The pitch table was located first, by searching for the lengths the select
+screen prints - 114, 118, 126, 130, 122, 122, 114, 138 - which occur in
+that order exactly once in the cartridge.
+
+### Finding a reader that is not in the generated C
+
+The name table had no long reference and did not appear in
+`recomp/generated` at all. Logging the interpreter's PC - it keeps one in
+`g_interp816_cur_pc` - whenever anything read the table named it at once:
+$86:C494, file 0x34494. The code there is
+
+```
+LDA $4C ; ASL ASL ASL ; SEC ; SBC $4C   ; index * 7
+CLC ; ADC #$CA9B                        ; + the table base
+TAY ; LDX #$0128 ; LDA #$0007 ; JSL ... ; print seven bytes
+```
+
+so the base is a 16-bit immediate at 0x3448B. That technique - hook the
+read, print the interpreter PC - is the general answer to "what reads
+this?" when grepping the generated C comes up empty.
+
+### Extending
+
+Bank $82 has 1187 free bytes at $82:FB5D and bank $87 has 1336 at
+$87:FAC8, both immediately after the tables that need to grow. Each table
+is copied there, extended by repeating the cartridge's own entries, and
+its one instruction re-pointed. Every site is verified against the bytes
+it should hold first, so a different revision is refused rather than
+corrupted.
+
+### What this does not reach
+
+The name plate, as above. And the same approach applied to teams would be
+much larger: a team is spread across the roster name and attribute tables,
+a formation record behind a pointer table, flags, kit palettes and name
+plates, and the roster base is computed through a dispatcher in bank $83
+rather than sitting in an instruction as an immediate. The select screen's
+six-by-six grid would have to grow as well.

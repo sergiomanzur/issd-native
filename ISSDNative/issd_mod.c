@@ -286,6 +286,12 @@ static bool pack_member(JsonReader *r, const char *key, void *ctx) {
     if (strcmp(key, "description") == 0) return JSON_STR_FIELD(r, pack->description);
     if (strcmp(key, "teams") == 0)       return json_array(r, team_element, pack);
     if (strcmp(key, "stadiums") == 0)    return json_array(r, stadium_element, pack);
+    if (strcmp(key, "stadium_count") == 0) {
+        long v = 0;
+        if (!json_number(r, &v)) return false;
+        pack->stadium_slots = (int)v;
+        return true;
+    }
     return json_skip_value(r);
 }
 

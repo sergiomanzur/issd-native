@@ -28,7 +28,9 @@ import sys
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TEAM_COUNT = 36
-STADIUM_COUNT = 8
+STADIUM_COUNT = 8          # what the cartridge ships
+STADIUM_MAX = 16           # what its tables can be extended to
+STADIUM_CLEAN_PLATE = 9    # slots past this have no finished plate
 STADIUM_NAME_CHARS = 7
 # The range the cartridge's own stadiums span.
 PITCH_LENGTH = (100, 140)
@@ -212,10 +214,10 @@ def check_stadium(report, st, index, seen_ids):
         report.error(where, "no stadium_id, so it names no stadium")
     elif not isinstance(sid, int) or isinstance(sid, bool):
         report.error(where, "stadium_id must be a number")
-    elif not 0 <= sid < STADIUM_COUNT:
-        report.error(where, "stadium_id %d does not exist; the cartridge has "
-                            "%d stadiums (0 to %d) and none can be added"
-                     % (sid, STADIUM_COUNT, STADIUM_COUNT - 1))
+    elif not 0 <= sid < STADIUM_MAX:
+        report.error(where, "stadium_id %d does not exist; there are at most "
+                            "%d stadium slots (0 to %d)"
+                     % (sid, STADIUM_MAX, STADIUM_MAX - 1))
     else:
         where = "stadium %d" % sid
         if sid in seen_ids:
@@ -254,6 +256,32 @@ def check_stadium(report, st, index, seen_ids):
         report.warn(where, "changes nothing")
 
 
+def check_stadium_count(report, path, pack, stadiums):
+    slots = pack.get("stadium_count")
+    highest = max((st.get("stadium_id", -1) for st in stadiums
+                   if isinstance(st, dict)), default=-1)
+    if slots is None:
+        if highest >= STADIUM_COUNT:
+            report.error(path, 'stadium_id %d needs "stadium_count": %d; the'
+                               ' cartridge ships %d'
+                         % (highest, highest + 1, STADIUM_COUNT))
+        return
+    if not isinstance(slots, int) or isinstance(slots, bool):
+        report.error(path, "stadium_count must be a number")
+        return
+    if not STADIUM_COUNT <= slots <= STADIUM_MAX:
+        report.error(path, "stadium_count %d is outside %d to %d"
+                     % (slots, STADIUM_COUNT, STADIUM_MAX))
+        return
+    if highest >= slots:
+        report.error(path, "stadium_id %d needs stadium_count of at least %d"
+                     % (highest, highest + 1))
+    if slots > STADIUM_CLEAN_PLATE:
+        report.warn(path, "stadium_count %d: only slot %d has a finished name"
+                          " plate on the select screen, the rest are unused"
+                          " graphics" % (slots, STADIUM_COUNT))
+
+
 def validate(path, report):
     try:
         with open(path, encoding="utf-8") as f:
@@ -279,6 +307,8 @@ def validate(path, report):
             check_stadium(report, st, i, seen_st)
     elif stadiums is not None:
         report.error(path, '"stadiums" must be an array')
+    check_stadium_count(report, path, pack,
+                        stadiums if isinstance(stadiums, list) else [])
 
     teams = pack.get("teams")
     if teams is None:

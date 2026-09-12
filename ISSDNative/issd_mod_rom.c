@@ -182,6 +182,135 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
                                (p->hair_style & 0x0F));
 }
 
+/* ------------------------------------------------- more stadiums ----- */
+
+/* The eight are eight because four tables are packed against their
+ * neighbours and one 16-bit literal says so. None of that is load-bearing:
+ * each table moves to free space in its own bank, the single instruction
+ * that indexes it is re-pointed, and the literal is raised.
+ *
+ *   $82:FADD  turf pattern    LDA $82FADD,X   operand at 0x121FA0
+ *   $82:FAED  pitch length    LDA $82FAED,X   operand at 0x12200A
+ *   $82:FAEE  pitch width     LDA $82FAEE,X   operand at 0x12201D
+ *   $82:FAFD  unidentified    LDA $82FAFD,X   operand at 0x12203F
+ *   $87:CA9B  names           ADC #$CA9B      operand at 0x03448B
+ *   count                     CMP #$0008      operand at 0x121F6D
+ *
+ * The name reader never appears in the recompiled C because it runs
+ * interpreted. It was found by logging the interpreter's PC whenever
+ * anything read the name table: $86:C494, where the code multiplies the
+ * stadium number by seven and adds the base.
+ *
+ * Every site is checked against the bytes it is expected to hold before
+ * anything is written, so a different cartridge revision is refused rather
+ * than corrupted. */
+#define ROM_STADIUM_COUNT_OPERAND  0x121F6Du
+#define ROM_STADIUM_NAME_OPERAND   0x03448Bu
+#define ROM_FREE_BANK82            0x017B5Du   /* $82:FB5D, 1187 bytes */
+#define ROM_FREE_BANK87            0x03FAC8u   /* $87:FAC8, 1336 bytes */
+
+typedef struct { size_t operand; uint16_t from; } StadiumRef;
+
+static const StadiumRef kStadiumWordRefs[] = {
+    { 0x121FA0u, 0xFADDu },   /* turf */
+    { 0x12200Au, 0xFAEDu },   /* length */
+    { 0x12201Du, 0xFAEEu },   /* width, the same table one byte on */
+    { 0x12203Fu, 0xFAFDu },   /* unidentified, but per stadium */
+};
+
+/* Where the tables live now. Stock until a pack asks for more. */
+static unsigned s_stadium_slots = ROM_STADIUMS;
+static size_t   s_stadium_name_base = ROM_STADIUM_NAME_BASE;
+static size_t   s_stadium_pitch_base = ROM_STADIUM_PITCH_BASE;
+
+static bool rom_is_free(const uint8_t *rom, size_t at, size_t len) {
+    for (size_t i = 0; i < len; i++)
+        if (rom[at + i] != 0xFF) return false;
+    return true;
+}
+
+static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
+    s_stadium_slots = ROM_STADIUMS;
+    s_stadium_name_base = ROM_STADIUM_NAME_BASE;
+    s_stadium_pitch_base = ROM_STADIUM_PITCH_BASE;
+    if (slots <= ROM_STADIUMS) return false;
+    if (slots > ISSD_MAX_STADIUMS) slots = ISSD_MAX_STADIUMS;
+
+    const size_t need82 = (size_t)slots * 6u;      /* three word tables */
+    const size_t need87 = (size_t)slots * ROM_STADIUM_NAME_BYTES;
+    if (rom_size < ROM_FREE_BANK87 + need87 ||
+        !rom_is_free(rom, ROM_FREE_BANK82, need82) ||
+        !rom_is_free(rom, ROM_FREE_BANK87, need87)) {
+        issd_mod_result_note_error("no free space for extra stadiums");
+        fprintf(stderr, "[ModLoader] The space these tables move into is not"
+                        " free in this cartridge. Leaving 8 stadiums.\n");
+        return false;
+    }
+
+    /* Refuse rather than corrupt if this is not the cartridge we measured. */
+    if (rom[ROM_STADIUM_COUNT_OPERAND - 1] != 0xC9 ||
+        rom[ROM_STADIUM_COUNT_OPERAND] != ROM_STADIUMS ||
+        rom[ROM_STADIUM_NAME_OPERAND - 1] != 0x69) {
+        issd_mod_result_note_error("cartridge does not match; stadiums kept");
+        fprintf(stderr, "[ModLoader] The stadium code is not where it is "
+                        "expected in this cartridge. Leaving 8 stadiums.\n");
+        return false;
+    }
+    for (unsigned i = 0; i < sizeof kStadiumWordRefs / sizeof kStadiumWordRefs[0]; i++) {
+        const StadiumRef *r = &kStadiumWordRefs[i];
+        const uint16_t have = (uint16_t)(rom[r->operand] | (rom[r->operand + 1] << 8));
+        if (rom[r->operand - 1] != 0xBF || have != r->from) {
+            issd_mod_result_note_error("cartridge does not match; stadiums kept");
+            fprintf(stderr, "[ModLoader] Stadium table reference %u is not "
+                            "where it is expected. Leaving 8 stadiums.\n", i);
+            return false;
+        }
+    }
+
+    /* Copy each table to its new home, repeating the cartridge's own entries
+     * so a slot nobody has customised is still a working stadium. */
+    size_t cursor = ROM_FREE_BANK82;
+    size_t pitch_dst = 0;
+    for (unsigned i = 0; i < sizeof kStadiumWordRefs / sizeof kStadiumWordRefs[0]; i++) {
+        const StadiumRef *r = &kStadiumWordRefs[i];
+        size_t dst;
+        if (r->from == 0xFAEEu) {
+            dst = pitch_dst + 1;          /* width shares the pitch table */
+        } else {
+            const size_t src = (size_t)0x10000u + (r->from - 0x8000u);
+            dst = cursor;
+            for (unsigned k = 0; k < slots; k++) {
+                const size_t e = src + (size_t)(k % ROM_STADIUMS) * 2u;
+                rom[dst + k * 2] = rom[e];
+                rom[dst + k * 2 + 1] = rom[e + 1];
+            }
+            cursor += (size_t)slots * 2u;
+            if (r->from == 0xFAEDu) pitch_dst = dst;
+        }
+        const uint16_t addr = (uint16_t)(0x8000u + (dst - 0x10000u));
+        rom[r->operand] = (uint8_t)(addr & 0xFF);
+        rom[r->operand + 1] = (uint8_t)(addr >> 8);
+    }
+
+    for (unsigned k = 0; k < slots; k++) {
+        const size_t src = ROM_STADIUM_NAME_BASE +
+            (size_t)(k % ROM_STADIUMS) * ROM_STADIUM_NAME_BYTES;
+        const size_t dst = ROM_FREE_BANK87 + (size_t)k * ROM_STADIUM_NAME_BYTES;
+        memcpy(rom + dst, rom + src, ROM_STADIUM_NAME_BYTES);
+    }
+    const uint16_t name_addr = (uint16_t)(0x8000u + (ROM_FREE_BANK87 - 0x38000u));
+    rom[ROM_STADIUM_NAME_OPERAND] = (uint8_t)(name_addr & 0xFF);
+    rom[ROM_STADIUM_NAME_OPERAND + 1] = (uint8_t)(name_addr >> 8);
+
+    rom[ROM_STADIUM_COUNT_OPERAND] = (uint8_t)slots;
+
+    s_stadium_slots = slots;
+    s_stadium_name_base = ROM_FREE_BANK87;
+    s_stadium_pitch_base = pitch_dst;
+    printf("[ModLoader] Stadiums expanded from %d to %u.\n", ROM_STADIUMS, slots);
+    return true;
+}
+
 /* Write one stadium. Returns true when anything changed. */
 static bool patch_stadium(uint8_t *rom, size_t rom_size, const char *pack_name,
                           const IssdModStadium *st) {
@@ -192,21 +321,21 @@ static bool patch_stadium(uint8_t *rom, size_t rom_size, const char *pack_name,
         fprintf(stderr, "[ModLoader] %s\n", why);
         return false;
     }
-    if (st->stadium_id >= ROM_STADIUMS) {
+    if ((unsigned)st->stadium_id >= s_stadium_slots) {
         char why[96];
         snprintf(why, sizeof why, "%s: stadium %d does not exist",
                  pack_name, st->stadium_id);
         issd_mod_result_note_warning(why);
         fprintf(stderr,
-                "[ModLoader] '%s': stadium_id %d is out of range. The "
-                "cartridge has %d stadiums, so one can be replaced but not "
-                "added.\n", pack_name, st->stadium_id, ROM_STADIUMS);
+                "[ModLoader] '%s': stadium_id %d is out of range; there "
+                "are %u stadiums. Raise \"stadium_count\" to make more.\n",
+                pack_name, st->stadium_id, s_stadium_slots);
         return false;
     }
 
-    const size_t name = ROM_STADIUM_NAME_BASE +
+    const size_t name = s_stadium_name_base +
                         (size_t)st->stadium_id * ROM_STADIUM_NAME_BYTES;
-    const size_t pitch = ROM_STADIUM_PITCH_BASE + (size_t)st->stadium_id * 2u;
+    const size_t pitch = s_stadium_pitch_base + (size_t)st->stadium_id * 2u;
     if (name + ROM_STADIUM_NAME_BYTES > rom_size || pitch + 2 > rom_size)
         return false;
 
@@ -383,6 +512,21 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
 
     int players_patched = 0, teams_patched = 0, formations_patched = 0;
     int stadiums_patched = 0;
+
+    /* Expansion rewrites code and moves tables, so it happens once, before
+     * any pack writes a stadium. The largest ask across the stack wins:
+     * packs that only replace a stadium do not care how many there are. */
+    {
+        unsigned want = ROM_STADIUMS;
+        for (int slot = 0; ; slot++) {
+            const int pi = issd_mod_pack_at_order(slot);
+            if (pi < 0) break;
+            const IssdModPack *p = issd_mod_get_pack(pi);
+            if (p && (unsigned)p->stadium_slots > want)
+                want = (unsigned)p->stadium_slots;
+        }
+        expand_stadiums(rom, rom_size, want);
+    }
 
     /* Which pack last wrote each team, so an overlap can be named rather
      * than silently resolved. Stacking two packs that both rewrite Mexico
