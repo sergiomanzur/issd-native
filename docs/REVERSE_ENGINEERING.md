@@ -504,25 +504,64 @@ Most of the rest works too, and was built and measured:
   two call sites keep their shape.
 - Three of the four readers are generated C, so they go in the deny set.
 
-**Where it stops** is team indices 42 to 47 themselves. Pointing page
-eight's cells at them, with all four tables extended, gives:
+Four tables was not all of them. With only those extended, pointing page
+eight's cells at 42 to 47 gives: 42 exits, 43 works, 44 works, 45 exits, 46
+works, 47 exits. Not a bound - a bound would fail from 42 up. It is data:
+more tables are indexed by team, their entries up there are whatever
+follows them, and some of those values are fatal.
 
-| index | 42 | 43 | 44 | 45 | 46 | 47 |
-|---|---|---|---|---|---|---|
-| | exits | works | works | exits | works | exits |
+### Finding the rest of them
 
-Not a bound - a bound would fail from 42 up. It is data: at least one more
-structure is indexed by team, its entries at 42 and beyond are whatever
-happens to follow it, and some of those values send the screen back to the
-title. The failure is silent, which is what makes it slow: nothing crashes,
-the mode just changes.
+Differencing two teams' read maps is the right idea and the wrong
+execution: the cursor passes over other cells on its way, so every map
+contains every team it walked past. Two things fixed that.
 
-Differencing the read maps of two teams on the select screen finds the
-candidates - about eight more word tables in bank $82 between 0x17590 and
-0x17B40 - but sizing them from their spacing was not conclusive, and
-shipping a page where three cells in six drop you to the title is worse
-than not shipping one.
+First, compare a team that **works** against one that **fails** and diff
+the traces rather than the maps - a failing team simply stops, so the last
+reads before it stops are the answer. Second, read the instruction rather
+than inferring the table from arithmetic: the reads come with a PC, and
+`LDA $82F9B3,X` names its table exactly, where `offset - team * 2` only
+guesses at it.
 
-So: six added teams, at 36 to 41, taking the all-star sides' cells. The
-next attempt starts by enumerating those bank-$82 tables properly - a team
-at a time rather than by differencing two - and relocating each.
+That turns up eleven tables the cartridge indexes by team, not four:
+
+| table | what reads it |
+|---|---|
+| cell table `$81:DA3F` | five `LDA $DA3F,X` |
+| roster pointers `$87:8138` | `$80:CF3C`, `$80:CF5F` |
+| formation pointers `$8B:EF48` | `$85:AA88`, `$85:B160` |
+| kit home `$82:827A` | `$A4:BC66`, and **two absolute** sites in bank $A4 |
+| kit change `$82:82D0` | `$A4:BC6E` |
+| `$82:F59A` | nineteen sites, all over the cartridge |
+| `$82:F61C` | `$85:B114` |
+| `$82:F7BF` | `$85:A9A6`, `$8A:E617` |
+| `$82:F89D` | `$85:AFC3` |
+| `$82:F95F` | `$85:AFD1` |
+| `$82:F9B3` | `$85:AFCA` |
+| `$82:FA5F` | `$85:AFBC` |
+
+The absolute sites are the trap. `LDA $827A,X` takes its bank from DB, so
+searching for the long form `BF 7A 82 82` misses it - and two of the kit
+table's readers are written that way. Any table search here has to look
+for both.
+
+### Where it stands
+
+With all eleven relocated and extended, **the eighth page works**: it
+renders, and all six of the new indices are stable on it - grid, formation
+panel and statistics all draw. That is the milestone.
+
+**Confirming** a team from that page still jumps into WRAM and spins, so
+the match-load path has further per-team tables that have not been found.
+The same method will find them; it is a question of how many rounds.
+
+`tools/eighth_group_probe.py` builds a cartridge in exactly this state, so
+the next attempt starts here rather than at the beginning:
+
+```
+python tools/eighth_group_probe.py        # all six new cells
+python tools/eighth_group_probe.py 42     # every new cell set to team 42
+```
+
+So what ships is six added teams at 36 to 41, taking the all-star sides'
+cells, with the loader naming the side each one displaced.

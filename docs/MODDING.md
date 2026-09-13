@@ -223,12 +223,13 @@ add two and the first two cells become real, and so on. Cells you do not
 take stay as they were, and the loader names the side whose cell each
 added team took.
 
-**They do come out of that group.** An eighth page would avoid it and most
-of the work for one is done - the page draws, and the four tables it needs
-relocate and extend cleanly - but team indices past 41 run into at least
-one more per-team table whose entries up there are arbitrary, and three of
-the six send the game back to the title screen. `docs/REVERSE_ENGINEERING.md`
-has the measurements and what the next attempt should do.
+**They do come out of that group.** An eighth page would avoid it, and it
+now draws correctly with all six of its new teams selectable - eleven
+tables the cartridge indexes by team have been found and relocated. What
+is not done is confirming a team from it: the match-load path has more of
+those tables still to find. `docs/REVERSE_ENGINEERING.md` has the
+inventory and `tools/eighth_group_probe.py` builds a cartridge in that
+state.
 
 **They are not spare squads to begin with.** Each is assembled when the
 match loads out of the group it belongs to - team 36+g takes twenty
