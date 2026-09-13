@@ -297,9 +297,12 @@ int main(void) {
      * hold: a cartridge that does not have a kit there is left alone, and
      * the colour a pack asks for is what the lit shade becomes. */
     {
-        const size_t KIT_BASE = 0x0483C0u;
-        const int URUGUAY_KIT = 27;      /* measured; Chivas replaces it */
-        const size_t rec = KIT_BASE + (size_t)URUGUAY_KIT * 34u;
+        /* A strip is reached through a table of addresses, not an index, so
+         * the test plants a pointer as well as a palette. */
+        const size_t KIT_BASE   = 0x0483C0u;
+        const size_t KIT_PTRS   = 0x01027Au;
+        const size_t rec        = KIT_BASE + 27u * 34u;
+        const uint16_t kit_addr = (uint16_t)(0x8000u + (rec - 0x48000u) - 2u);
 
         issd_mod_init();
         const int n = issd_mod_scan_and_load("tests/fixtures/mods");
@@ -315,8 +318,8 @@ int main(void) {
         kp->teams[0].shorts_rgb = 0xFF123A6Bu;
         kp->teams[0].socks_rgb  = 0xFFFFFFFFu;
 
-        /* Wrong cartridge: the two constants every kit ends with are not
-         * there, so nothing is written. */
+        /* Wrong cartridge: neither a pointer table nor a palette, so
+         * nothing is written. */
         memset(rom, 0xEE, sizeof rom);
         issd_mod_result_reset();
         issd_mod_apply_to_rom(rom, sizeof rom);
@@ -325,7 +328,11 @@ int main(void) {
                    "a cartridge without kits there is left alone");
         assert(issd_mod_last_result()->warnings > 0);
 
-        /* With the tail the real cartridge has, the strip is repainted. */
+        /* Now with the bytes the real cartridge has: team 35's entry in the
+         * table of addresses, pointing two bytes before its palette, and the
+         * two constants every palette ends with. */
+        rom[KIT_PTRS + 35 * 2]     = (uint8_t)(kit_addr & 0xFF);
+        rom[KIT_PTRS + 35 * 2 + 1] = (uint8_t)(kit_addr >> 8);
         rom[rec + 30] = 0x20; rom[rec + 31] = 0x01;
         rom[rec + 32] = 0x1F; rom[rec + 33] = 0x00;
         issd_mod_result_reset();
@@ -353,14 +360,15 @@ int main(void) {
         assert(rom[rec + 30] == 0x20 && rom[rec + 31] == 0x01 &&
                "the tail the check reads must survive the paint");
 
-        /* A team the table has no measurement for is reported, not guessed. */
-        kp->teams[0].team_id = 2;          /* England: shares, so unmeasured */
+        /* A team whose entry the cartridge does not have is reported,
+         * not guessed at. */
+        kp->teams[0].team_id = 2;
         issd_mod_result_reset();
         issd_mod_apply_to_rom(rom, sizeof rom);
         assert(issd_mod_last_result()->warnings > 0);
 
         /* Naming the record directly overrides the table. */
-        kp->teams[0].kit_record = URUGUAY_KIT;
+        kp->teams[0].kit_record = 27;
         rom[rec + 9 * 2] = 0xEE; rom[rec + 9 * 2 + 1] = 0xEE;
         issd_mod_result_reset();
         issd_mod_apply_to_rom(rom, sizeof rom);

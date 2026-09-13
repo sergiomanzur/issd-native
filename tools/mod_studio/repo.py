@@ -122,16 +122,15 @@ def parse_formations(root: str) -> list[dict]:
 
 
 def parse_team_names(root: str) -> list[str]:
-    """The 36 countries plus the six all-star sides, read off the measured kit
-    table's comments - the one place in the repo that names every slot."""
+    """The 36 countries plus the six all-star sides.
+
+    The cartridge draws these as graphics, so they are not text in it
+    anywhere; kTeamName in issd_mod_rom.c is where they are written down,
+    and this reads that rather than keeping a second copy."""
     src = _read(root, "ISSDNative", "issd_mod_rom.c")
-    block = src[src.index("kKitRecord[ROM_TEAMS] = {"):]
+    block = src[src.index("kTeamName[ROM_TEAMS] = {"):]
     block = block[:block.index("};")]
-    names = re.findall(r"/\*\s*(\d+)\s+(.+?)\s*\*/", block)
-    out = [""] * (max(int(i) for i, _ in names) + 1)
-    for index, name in names:
-        out[int(index)] = name
-    return out
+    return re.findall(r'"([^"]+)"', block)
 
 
 def parse_stock_stadiums(root: str) -> list[dict]:

@@ -154,6 +154,35 @@
 #define ROM_PITCH_MIN_WIDTH     64
 #define ROM_PITCH_MAX_WIDTH     96
 
+/* What each slot is, for the log and for the editor's team list. The
+ * cartridge draws these as graphics, so they are not text anywhere in it
+ * and have to be written down once. In select screen order they are
+ * scattered - the screen's first cell is England - so this is team order,
+ * which is what everything here indexes by.
+ *
+ * tools/mod_studio parses this, and a test keeps the two in step. */
+static const char *const kTeamName[ROM_TEAMS] = {
+    "Italy",              "Holland",            "England",
+    "Norway",             "Spain",              "Ireland",
+    "Portugal",           "Denmark",            "Germany",
+    "France",             "Belgium",            "Sweden",
+    "Romania",            "Bulgaria",           "Russia",
+    "Swiss",              "Greece",             "Croatia",
+    "Austria",            "Wales",              "Scotland",
+    "N.Ireland",          "Czech Rep.",         "Poland",
+    "Japan",              "S.Korea",            "Turkey",
+    "Nigeria",            "Cameroon",           "Morocco",
+    "Brazil",             "Argentina",          "Columbia",
+    "Mexico",             "U.S.A",              "Uruguay",
+    "All Star",           "Eurostar A",         "Eurostar B",
+    "Asian Star",         "African Star",       "All American Star",
+};
+
+const char *issd_mod_rom_team_name(int team) {
+    if (team < 0 || team >= ROM_TEAMS) return NULL;
+    return kTeamName[team];
+}
+
 /* The cartridge does not use ASCII. 0x00 renders as a space and doubles as
  * padding; letters run from 0x68. Generated from the editor's dictionary. */
 static const struct { uint8_t code; char ch; } kCharset[] = {
@@ -392,77 +421,57 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
 /* ------------------------------------------------------------- kits ---- */
 
 /* A kit is a seventeen-colour palette: two constants at each end, skin and
- * hair in the middle, and the eight colours that make a strip - three shirt
- * shades, three shorts shades, two sock shades. They sit end to end from
- * $89:83C0, thirty-four bytes apart, eighty-four of them: two per team for
- * the forty-two the select screen can offer.
+ * hair in the middle, and the eight colours that make a strip - three
+ * shirt shades, three shorts shades, two sock shades.
  *
- * Which of the eighty-four a team wears is the part no search could find -
- * there is no table of indices anywhere in the cartridge, and the mapping is
- * not the team order, the group order or the screen order. So it was
- * measured: forty-two matches, one per team, each recording every cartridge
- * offset the run touched. The opponent is always England, so the palette
- * that is not England's is the one the team wore. kKitRecord below is that
- * measurement, and nothing else.
+ * Which palette a team wears is a pointer, not an index, which is why
+ * looking for an index table found nothing. $A4:BC4D reads the team
+ * doubled out of $0DA0, uses it to index a table of addresses in bank $89,
+ * and adds two:
  *
- * The second palette of the pair is the change strip the game switches to
- * when the two teams would clash. Measuring those would need a match per
- * team against something that clashes with it; until someone does, a pack
- * that cares can name the record itself with `kit_record`. */
-#define ROM_KIT_BASE     0x0483C0u
-#define ROM_KIT_STRIDE        34u
-#define ROM_KIT_SHIRT          7   /* three shades, dark to light */
-#define ROM_KIT_SHORTS        10   /* three shades */
-#define ROM_KIT_SOCKS         13   /* two shades */
-/* Every kit ends with the same two colours. Checking them is how a cartridge
- * that is not this revision gets left alone rather than scribbled on. */
-#define ROM_KIT_TAIL_A    0x0120u
-#define ROM_KIT_TAIL_B    0x001Fu
+ *     LDA $A4,X          ; $0DA4 - which strip, home or change
+ *     BIT #$0008
+ *     LDA $A0,X          ; $0DA0 - the team, doubled
+ *     TAX
+ *     LDA $82827A,X      ; ... or $8282D0 for the change strip
+ *     INC A / INC A      ; the palette starts two bytes in
+ *
+ * So there are two tables of 43 addresses each, at $82:827A and $82:82D0,
+ * and reading them is exact for every team - including England, which a
+ * match-by-match measurement could never pin down because England is the
+ * opponent in every match. The measured table this replaces had that one
+ * hole in it and 42 lines of transcription that could rot. */
+/* The base of the palette run, for a pack that names a record directly. */
+#define ROM_KIT_BASE        0x0483C0u
 
-static const int16_t kKitRecord[ROM_TEAMS] = {
-    0,   /*  0 Italy              */
-    1,   /*  1 Holland            */
-    -1,  /*  2 England            */
-    3,   /*  3 Norway             */
-    5,   /*  4 Spain              */
-    6,   /*  5 Ireland            */
-    7,   /*  6 Portugal           */
-    8,   /*  7 Denmark            */
-    14,  /*  8 Germany            */
-    2,   /*  9 France             */
-    10,  /* 10 Belgium            */
-    12,  /* 11 Sweden             */
-    9,   /* 12 Romania            */
-    13,  /* 13 Bulgaria           */
-    11,  /* 14 Russia             */
-    17,  /* 15 Swiss              */
-    4,   /* 16 Greece             */
-    15,  /* 17 Croatia            */
-    53,  /* 18 Austria            */
-    17,  /* 19 Wales              */
-    17,  /* 20 Scotland           */
-    17,  /* 21 N.Ireland          */
-    17,  /* 22 Czech Rep.         */
-    17,  /* 23 Poland             */
-    19,  /* 24 Japan              */
-    18,  /* 25 S.Korea            */
-    53,  /* 26 Turkey             */
-    21,  /* 27 Nigeria            */
-    20,  /* 28 Cameroon           */
-    22,  /* 29 Morocco            */
-    28,  /* 30 Brazil             */
-    25,  /* 31 Argentina          */
-    26,  /* 32 Columbia           */
-    24,  /* 33 Mexico             */
-    23,  /* 34 U.S.A              */
-    27,  /* 35 Uruguay            */
-    29,  /* 36 All Star           */
-    30,  /* 37 Eurostar A         */
-    31,  /* 38 Eurostar B         */
-    32,  /* 39 Asian Star         */
-    33,  /* 40 African Star       */
-    34,  /* 41 All American Star  */
-};
+#define ROM_KIT_PTRS_HOME   0x01027Au
+#define ROM_KIT_PTRS_AWAY   0x0102D0u
+#define ROM_KIT_PTR_TEAMS         43
+#define ROM_KIT_BANK            0x89u
+#define ROM_KIT_STRIDE            34u   /* seventeen colours */
+#define ROM_KIT_SHIRT              7    /* three shades, dark to light */
+#define ROM_KIT_SHORTS            10    /* three shades */
+#define ROM_KIT_SOCKS             13    /* two shades */
+/* Every kit ends with the same two colours. Checking them is how a
+ * cartridge that is not this revision gets left alone rather than
+ * scribbled on. */
+#define ROM_KIT_TAIL_A        0x0120u
+#define ROM_KIT_TAIL_B        0x001Fu
+
+/* Where a team's strip lives, or 0 when the cartridge does not say. */
+static size_t kit_offset(const uint8_t *rom, size_t rom_size, int team,
+                         bool away) {
+    if (team < 0 || team >= ROM_KIT_PTR_TEAMS) return 0;
+    const size_t table = away ? ROM_KIT_PTRS_AWAY : ROM_KIT_PTRS_HOME;
+    if (table + (size_t)team * 2 + 1 >= rom_size) return 0;
+    const uint16_t addr = (uint16_t)(rom[table + team * 2] |
+                                     (rom[table + team * 2 + 1] << 8));
+    if (addr < 0x8000u) return 0;
+    const size_t base = (size_t)(ROM_KIT_BANK & 0x7Fu) * 0x8000u;
+    const size_t off = base + (addr - 0x8000u) + 2u;   /* the INC A pair */
+    if (off + ROM_KIT_STRIDE > rom_size) return 0;
+    return off;
+}
 
 /* SNES colour: five bits each, blue high. */
 static uint16_t to_bgr555(uint32_t rgb, unsigned num, unsigned den) {
@@ -502,46 +511,47 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
                       const IssdModTeam *team) {
     if (!team->shirt_rgb && !team->shorts_rgb && !team->socks_rgb) return false;
 
-    int which = team->kit_record;
-    if (which < 0) which = kKitRecord[team->team_id];
-    if (which < 0) {
+    size_t rec = 0;
+    if (team->kit_record >= 0) {
+        rec = ROM_KIT_BASE + (size_t)team->kit_record * ROM_KIT_STRIDE;
+    } else {
+        rec = kit_offset(rom, rom_size, team->team_id, false);
+    }
+    if (!rec || rec + ROM_KIT_STRIDE > rom_size) {
         char why[112];
-        snprintf(why, sizeof why,
-                 "%s: team %u has no measured kit - name kit_record",
+        snprintf(why, sizeof why, "%s: team %u has no strip to repaint",
                  pack_name, team->team_id);
         issd_mod_result_note_warning(why);
         return false;
     }
 
-    const size_t rec = ROM_KIT_BASE + (size_t)which * ROM_KIT_STRIDE;
-    if (rec + ROM_KIT_STRIDE > rom_size) return false;
     const uint16_t tail_a = (uint16_t)(rom[rec + 30] | (rom[rec + 31] << 8));
     const uint16_t tail_b = (uint16_t)(rom[rec + 32] | (rom[rec + 33] << 8));
     if (tail_a != ROM_KIT_TAIL_A || tail_b != ROM_KIT_TAIL_B) {
         char why[112];
-        snprintf(why, sizeof why, "%s: kit %d is not a kit on this cartridge",
-                 pack_name, which);
+        snprintf(why, sizeof why, "%s: team %u's strip is not where it was measured",
+                 pack_name, team->team_id);
         issd_mod_result_note_warning(why);
         return false;
     }
 
-    /* Some teams wear the same palette - six of them share kit 17 - so
-     * repainting one repaints all of them. Say so rather than let a pack
-     * wonder why Wales changed colour. */
+    /* Teams share strips - several wear the same white - so repainting one
+     * repaints the others. The cartridge's own table says which, so say so
+     * rather than let a pack wonder why Wales changed colour. */
     int sharers = 0;
-    for (int t = 0; t < ROM_TEAMS; t++) if (kKitRecord[t] == which) sharers++;
+    for (int t = 0; t < ROM_KIT_PTR_TEAMS; t++)
+        if (kit_offset(rom, rom_size, t, false) == rec) sharers++;
     if (sharers > 1) {
         char why[112];
-        snprintf(why, sizeof why, "%s: kit %d is worn by %d teams",
-                 pack_name, which, sharers);
+        snprintf(why, sizeof why, "%s: this strip is worn by %d teams",
+                 pack_name, sharers);
         issd_mod_result_note_warning(why);
     }
 
     if (team->shirt_rgb)  write_part(rom, rec, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
     if (team->shorts_rgb) write_part(rom, rec, ROM_KIT_SHORTS, team->shorts_rgb, 3);
     if (team->socks_rgb)  write_part(rom, rec, ROM_KIT_SOCKS,  team->socks_rgb, 2);
-    printf("[ModLoader] Team %u wears a new strip (kit %d).\n",
-           team->team_id, which);
+    printf("[ModLoader] Team %u wears a new strip.\n", team->team_id);
     return true;
 }
 

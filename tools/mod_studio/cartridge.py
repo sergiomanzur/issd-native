@@ -30,6 +30,8 @@ _NEEDED = (
     "ROM_ATTR_BYTES", "ROM_STOCK_TEAMS", "ROM_TEAMS",
     "ROM_FORMATION_PTRS", "ROM_FORMATION_BANK", "ROM_FORMATION_RECORD_BYTES",
     "ROM_KIT_BASE", "ROM_KIT_STRIDE", "ROM_KIT_SHIRT", "ROM_KIT_SHORTS",
+    "ROM_KIT_PTRS_HOME", "ROM_KIT_PTRS_AWAY", "ROM_KIT_PTR_TEAMS",
+    "ROM_KIT_BANK",
     "ROM_KIT_SOCKS", "ROM_STADIUMS", "ROM_STADIUM_NAME_BASE",
     "ROM_STADIUM_NAME_BYTES", "ROM_STADIUM_PITCH_BASE",
     "ROM_CELL_TABLE", "ROM_CELLS", "ROM_ROSTER_PTRS",
@@ -63,13 +65,8 @@ def _parse_c(root: str) -> dict:
     charset.setdefault(0x00, " ")          # padding renders as a space
     out["charset"] = charset
 
-    # Which kit palette each team wears - measured, not derivable.
-    kit = []
-    block = src[src.index("kKitRecord[ROM_TEAMS] = {"):]
-    block = block[:block.index("};")]
-    for value in re.findall(r"(-?\d+)\s*,\s*/\*", block):
-        kit.append(int(value))
-    out["kit_record"] = kit
+    # A team's strip is a pointer, not an index: the cartridge holds a
+    # table of addresses and read_kit follows it. Nothing to parse.
 
     # How a rating comes back out of four bits.
     out["nibble_min"] = repo.RATING_NIBBLE_MIN
@@ -246,14 +243,24 @@ def _bgr555_to_rgb(word: int) -> tuple[int, int, int]:
     return r, g, b
 
 
-def read_kit(rom: bytes, team: int) -> dict | None:
+def kit_offset(rom: bytes, team: int, away: bool = False) -> int:
+    """Where a team's strip is, following the cartridge's own pointer."""
+    c = constants()
+    if team < 0 or team >= c["ROM_KIT_PTR_TEAMS"]:
+        return 0
+    table = c["ROM_KIT_PTRS_AWAY"] if away else c["ROM_KIT_PTRS_HOME"]
+    addr = _word(rom, table + team * 2)
+    if addr < 0x8000:
+        return 0
+    off = (c["ROM_KIT_BANK"] & 0x7F) * 0x8000 + (addr - 0x8000) + 2
+    return off if off + c["ROM_KIT_STRIDE"] <= len(rom) else 0
+
+
+def read_kit(rom: bytes, team: int, away: bool = False) -> dict | None:
     """The lit shade of each part - the colour a pack would name."""
     c = constants()
-    table = c.get("kit_record") or []
-    if team >= len(table) or table[team] < 0:
-        return None
-    rec = c["ROM_KIT_BASE"] + table[team] * c["ROM_KIT_STRIDE"]
-    if rec + c["ROM_KIT_STRIDE"] > len(rom):
+    rec = kit_offset(rom, team, away)
+    if not rec:
         return None
     out = {}
     for key, slot, lit in (("shirt", c["ROM_KIT_SHIRT"], 2),

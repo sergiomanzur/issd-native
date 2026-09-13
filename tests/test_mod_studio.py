@@ -139,7 +139,9 @@ def test_the_cartridge_layout_parses_out_of_the_c():
     # The character set is the encoder's own table, read backwards.
     assert live["charset"][0x68] == "A"
     assert live["charset"][0x54] == "."
-    assert len(live["kit_record"]) == live["ROM_TEAMS"]
+    # A strip is a pointer, not an index, so there is a table of addresses
+    # rather than a list of record numbers.
+    assert live["ROM_KIT_PTR_TEAMS"] >= live["ROM_STOCK_TEAMS"]
 
 
 @needs_rom

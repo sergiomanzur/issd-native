@@ -185,6 +185,9 @@ bool        issd_mod_team_photo_path(int team_id, char *out, size_t cap);
 /* The select screen's grid is not in team order: its first cell is
  * England. These read the cartridge's own cell table, so anything drawn
  * over that screen lands on the right team. -1 when it is not known. */
+/* What a slot is, in team order - "Italy", "All Star". NULL past the end. */
+const char *issd_mod_rom_team_name(int team);
+
 int         issd_mod_cell_team(int cell);
 int         issd_mod_team_cell(int team);
 
