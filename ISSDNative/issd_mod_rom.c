@@ -901,8 +901,22 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                 }
                 team->assigned_slot = next_slot++;
                 team->team_id = (uint8_t)team->assigned_slot;
-                printf("[ModLoader] Added team '%s' as slot %d.\n",
-                       team->name, team->assigned_slot);
+                /* The cells an added team can have are the seventh
+                 * group's, so one of the all-star sides gives its up.
+                 * Say which: silently losing ALL STAR is the kind of
+                 * thing a modder finds out about from a player. */
+                const char *gave = issd_mod_rom_team_name(team->assigned_slot);
+                printf("[ModLoader] Added team '%s' as slot %d%s%s%s.\n",
+                       team->name, team->assigned_slot,
+                       gave ? ", in place of " : "", gave ? gave : "",
+                       gave ? " on the select screen" : "");
+                if (gave) {
+                    char why[112];
+                    snprintf(why, sizeof why,
+                             "%s: '%s' takes %s's cell",
+                             pack->name, team->name, gave);
+                    issd_mod_result_note_warning(why);
+                }
             }
 
             if (team->team_id >= ROM_TEAMS) {

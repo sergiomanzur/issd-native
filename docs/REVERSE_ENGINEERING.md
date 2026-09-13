@@ -484,16 +484,45 @@ through the 160-byte roster read) and then searched for: the sequence,
 doubled, is 42 bytes at **0xDA3F**. So the label lands on the right team
 from the cartridge's own table rather than from anything assumed.
 
-### An eighth group
+### An eighth group: how far it goes, and where it stops
 
-Raising the group count to 8 works - the screen draws a seventh and eighth
-page. Its six cells read Austria, Japan, Nigeria, Brazil, Mexico and All
-Star, which is the cell table running off its end into the table that
-follows it, and that table cannot grow in place.
+Raising the group count to 8 works - the screen draws an eighth page. Its
+six cells read Austria, Japan, Nigeria, Brazil, Mexico and All Star, which
+is the cell table running off its end into the table that follows it.
 
-So a genuinely new page is: relocate the cell table to 48 entries, extend
-the roster and formation pointer tables the same way, find room in the
-attribute table, and work out how a team picks its kit palette - which is
-the one thing here that was never found, only measured team by team. It is
-the same shape of job as the stadium expansion, four times over, and it
-has not been done.
+Most of the rest works too, and was built and measured:
+
+- **The cell table relocates.** Copied to $81:F9B3, extended to 48, and the
+  five `LDA $DA3F,X` sites re-pointed, page eight renders whatever teams it
+  is told to - Italy, Holland, England, Norway, Spain, Ireland, drawn
+  correctly. That is the proof the move itself is sound.
+- **The roster, formation and kit pointer tables relocate**, to $87:E4CC,
+  $8B:FDD0 and $82:FC00/FC60, with two reference sites each.
+- **The squad loader's gate becomes a range check.** One compare cannot say
+  'below 36, or 42 and up', but a `JSR` is the same three bytes as a `CPX`
+  immediate, so fourteen bytes at the end of bank $80 do the job and the
+  two call sites keep their shape.
+- Three of the four readers are generated C, so they go in the deny set.
+
+**Where it stops** is team indices 42 to 47 themselves. Pointing page
+eight's cells at them, with all four tables extended, gives:
+
+| index | 42 | 43 | 44 | 45 | 46 | 47 |
+|---|---|---|---|---|---|---|
+| | exits | works | works | exits | works | exits |
+
+Not a bound - a bound would fail from 42 up. It is data: at least one more
+structure is indexed by team, its entries at 42 and beyond are whatever
+happens to follow it, and some of those values send the screen back to the
+title. The failure is silent, which is what makes it slow: nothing crashes,
+the mode just changes.
+
+Differencing the read maps of two teams on the select screen finds the
+candidates - about eight more word tables in bank $82 between 0x17590 and
+0x17B40 - but sizing them from their spacing was not conclusive, and
+shipping a page where three cells in six drop you to the title is worse
+than not shipping one.
+
+So: six added teams, at 36 to 41, taking the all-star sides' cells. The
+next attempt starts by enumerating those bank-$82 tables properly - a team
+at a time rather than by differencing two - and relocating each.
