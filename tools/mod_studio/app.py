@@ -15,9 +15,11 @@ from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from PIL import ImageTk
 
-from . import model, preview, repo
+from . import cartridge, model, preview, repo
 
 APP_NAME = "ISSD Mod Studio"
+SETTINGS = os.path.join(os.path.expanduser("~"),
+                        ".issd_mod_studio.json")
 
 BG = "#f4f5f7"
 PANEL = "#ffffff"
@@ -62,6 +64,8 @@ class Studio(tk.Tk):
         self.dirty = False
         self._images: list[ImageTk.PhotoImage] = []   # keep references alive
         self._suspend = False
+        self.rom_path = self._remembered_rom()
+        self.rom: bytes | None = None
 
         self._build_style()
         self._build_menu()
@@ -91,6 +95,9 @@ class Studio(tk.Tk):
         f = tk.Menu(m, tearoff=0)
         f.add_command(label="New pack", accelerator="Ctrl+N", command=self.on_new)
         f.add_command(label="Open...", accelerator="Ctrl+O", command=self.on_open)
+        f.add_separator()
+        f.add_command(label="Import from cartridge...",
+                      command=self.on_import)
         f.add_separator()
         f.add_command(label="Save", accelerator="Ctrl+S", command=self.on_save)
         f.add_command(label="Save as...", command=self.on_save_as)
@@ -137,6 +144,8 @@ class Studio(tk.Tk):
         ttk.Separator(bar, orient="vertical").pack(side="left", fill="y", padx=8)
         ttk.Button(bar, text="Check pack", width=12,
                    command=self.on_validate).pack(side="left", padx=2)
+        ttk.Button(bar, text="Import from cartridge", width=20,
+                   command=self.on_import).pack(side="left", padx=2)
 
     def _build_body(self):
         body = ttk.Frame(self, padding=(8, 0))
@@ -456,6 +465,16 @@ class Studio(tk.Tk):
                 self.refresh_tree(select_iid="team:%d" % index)
             slot.trace_add("write", slot_changed)
             self._team_slot_note(team, warn)
+
+            def load_from_rom():
+                index = self.import_team(int(team.get("team_id") or 0))
+                if index is None:
+                    return
+                self.mark_dirty()
+                self.refresh_tree(select_iid="team:%d" % index)
+                self.status.set("Loaded this team from the cartridge.")
+            ttk.Button(f, text="Load this team from the cartridge",
+                       command=load_from_rom).grid(row=3, column=3, sticky="w")
 
         self._bind_entry(f, 4, "Name", team, "name",
                          note="for the log and this editor",
@@ -826,6 +845,92 @@ class Studio(tk.Tk):
                             % repo.PITCH_WIDTH, on_change=redraw)
         redraw()
 
+    # --------------------------------------------------------- cartridge --
+    def _remembered_rom(self):
+        """Where the cartridge was last time. It is the user's own dump and
+        lives wherever they keep it, so asking once is enough.
+        """
+        try:
+            import json
+            with open(SETTINGS, encoding="utf-8") as f:
+                return json.load(f).get("rom_path") or None
+        except Exception:
+            return None
+
+    def _remember_rom(self, path):
+        try:
+            import json
+            with open(SETTINGS, "w", encoding="utf-8") as f:
+                json.dump({"rom_path": path}, f)
+        except Exception:
+            pass
+
+    def cartridge_bytes(self, ask=True):
+        """The cartridge, asked for once and kept."""
+        if self.rom is not None:
+            return self.rom
+        path = self.rom_path
+        if path and not os.path.isfile(path):
+            path = None
+        if not path:
+            if not ask:
+                return None
+            path = filedialog.askopenfilename(
+                parent=self, title="Your International Superstar Soccer Deluxe (USA) dump",
+                filetypes=[("SNES cartridge", "*.sfc *.smc"),
+                           ("All files", "*.*")])
+            if not path:
+                return None
+        try:
+            self.rom = cartridge.load_rom(path)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, "%s" % exc, parent=self)
+            self.rom_path = None
+            return None
+        self.rom_path = path
+        self._remember_rom(path)
+        self.status.set("Cartridge: %s" % os.path.basename(path))
+        return self.rom
+
+    def on_import(self):
+        rom = self.cartridge_bytes()
+        if rom is None:
+            return
+        ImportDialog(self, rom)
+
+    def import_team(self, team_id):
+        """Pull one team in, replacing whatever the pack had for that slot."""
+        rom = self.cartridge_bytes()
+        if rom is None:
+            return None
+        entry = cartridge.read_team(rom, team_id)
+        entry.pop("_label", None)
+        teams = self.pack_data.setdefault("teams", [])
+        for i, t in enumerate(teams):
+            if not t.get("new_team") and t.get("team_id") == team_id:
+                # Keep what the pack added on top: a plate, a photograph,
+                # a shape it chose. Only the cartridge's own fields land.
+                for key, value in entry.items():
+                    if key == "formation" and t.get("formation"):
+                        continue
+                    t[key] = value
+                return i
+        teams.append(entry)
+        return len(teams) - 1
+
+    def import_stadium(self, slot):
+        rom = self.cartridge_bytes()
+        if rom is None:
+            return None
+        entry = cartridge.read_stadium(rom, slot)
+        stadiums = self.pack_data.setdefault("stadiums", [])
+        for i, st in enumerate(stadiums):
+            if st.get("stadium_id") == slot:
+                st.update(entry)
+                return i
+        stadiums.append(entry)
+        return len(stadiums) - 1
+
     # ----------------------------------------------------------- commands --
     def mark_dirty(self):
         if not self.dirty:
@@ -1091,6 +1196,95 @@ def selftest(report_path: str, pack_path: str | None = None) -> int:
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
     return 0 if ok else 1
+
+
+class ImportDialog(tk.Toplevel):
+    """Pick what to take out of the cartridge.
+
+    Everything the cartridge has for a team comes across: twenty names,
+    their positions, skin tones, hair styles and ratings, the shape it
+    plays and the colours it wears. Edit from there rather than from a
+    blank sheet.
+    """
+    def __init__(self, studio, rom):
+        super().__init__(studio)
+        self.studio = studio
+        self.rom = rom
+        self.title("Import from cartridge")
+        self.geometry("760x560")
+        self.transient(studio)
+        self.grab_set()
+
+        ttk.Label(self, text=os.path.basename(studio.rom_path or ""),
+                  padding=(10, 8)).pack(anchor="w")
+
+        note = ("Ticking a team brings its twenty players across with their "
+                "positions, skin tones, hair styles and ratings, plus its "
+                "shape and its colours.")
+        ttk.Label(self, text=note, wraplength=720, justify="left",
+                  padding=(10, 0, 10, 8)).pack(anchor="w")
+
+        book = ttk.Notebook(self)
+        book.pack(fill="both", expand=True, padx=10)
+
+        team_page = ttk.Frame(book)
+        book.add(team_page, text="Teams")
+        # exportselection off, or the two lists fight over the selection:
+        # tick some teams, tick a stadium, and the teams quietly clear.
+        self.teams = tk.Listbox(team_page, selectmode="extended",
+                                exportselection=False,
+                                font=("Consolas", 9))
+        ts = ttk.Scrollbar(team_page, orient="vertical",
+                           command=self.teams.yview)
+        self.teams.configure(yscrollcommand=ts.set)
+        ts.pack(side="right", fill="y")
+        self.teams.pack(side="left", fill="both", expand=True)
+        for tid, name, who in cartridge.summary(rom):
+            self.teams.insert("end", "%2d  %-18s %s" % (tid, name, who))
+
+        stad_page = ttk.Frame(book)
+        book.add(stad_page, text="Stadiums")
+        self.stadiums = tk.Listbox(stad_page, selectmode="extended",
+                                   exportselection=False,
+                                   font=("Consolas", 9))
+        self.stadiums.pack(fill="both", expand=True)
+        for slot in range(cartridge.stadium_count(rom)):
+            st = cartridge.read_stadium(rom, slot)
+            self.stadiums.insert("end", "%d  %-9s %d x %d yards"
+                                 % (slot, st["name"],
+                                    st["pitch_length"], st["pitch_width"]))
+
+        bar = ttk.Frame(self, padding=10)
+        bar.pack(fill="x")
+        ttk.Button(bar, text="Import", command=self.take).pack(side="right")
+        ttk.Button(bar, text="Cancel", command=self.destroy).pack(
+            side="right", padx=6)
+        ttk.Button(bar, text="Select all teams",
+                   command=lambda: self.teams.select_set(0, "end")).pack(
+            side="left")
+
+    def take(self):
+        teams = [int(self.teams.get(i).split()[0])
+                 for i in self.teams.curselection()]
+        stadiums = [int(self.stadiums.get(i).split()[0])
+                    for i in self.stadiums.curselection()]
+        if not teams and not stadiums:
+            self.destroy()
+            return
+        for tid in teams:
+            self.studio.import_team(tid)
+        for slot in stadiums:
+            self.studio.import_stadium(slot)
+        if stadiums:
+            highest = max(stadiums) + 1
+            have = int(self.studio.pack_data.get("stadium_count") or 0)
+            if highest > repo.STOCK_STADIUMS and highest > have:
+                self.studio.pack_data["stadium_count"] = highest
+        self.studio.mark_dirty()
+        self.studio.refresh_tree(select_root=True)
+        self.studio.status.set("Imported %d team(s) and %d stadium(s)."
+                               % (len(teams), len(stadiums)))
+        self.destroy()
 
 
 def main():

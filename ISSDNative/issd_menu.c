@@ -1019,3 +1019,62 @@ void issd_menu_render_team_photo(uint32_t *fb, int width, int height,
         }
     }
 }
+
+/* ------------------------------------------- team grid names --------- */
+
+/* The plate beside the flag is not the only place a team is named: the
+ * grid underneath labels all six cells of the group, and those are
+ * graphics too. Renaming only the plate leaves a pack looking half
+ * applied - the plate says CHIVAS and the cell below still says ALL STAR.
+ *
+ * The cell rectangles were measured off the screen: three columns centred
+ * on x 71, 127 and 183, two rows of text at y 168 and 200, white on the
+ * panel's dark blue. Which team is in which cell comes from the
+ * cartridge's own table rather than from anything assumed here. */
+static const int kGridColumn[3] = { 71, 127, 183 };
+static const int kGridRow[2]    = { 168, 200 };
+#define GRID_CELL_W      54
+#define GRID_TEXT_H       8
+#define GRID_PANEL   0xFF00108Cu
+#define GRID_INK     0xFFEFFFFFu
+
+void issd_menu_render_team_grid(uint32_t *fb, int width, int height,
+                                int margin) {
+    if (!fb) return;
+    if (!on_team_select()) return;
+
+    /* Which page is showing: find the highlighted team's cell and round
+     * down to its group of six. */
+    const int here = issd_mod_team_cell(g_ram[TEAM_SELECTOR] / 2);
+    if (here < 0) return;
+    const int first = (here / 6) * 6;
+
+    for (int slot = 0; slot < 6; slot++) {
+        const int team = issd_mod_cell_team(first + slot);
+        if (team < 0) continue;
+        const char *name = issd_mod_team_plate_name(team);
+        if (!name || !name[0]) continue;   /* the cartridge's own stands */
+
+        const int cx = kGridColumn[slot % 3];
+        const int ty = kGridRow[slot / 3];
+
+        for (int y = ty; y < ty + GRID_TEXT_H; y++) {
+            if (y < 0 || y >= height) continue;
+            for (int x = cx - GRID_CELL_W / 2; x <= cx + GRID_CELL_W / 2; x++) {
+                const int px = margin + x;
+                if (px < 0 || px >= width) continue;
+                fb[(size_t)y * width + px] = GRID_PANEL;
+            }
+        }
+
+        /* The cartridge's own labels are a condensed font this one has no
+         * match for, so the name is squeezed and then cut. */
+        int len = (int)strlen(name);
+        int advance = 6;
+        if (len * advance > GRID_CELL_W) advance = 5;
+        if (len * advance > GRID_CELL_W) len = GRID_CELL_W / advance;
+        int x = margin + cx - (len * advance) / 2;
+        for (int i = 0; i < len; i++, x += advance)
+            DrawChar(fb, width, height, x, ty, name[i], GRID_INK);
+    }
+}

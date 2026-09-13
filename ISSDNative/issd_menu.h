@@ -76,6 +76,11 @@ void issd_menu_render_team_plate(uint32_t *fb, int width, int height,
 void issd_menu_render_team_photo(uint32_t *fb, int width, int height,
                                  int margin);
 
+/* Labels the six cells of the select screen's grid for any team a pack
+ * renamed, so the grid agrees with the plate above it. */
+void issd_menu_render_team_grid(uint32_t *fb, int width, int height,
+                                int margin);
+
 /* Provided by the host: save settings and start the process again, so a
  * newly chosen mod pack is applied to a fresh cartridge image. */
 void issd_restart_application(void);

@@ -25,11 +25,12 @@ BAKED = os.path.join(HERE, "baked.json")
 RATING_NIBBLE_MIN = 2
 RATING_NIBBLE_MAX = 9
 
-# What patch_name can encode. A full stop is stored as 0x00, which the roster
-# font renders as a space, so the validator refuses it and so does this.
+# What patch_name can encode. A full stop is one of them - the cartridge
+# stores R.Banks with 0x54 - which it was not until reading a roster back
+# out showed the encoder turning every one of them into a space.
 NAME_CHARS = ("ABCDEFGHIJKLMNOPQRSTUVWXYZ"
               "abcdefghijklmnopqrstuvwxyz"
-              " ")
+              " .")
 NAME_MAX = 8
 
 POSITIONS = ("GK", "DF", "MF", "FW")
@@ -145,10 +146,15 @@ def parse_stock_stadiums(root: str) -> list[dict]:
 # ----------------------------------------------------------------- table ---
 
 def gather(root: str) -> dict:
+    # Imported late: cartridge.py reads this module back for the quantiser.
+    from . import cartridge
+    layout = cartridge._parse_c(root)
+    layout["charset"] = {str(k): v for k, v in layout["charset"].items()}
     return {
         "formations": parse_formations(root),
         "team_names": parse_team_names(root),
         "stock_stadiums": parse_stock_stadiums(root),
+        "cartridge": layout,
     }
 
 
@@ -212,7 +218,27 @@ KIT_RECORDS = 84
 SHARED_KIT_TEAMS = {15, 18, 19, 20, 21, 22, 23, 26}
 
 
+def main() -> int:
+    root = _repo_root()
+    if not root:
+        print("not inside the repository")
+        return 1
+    data = bake(root)
+    print("baked %d formations, %d teams, %d stadiums, %d offsets -> %s"
+          % (len(data["formations"]), len(data["team_names"]),
+             len(data["stock_stadiums"]),
+             len(data["cartridge"]), BAKED))
+    return 0
+
+
 if __name__ == "__main__":
+    # Run as a script there is no package to import from, so put the
+    # parent on the path and come back in as one.
+    if __package__ in (None, ""):
+        sys.path.insert(0, os.path.dirname(os.path.dirname(HERE)))
+        sys.path.insert(0, os.path.dirname(HERE))
+        from mod_studio import repo as _self
+        raise SystemExit(_self.main())
     root = _repo_root()
     if not root:
         raise SystemExit("not inside the repository")

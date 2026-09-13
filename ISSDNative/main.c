@@ -1509,6 +1509,9 @@ int main(int argc, char **argv) {
                 issd_menu_render_team_photo(g_pixel_buffer, cur_render_w,
                                             cur_render_h,
                                             g_ws_active ? g_ws_extra : 0);
+                issd_menu_render_team_grid(g_pixel_buffer, cur_render_w,
+                                           cur_render_h,
+                                           g_ws_active ? g_ws_extra : 0);
                 issd_menu_render_team_plate(g_pixel_buffer, cur_render_w,
                                             cur_render_h,
                                             g_ws_active ? g_ws_extra : 0);

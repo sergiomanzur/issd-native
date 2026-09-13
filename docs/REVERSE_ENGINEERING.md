@@ -470,4 +470,30 @@ Three measurements:
   vertical gradient, lettered yellow with a magenta outline. The
   photograph's frame holds 96 x 72 at x 24, y 40.
 
-The flag beside the plate, and the match HUD's own plate, are left alone.
+The match HUD's own plate is left alone.
+
+### The grid, and which team is in which cell
+
+Renaming the plate is only half of it: the grid below names all six cells
+of the group, and those are graphics too. Labelling them needs to know
+which team is in which cell, and the grid is **not** in team order - its
+first cell is England, which is team 2.
+
+That order was measured first (42 matches, each naming its own team
+through the 160-byte roster read) and then searched for: the sequence,
+doubled, is 42 bytes at **0xDA3F**. So the label lands on the right team
+from the cartridge's own table rather than from anything assumed.
+
+### An eighth group
+
+Raising the group count to 8 works - the screen draws a seventh and eighth
+page. Its six cells read Austria, Japan, Nigeria, Brazil, Mexico and All
+Star, which is the cell table running off its end into the table that
+follows it, and that table cannot grow in place.
+
+So a genuinely new page is: relocate the cell table to 48 entries, extend
+the roster and formation pointer tables the same way, find room in the
+attribute table, and work out how a team picks its kit palette - which is
+the one thing here that was never found, only measured team by team. It is
+the same shape of job as the stadium expansion, four times over, and it
+has not been done.

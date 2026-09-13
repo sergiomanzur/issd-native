@@ -53,6 +53,12 @@ SHARED_KIT_TEAMS = {15, 18, 19, 20, 21, 22, 23, 26}
 PLATE_CHARS = 12
 NAME_CHARS = 8
 POSITIONS = ("GK", "DF", "MF", "FW")
+# The cartridge has six position codes, not four: 3 and 5 sit between
+# defence and midfield and between midfield and attack, and fifty-one of
+# its seven hundred and twenty players have one. A pack may name the raw
+# number so a squad read out of the cartridge and written back is
+# unchanged rather than flattened to the nearest word.
+POSITION_CODES = range(16)
 TACTICS = ("attacking", "balanced", "normal", "defensive", "defence", "defense")
 ATTRIBUTES = ("acceleration", "speed", "shooting", "technique", "balance",
               "intelligence", "dribbling", "jumping", "stamina", "goalkeeping")
@@ -107,7 +113,10 @@ def check_name(report, where, name):
     if len(name) > NAME_CHARS:
         report.error(where, 'name "%s" is %d characters; the cartridge stores %d'
                      % (name, len(name), NAME_CHARS))
-    bad = sorted({c for c in name if not (c.isascii() and (c.isalpha() or c == " "))})
+    # A full stop is a real character here: the cartridge is full of them
+    # - R.Banks, T.Keegan - and stores one as 0x54.
+    bad = sorted({c for c in name
+                  if not (c.isascii() and (c.isalpha() or c in " ."))})
     if bad:
         report.error(where, 'name "%s" has characters the cartridge cannot show: %s'
                      % (name, " ".join(repr(c) for c in bad)))
@@ -126,8 +135,13 @@ def check_player(report, where, player, slot):
 
     position = player.get("position")
     if position is not None and position not in POSITIONS:
-        report.error(where, 'position "%s" is not one of %s'
-                     % (position, ", ".join(POSITIONS)))
+        number = str(position).strip()
+        if number.isdigit() and int(number) in POSITION_CODES:
+            pass          # a raw code: kept exactly, nothing to report
+        else:
+            report.error(where, 'position "%s" is not one of %s, nor a '
+                                'position code 0-15'
+                         % (position, ", ".join(POSITIONS)))
     if slot == 0 and position not in (None, "GK"):
         report.warn(where, "slot 0 is the goalkeeper, but this player is %s" % position)
     if slot == 11 and position not in (None, "GK"):

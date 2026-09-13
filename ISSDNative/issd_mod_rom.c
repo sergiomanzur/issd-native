@@ -66,6 +66,19 @@
  * last seven are dummies, all naming the same address one past the end of
  * the 36 rosters. There is an identical second copy; nothing was seen
  * reading it, but keeping the two the same costs nothing. */
+/* Which team sits in which cell of the select screen.
+ *
+ * The screen's six-by-seven grid is not in team order - its first cell is
+ * England, which is team 2 - so nothing on that screen can be labelled
+ * without this. Forty-two bytes, each a team index doubled, which is how
+ * the screen indexes everything. Found by measuring the grid a match at a
+ * time and then searching the cartridge for the order that came out.
+ *
+ * It is followed immediately by another table, so it cannot grow in
+ * place - which is what an eighth group would need. */
+#define ROM_CELL_TABLE        0x00DA3Fu
+#define ROM_CELLS                   42
+
 #define ROM_ROSTER_PTRS       0x038138u
 #define ROM_ROSTER_PTRS_COPY  0x0398AEu
 #define ROM_ROSTER_PTR_FIRST  0x818Eu     /* what entry 0 must hold */
@@ -144,7 +157,7 @@
 /* The cartridge does not use ASCII. 0x00 renders as a space and doubles as
  * padding; letters run from 0x68. Generated from the editor's dictionary. */
 static const struct { uint8_t code; char ch; } kCharset[] = {
-    { 0x00, '.' }, { 0x68, 'A' }, { 0x69, 'B' }, { 0x6A, 'C' }, { 0x6B, 'D' }, { 0x6C, 'E' },
+    { 0x54, '.' }, { 0x68, 'A' }, { 0x69, 'B' }, { 0x6A, 'C' }, { 0x6B, 'D' }, { 0x6C, 'E' },
     { 0x6D, 'F' }, { 0x6E, 'G' }, { 0x6F, 'H' }, { 0x70, 'I' }, { 0x71, 'J' }, { 0x72, 'K' },
     { 0x73, 'L' }, { 0x74, 'M' }, { 0x75, 'N' }, { 0x76, 'O' }, { 0x77, 'P' }, { 0x78, 'Q' },
     { 0x79, 'R' }, { 0x7A, 'S' }, { 0x7B, 'T' }, { 0x7C, 'U' }, { 0x7D, 'V' }, { 0x7E, 'W' },
@@ -205,8 +218,18 @@ static void patch_name(uint8_t *rom, size_t base, const char *name) {
  * values then climb through the outfield in squad order. 3 and 5 occur as
  * in-between ratings, so a mod picks the four it can name and the game still
  * reads the rest of the table unchanged. */
+/* The four names cover four of the six codes the cartridge uses. Positions
+ * 3 and 5 sit between defence and midfield and between midfield and attack;
+ * fifty-one of the seven hundred and twenty players have one. A pack can
+ * name the raw number so a squad read out of the cartridge and written back
+ * is unchanged, rather than being flattened to the nearest word. */
 static uint8_t position_code(const char *pos) {
     if (!pos) return 4;
+    if (pos[0] >= '0' && pos[0] <= '9') {
+        unsigned v = (unsigned)(pos[0] - '0');
+        if (pos[1] >= '0' && pos[1] <= '9') v = v * 10 + (unsigned)(pos[1] - '0');
+        return (uint8_t)(v > 15 ? 4 : v);
+    }
     if (pos[0] == 'G') return 1;   /* GK */
     if (pos[0] == 'D') return 2;   /* DF */
     if (pos[0] == 'F') return 6;   /* FW */
@@ -759,6 +782,18 @@ static bool patch_formation(uint8_t *rom, size_t rom_size,
 static uint8_t *s_live;
 static uint8_t *s_pristine;
 static size_t   s_size;
+
+int issd_mod_cell_team(int cell) {
+    if (!s_live || cell < 0 || cell >= ROM_CELLS) return -1;
+    if (ROM_CELL_TABLE + (size_t)cell >= s_size) return -1;
+    return s_live[ROM_CELL_TABLE + cell] / 2;
+}
+
+int issd_mod_team_cell(int team) {
+    for (int cell = 0; cell < ROM_CELLS; cell++)
+        if (issd_mod_cell_team(cell) == team) return cell;
+    return -1;
+}
 
 void issd_mod_rom_set_image(uint8_t *rom, size_t rom_size) {
   s_live = rom; s_size = rom_size;

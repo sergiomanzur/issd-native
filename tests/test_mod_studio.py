@@ -16,7 +16,7 @@ import pytest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 
-from mod_studio import model, preview, repo          # noqa: E402
+from mod_studio import cartridge, model, preview, repo   # noqa: E402
 
 
 def test_baked_snapshot_matches_the_repository():
@@ -119,6 +119,131 @@ def test_colour_round_trip():
     assert model.shade((255, 255, 255), 100) == (255, 255, 255)
     dark = model.shade((200, 16, 46), 60)
     assert all(0 <= c <= 255 for c in dark) and dark[0] < 200
+
+
+ROM = os.path.join(REPO, "International Superstar Soccer Deluxe (USA).sfc")
+needs_rom = pytest.mark.skipif(not os.path.isfile(ROM),
+                               reason="no cartridge to read")
+
+
+def test_the_cartridge_layout_parses_out_of_the_c():
+    """Every offset the reader uses is taken from issd_mod_rom.c. If one
+    stops parsing the reader would quietly fall back to a stale snapshot,
+    so check the parse itself rather than the snapshot."""
+    root = repo._repo_root()
+    live = cartridge._parse_c(root)
+    for key in cartridge._NEEDED:
+        assert key in live, "%s no longer parses out of the C" % key
+    assert live["ROM_NAME_BASE"] == 229774
+    assert live["ROM_ATTR_BASE"] == 0x50000
+    # The character set is the encoder's own table, read backwards.
+    assert live["charset"][0x68] == "A"
+    assert live["charset"][0x54] == "."
+    assert len(live["kit_record"]) == live["ROM_TEAMS"]
+
+
+@needs_rom
+def test_reading_a_team_gives_what_the_game_shows():
+    rom = cartridge.load_rom(ROM)
+    england = cartridge.read_team(rom, 2)
+    assert england["name"] == "England"
+    assert england["players"][0]["name"] == "R.Banks"
+    assert england["players"][0]["position"] == "GK"
+    assert england["players"][11]["position"] == "GK", "slot 11 is the reserve"
+    assert len(england["players"]) == repo.SQUAD_SLOTS
+
+    # Mexico wears green, Brazil yellow. If the kit table or the colour
+    # arithmetic were wrong this is where it would show.
+    mexico = cartridge.read_team(rom, 33)
+    r, g, b = model.parse_colour(mexico["shirt"])
+    assert g > r and g > b, mexico["shirt"]
+    brazil = cartridge.read_team(rom, 30)
+    r, g, b = model.parse_colour(brazil["shirt"])
+    assert r > 200 and g > 200 and b < 80, brazil["shirt"]
+
+
+@needs_rom
+def test_stadiums_read_back_as_the_guide_documents_them():
+    rom = cartridge.load_rom(ROM)
+    stock = {s["id"]: s for s in repo.load()["stock_stadiums"]}
+    for slot, expected in stock.items():
+        got = cartridge.read_stadium(rom, slot)
+        assert got["name"] == expected["name"]
+        assert got["pitch_length"] == expected["length"]
+        assert got["pitch_width"] == expected["width"]
+
+
+@needs_rom
+def test_an_imported_squad_written_back_is_the_same_bytes():
+    """The point of reading the cartridge is to edit one player and leave
+    the rest alone. That only holds if decoding and re-encoding is the
+    identity - names, positions, appearance and every rating - so encode
+    what was read and compare against the cartridge itself.
+
+    Ratings are quantised, so the check is that the four bits come back the
+    same, not the 0-99 number.
+    """
+    rom = cartridge.load_rom(ROM)
+    c = cartridge.constants()
+    encode = {v: k for k, v in c["charset"].items()}
+    attrs = ("acceleration", "speed", "shooting", "technique", "balance",
+             "intelligence", "dribbling", "jumping")
+
+    for team in (0, 2, 17, 30, 33, 35):
+        entry = cartridge.read_team(rom, team)
+        names = cartridge.roster_base(rom, team)
+        for slot, player in enumerate(entry["players"]):
+            # the name, byte for byte
+            want = rom[names + slot * 8:names + (slot + 1) * 8]
+            got = bytearray(8)
+            for i, ch in enumerate(player["name"][:8]):
+                got[i] = 0x00 if ch == " " else encode.get(ch, 0x00)
+            assert bytes(got) == bytes(want), (
+                "team %d slot %d: %r" % (team, slot, player["name"]))
+
+            a = c["ROM_ATTR_BASE"] + (team * 20 + slot) * 7
+            raw = rom[a:a + 7]
+            # the eight paired ratings
+            for i in range(4):
+                hi = repo.rating_to_nibble(player[attrs[i * 2]])
+                lo = repo.rating_to_nibble(player[attrs[i * 2 + 1]])
+                assert (hi << 4) | lo == raw[i], (
+                    "team %d slot %d attr byte %d" % (team, slot, i))
+            # position and stamina share a byte
+            pos = player["position"]
+            code = ({"GK": 1, "DF": 2, "MF": 4, "FW": 6}.get(pos)
+                    if not pos.isdigit() else int(pos))
+            stamina = repo.rating_to_nibble(player["stamina"])
+            assert (code << 4) | stamina == raw[4], (
+                "team %d slot %d position %r" % (team, slot, pos))
+            # skin tone and hair style share the last one
+            assert (player["skin_tone"] << 4) | player["hair_style"] == raw[6]
+
+
+@needs_rom
+def test_an_imported_team_passes_the_validator(tmp_path):
+    """Whatever comes out of the cartridge has to be a pack the game will
+    take back. Periods in names are the interesting case: the cartridge is
+    full of them and the encoder used to turn them into spaces."""
+    import validate_mod
+
+    rom = cartridge.load_rom(ROM)
+    pack = model.new_pack()
+    pack["name"] = "Imported"
+    for team in range(4):
+        entry = cartridge.read_team(rom, team)
+        entry.pop("_label", None)
+        pack["teams"].append(entry)
+    pack["stadiums"] = [cartridge.read_stadium(rom, s) for s in range(8)]
+
+    out = tmp_path / "imported.json"
+    model.save(pack, str(out))
+    report = validate_mod.Report()
+    validate_mod.validate(str(out), report)
+    assert not report.errors, report.errors
+
+    again = model.load(str(out))
+    assert again["teams"][2]["players"][0]["name"] == "R.Banks"
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY") and sys.platform != "win32",

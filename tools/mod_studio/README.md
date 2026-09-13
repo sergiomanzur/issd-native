@@ -32,6 +32,24 @@ Add, duplicate and delete from the toolbar, the Edit menu or the Del key.
 **Check pack** runs the same rules `validate_mod.py` does - literally the same
 module, so the editor cannot disagree with the command line.
 
+## Starting from the cartridge
+
+**Import from cartridge** points at your own dump and brings teams and
+grounds in exactly as they are - squads, positions, skin tones, hair
+styles, ratings, shapes and kit colours - so a pack starts from the real
+thing rather than a blank sheet. The path is remembered.
+
+Reading and writing have to be each other's inverse or a round trip
+quietly corrupts a squad, so the decoder is built from the same character
+set, offsets and quantiser the encoder uses, parsed out of
+`ISSDNative/issd_mod_rom.c`. Two details came out of testing that:
+
+- a full stop is a real character (`R.Banks`), stored as `0x54`, and the
+  encoder had been turning every one into a space;
+- a name's **leading** blanks are how the cartridge places it on screen and
+  are kept, while trailing ones are just the rest of the field. Stadium
+  names are the other way round - the writer right-aligns them itself.
+
 ## What it draws, and why
 
 Three numbers in a pack are not what a player sees, so the editor draws them:

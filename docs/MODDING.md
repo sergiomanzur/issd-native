@@ -111,6 +111,18 @@ two are interchangeable - edit a pack by hand, open it in the editor, and
 back again. **Check pack** runs the same rules `tools/validate_mod.py`
 does.
 
+### Starting from what is already there
+
+**Import from cartridge** reads your own dump and brings teams and grounds
+in as they are: twenty names each, their positions, skin tones, hair
+styles and ratings, the shape the team plays and the colours it wears.
+Open Mexico, change two players, save. A team pane in *replace* mode also
+has a **Load this team from the cartridge** button for one at a time.
+
+An import that is saved and applied unchanged leaves the game exactly as
+it was - all 720 players written back produce byte-identical squads in
+memory, which is the test that keeps it honest.
+
 It is worth a look even if you prefer a text editor, for three things it
 draws that a file cannot show you: the strip in the shades the cartridge
 will really store, the formation as a shape, and - the one that catches
@@ -298,8 +310,8 @@ A pack may also carry a `stadiums` array alongside `teams`; see section 8.
 | Key | Type | Notes |
 |---|---|---|
 | `shirt_number` | 1-99 | **Required.** Starts a player entry. |
-| `name` | text | **8 characters**, A-Z a-z and space. Longer names are cut; anything else becomes a space. |
-| `position` | `GK` `DF` `MF` `FW` | The letters shown beside the name. |
+| `name` | text | **8 characters**, A-Z a-z, space and a full stop. Longer names are cut; anything else becomes a space. Leading spaces are how the cartridge sits a name on screen - `" Pabi"` - and are kept. |
+| `position` | `GK` `DF` `MF` `FW`, or 0-15 | The letters shown beside the name. The cartridge has six codes, not four: 3 and 5 sit between defence and midfield and between midfield and attack, and 51 of its 720 players have one. Write the number to keep one exactly. |
 | `skin_tone` | 0-2 | 0 light, 1 medium, 2 dark |
 | `hair_style` | 0-15 | |
 | the ten attributes | 0-99 | see below |
@@ -804,7 +816,8 @@ Being straight about the ceiling saves everyone time.
 - **The team name in the match HUD**, and the flag beside it. The select
   screen's plate can be renamed; those cannot.
 - **More than 20 players per squad.**
-- **Player names longer than 8 characters**, and no accents or digits.
+- **Player names longer than 8 characters**, and no accents or digits. A
+  full stop is fine: the cartridge is full of them.
 - **Team names on the team select screen**, which are drawn graphics rather
   than text.
 - **New formation labels.** The screen can only print three numbers and the
