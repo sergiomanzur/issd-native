@@ -578,19 +578,64 @@ the two sites already known, and the kit table from `$82:CFD1` and
 `$82:D029`. Both had been dismissed earlier as data near the table. They
 are in `eighth_group_probe.py` now.
 
-### What the four WRAM ones mean
+### The WRAM ones were mostly not there
 
-`$7E:D442`, `$7E:DC00`, `$7E:DC26` and `$7E:DD50` are indexed by team too,
-and they are runtime arrays, not cartridge tables. No patch reaches them:
-they are laid out for the teams that exist, and a 43rd team writes past the
-end of each into whatever WRAM follows. That is consistent with the failure
-- the CPU ends up executing WRAM - and it is the part that makes 48 teams a
-re-layout of the game's data rather than a patch to its tables.
+Three of the four were the scan crossing an `RTS` into an unrelated routine.
+Tightening it - the index has to actually reach the register, and a run of
+straight-line code ends at control flow - leaves **one**: `$7E:DC26`, and
+reading it during a match shows a per-team counter, all zeros, with unused
+space after it. Not a blocker. The tightened scan reports 13 cartridge
+tables and that one array, where the loose one claimed 31 and four.
 
-So the honest shape of the remaining job is: relocate 23 more cartridge
-tables, then work out the WRAM layout and find room to grow four arrays
-inside it. The first half is mechanical and the scan lists every site. The
-second half is not, and nothing so far says it is possible.
+### Two real bugs the tightening exposed
 
-What ships meanwhile is six added teams at 36 to 41, taking the all-star
-sides' cells, with the loader naming the side each one displaced.
+**Five of the tables are one array.** `$82:827A`, `82D0`, `8326`, `837C` and
+`83D2` sit 86 bytes apart - 43 entries each - and the code steps from one to
+the next by adding 86 to the *index*:
+
+```
+  TXA / CLC / ADC #$0056 / TAX / LDA $82827A,X
+```
+
+Relocating them to scattered addresses breaks that even with every named
+reference correct. They have to move as one block at the new stride, and the
+two `ADC #$0056` sites become `ADC #$0060`.
+
+**Some of these are pools, not tables.** The same `LDA $82F9B3,X` is a
+per-team table when X holds the team and a shared pool when X holds a byte
+fetched *from* a per-team table:
+
+```
+  LDA $01,S / LSR / TAX / LDA $82FA35,X      ; per-team, one byte each
+  AND #$00FF / TAX      / LDA $82F5F8,X      ; a pool, indexed by that byte
+```
+
+Relocating a pool is worse than leaving it alone - its indices run well past
+42, so copying 42 entries truncates it. Telling them apart needs the value
+in X, which no amount of searching for byte patterns will give; it needs the
+register followed through the code. A small abstract interpreter over the
+straight-line runs does that, and sorts the select routine's thirty-odd
+loads into per-team tables, pools, and a handful it cannot decide.
+
+### Where it actually stands
+
+The eighth page renders and all six new teams are selectable on it. Twenty
+cartridge tables are relocated and extended. **Confirming a team from that
+page still jumps into WRAM.**
+
+And the classifier is not reliable enough to close the gap. `$82:FAB3` reads
+exactly like a per-team byte table - `LDA $01,S / LSR / TAX` then a byte
+load - and relocating it stops the eighth page drawing at all, which none of
+the others do. Whatever that index counts, it is not the team. Bisecting the
+additions caught it; nothing in the analysis did.
+
+That is the honest limit reached here. Every remaining round costs several
+runs, yields one or two tables, and carries a real chance of a regression
+that only bisection finds. Closing it properly wants a 65816 disassembler
+with dataflow - something that can say what is in X across calls - rather
+than more pattern matching.
+
+`tools/eighth_group_probe.py` builds a cartridge in this state and
+`tools/team_table_scan.py` lists what is left. What ships meanwhile is six
+added teams at 36 to 41, taking the all-star sides' cells, with the loader
+naming the side each one displaced.
