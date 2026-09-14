@@ -549,19 +549,48 @@ for both.
 
 With all eleven relocated and extended, **the eighth page works**: it
 renders, and all six of the new indices are stable on it - grid, formation
-panel and statistics all draw. That is the milestone.
+panel and statistics all draw. Confirming a team from it still jumps into
+WRAM, so the match-load path has more of them.
 
-**Confirming** a team from that page still jumps into WRAM and spins, so
-the match-load path has further per-team tables that have not been found.
-The same method will find them; it is a question of how many rounds.
+### Stop chasing crashes and count them
 
-`tools/eighth_group_probe.py` builds a cartridge in exactly this state, so
-the next attempt starts here rather than at the beginning:
+Each round of "add a page, see what breaks" turned up one or two more
+tables. That answers "how many are left?" very slowly and never says when
+it will end. Reading the code answers it at once.
+
+The cartridge gets hold of a team a small number of ways - `$0DA0` and
+`$0EA0` hold the two sides doubled, `$1522` and `$1526` the one being
+looked at - and then indexes something with it. Find each of those loads,
+walk forward a few instructions, and report the indexed load that follows.
+`tools/team_table_scan.py` does exactly that:
 
 ```
-python tools/eighth_group_probe.py        # all six new cells
-python tools/eighth_group_probe.py 42     # every new cell set to team 42
+python tools/team_table_scan.py "International Superstar Soccer Deluxe (USA).sfc"
 ```
 
-So what ships is six added teams at 36 to 41, taking the all-star sides'
-cells, with the loader naming the side each one displaced.
+**Thirty-five tables are indexed by the team.** Thirty-one in the
+cartridge, of which the eighth-group work has moved eight - and **four in
+WRAM**.
+
+It found missed references straight away, on tables that looked finished:
+the formation pointers are read from `$8B:DB35` and `$8B:DB47` as well as
+the two sites already known, and the kit table from `$82:CFD1` and
+`$82:D029`. Both had been dismissed earlier as data near the table. They
+are in `eighth_group_probe.py` now.
+
+### What the four WRAM ones mean
+
+`$7E:D442`, `$7E:DC00`, `$7E:DC26` and `$7E:DD50` are indexed by team too,
+and they are runtime arrays, not cartridge tables. No patch reaches them:
+they are laid out for the teams that exist, and a 43rd team writes past the
+end of each into whatever WRAM follows. That is consistent with the failure
+- the CPU ends up executing WRAM - and it is the part that makes 48 teams a
+re-layout of the game's data rather than a patch to its tables.
+
+So the honest shape of the remaining job is: relocate 23 more cartridge
+tables, then work out the WRAM layout and find room to grow four arrays
+inside it. The first half is mechanical and the scan lists every site. The
+second half is not, and nothing so far says it is possible.
+
+What ships meanwhile is six added teams at 36 to 41, taking the all-star
+sides' cells, with the loader naming the side each one displaced.

@@ -3,6 +3,9 @@
     python tools/eighth_group_probe.py            all six new cells
     python tools/eighth_group_probe.py 42         every new cell set to team 42
 
+tools/team_table_scan.py lists every table this has to cover; the last four
+reference sites added here came from that rather than from another crash.
+
 This is not part of the mod loader and nothing ships it. It is the state the
 eighth-group investigation reached, kept runnable so the next attempt starts
 here instead of at the beginning. See "An eighth group" in
@@ -37,8 +40,10 @@ TEAMS, SLOTS = 42, 48
 #        the long loads that name it)
 WORD_TABLES = {
     "roster":  (0x038138, 43, 0x03E4CC, 0x87, [0x004F3D, 0x004F60]),
-    "form":    (0x05EF48, 43, 0x05FDD0, 0x8B, [0x02AA89, 0x02B161]),
-    "kit_h":   (0x01027A, 43, 0x017BA0, 0x82, [0x123C67]),
+    "form":    (0x05EF48, 43, 0x05FDD0, 0x8B,
+                [0x02AA89, 0x02B161, 0x05DB35, 0x05DB47]),
+    "kit_h":   (0x01027A, 43, 0x017BA0, 0x82,
+                [0x123C67, 0x05CFD1, 0x05D029]),
     "kit_a":   (0x0102D0, 43, 0x017C00, 0x82, [0x123C6F]),
     "F59A":    (0x01759A, 42, 0x017C60, 0x82,
                 [0x01BA5C, 0x01BA87, 0x02A996, 0x02A9CC, 0x02C755, 0x02D157,
@@ -55,6 +60,13 @@ WORD_TABLES = {
 # The kit table is also reached in absolute form, where the bank comes from DB
 # rather than from the instruction - two more sites, sixteen bits each.
 ABS_REFS = {"kit_h": [0x123B53, 0x123C05]}
+
+# Indexed by the team itself rather than doubled - the reader halves it
+# first (LDA $00A0,Y / LSR / TAX). One byte each.
+BYTE_TABLES = {
+    "842E": (0x01042E, 42, 0x017F60, 0x82, [0x0C7A65, 0x0C7A73]),
+}
+BYTE_ABS_REFS = {"842E": [0x123B61, 0x123B6E]}
 
 # Which team is in which cell of the grid. Not in team order: cell 0 is
 # England, which is team 2.
@@ -105,6 +117,18 @@ def build(src=SRC, cells_at=None):
             assert rom[r - 1] == 0xBF, "%s ref %06X" % (name, r)
             w24(rom, r, new, bank)
         for r in ABS_REFS.get(name, []):
+            addr = 0x8000 + (new - (bank & 0x7F) * 0x8000)
+            rom[r] = addr & 0xFF
+            rom[r + 1] = addr >> 8
+
+    for name, (base, have, new, bank, refs) in BYTE_TABLES.items():
+        rom[new:new + have] = rom[base:base + have]
+        for t in range(have, SLOTS):
+            rom[new + t] = rom[base + (t - TEAMS)]
+        for r in refs:
+            assert rom[r - 1] == 0xBF, "%s ref %06X" % (name, r)
+            w24(rom, r, new, bank)
+        for r in BYTE_ABS_REFS.get(name, []):
             addr = 0x8000 + (new - (bank & 0x7F) * 0x8000)
             rom[r] = addr & 0xFF
             rom[r + 1] = addr >> 8
