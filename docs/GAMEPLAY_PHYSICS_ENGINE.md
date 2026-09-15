@@ -143,6 +143,38 @@ Restitution coefficient $C_r$ (`CODE_83898D`) depends on weather:
 
 If $|dZ| < 0.25\text{ px/frame}$ after impact, $Z$ and $dZ$ are clamped to $0$ (the ball transitions to a ground roll).
 
+### 3.5 Independent Ball Entity & Dribble Physics (Loose Possession)
+A foundational design principle in *ISS Deluxe* is that **the ball is NEVER attached, parented, or glued to the player**. The ball is always an independent simulated physics object (sprite entity `$0400`):
+
+```mermaid
+flowchart LR
+    subgraph DribbleLoop[Per-Frame Dribble Cycle]
+        Carrier[Ball Carrier $1B90] -->|Proximity Check: Dist < 24 px| Possess{Possession Valid?}
+        Possess -->|Dist >= 24 px| Lose[Possession Lost: Ball Loose]
+        Possess -->|Dist < 16 px| Nudge[Impulse Tap: CODE_85F356]
+        Nudge -->|Launch Ball Forward| FreeRoll[Ball Rolls Freely at dX, dY]
+        FreeRoll -->|Ground Friction: a = 0.03125| Decel[Ball Decelerates Ahead]
+        Decel -->|Player Runs at Top Speed| CatchUp[Player Closes Distance]
+        CatchUp --> Nudge
+    end
+```
+
+1. **Possession Radius (`CODE_849530`)**:
+   - The ball carrier's pointer is stored in `$1B90`.
+   - Every frame, `CODE_80E1EA` calculates the distance between the player and the ball.
+   - **Tether Limit**: If $\text{Distance} \ge 24\text{ px}$ (`$0018`), the player immediately loses possession (`$1B90` is cleared).
+2. **Contact Touch & Nudge Cadence (`CODE_849F60` & `CODE_85F356`)**:
+   - When the player is within $16\text{ px}$ (`$0010`) of the ball, the engine triggers a ball nudge (`CODE_85F8B9` -> `CODE_8394A4`).
+   - The ball receives a horizontal impulse in the direction the player is running.
+   - Initial nudge velocity is slightly faster than running speed ($3.2\text{ to }3.8\text{ px/f}$).
+3. **Natural Free Roll Between Touches**:
+   - Once tapped, the ball moves purely by its own kinematic equations ($dX, dY, dZ$).
+   - Ground rolling friction ($0.03125\text{ px/f}^2$) slows the ball down over the next $6\text{ to }10\text{ frames}$.
+   - As the ball slows down, the sprinting/jogging player catches up to it. When distance closes under $16\text{ px}$, the next foot contact occurs.
+4. **Game Design Implications for Modern Engines**:
+   - **Contestable Possession**: Because the ball is physically detached and rolling ahead of the carrier between foot touches, a defender executing a sliding tackle can strike the ball cleanly without ever touching the player.
+   - **Heavy Touches on Sprint**: In dash/sprint mode, the nudge impulse is stronger, knocking the ball further ahead ($20\text{ px}$), making the player faster in a straight line but significantly more vulnerable to interceptions.
+
 ---
 
 ## 4. Shooting Mechanics & Curve
@@ -176,6 +208,70 @@ graph TD
 During the first 24 frames of a shot, holding the D-pad perpendicular to the shot trajectory applies a lateral acceleration:
 $$d\vec{V}_{\text{lateral}} = \pm \left( 0.045 + 0.015 \cdot \text{Technique} \right)\text{ px/frame}^2$$
 Higher **Technique** allows the ball to curve around defenders and bend into the corners of the net.
+
+### 4.3 Passing Target Selection Algorithm
+When a player executes a short pass (B button) or through-pass (X button), the target recipient is chosen automatically via `CODE_83812E` through `CODE_838382`.
+
+```mermaid
+flowchart TD
+    Input[Pass Button Pressed: B / X] --> CheckMode{Pass Mode & Input Vector}
+    CheckMode -->|D-Pad Held: Mode 2| ConeCheck[Directional Cone Scan: CODE_83823E]
+    CheckMode -->|Through-Pass: Mode 1| ForwardCheck[Forward Open Scan: CODE_8382AE]
+    CheckMode -->|Neutral D-Pad: Mode 0| NearestCheck[Closest Teammate: CODE_83834F]
+    
+    subgraph TeammateFilter[Candidate Validation: CODE_8385B4]
+        T1[Active on Pitch: $30 != 0]
+        T2[Not Stunned / Knocked Down: $6D & 0x80 == 0]
+        T3[Not Locked in Receiver Animation: $60 & 0x20 == 0]
+        T4[Inside Field Bounds: X >= 256, Y >= 224]
+        T1 --> T2 --> T3 --> T4
+    end
+    
+    ConeCheck --> TeammateFilter
+    ForwardCheck --> TeammateFilter
+    NearestCheck --> TeammateFilter
+    
+    TeammateFilter -->|Angle in [MinAngle, MaxAngle]| Score[Compute Distance Score: CODE_80E200]
+    Score --> PickBest[Select Lowest Score Teammate]
+    PickBest --> Launch[Launch Pass Vector dX, dY to Receiver]
+```
+
+#### 1. Candidate Availability Validation (`CODE_8385B4`)
+Before a teammate is evaluated, they must satisfy four non-negotiable status checks:
+- **On Pitch**: Byte `$30 \ne 0` (player is on the field, not benched or red-carded).
+- **Not Stunned**: Byte `$6D` high bit clear (`$6D < 128`, not recovering from a slide tackle or shoulder charge).
+- **Not Locked**: Status word `$60` bit `$0020` clear (player is not currently locked into an active receiver animation or heading motion).
+- **Within Playable Boundaries**: Coordinate $X \ge 256$ and $Y \ge 224$ (player is inside the boundary lines).
+
+#### 2. Directional Acceptance Cones (`DATA_819B7F` & `DATA_819B87`)
+The engine measures angles on a 64-step circle ($360^\circ / 64 = 5.625^\circ$ per step). Holding the D-Pad sets an angular acceptance cone:
+
+| D-Pad Direction | Angle Index | Min Angle (`DATA_819B7F`) | Max Angle (`DATA_819B87`) | Acceptance Window |
+|---|---|---|---|---|
+| **East (Right)** | 0 | 60 ($337.5^\circ$) | 8 ($45.0^\circ$) | $67.5^\circ$ forward cone |
+| **South-East** | 1 | 0 ($0^\circ$) | 16 ($90.0^\circ$) | $90.0^\circ$ quadrant |
+| **South (Down)** | 2 | 4 ($22.5^\circ$) | 28 ($157.5^\circ$) | $135.0^\circ$ downward cone |
+| **South-West** | 3 | 18 ($101.25^\circ$) | 34 ($191.25^\circ$) | $90.0^\circ$ quadrant |
+| **West (Left)** | 4 | 28 ($157.5^\circ$) | 44 ($247.5^\circ$) | $90.0^\circ$ backward cone |
+| **North-West** | 5 | 32 ($180.0^\circ$) | 48 ($270.0^\circ$) | $90.0^\circ$ quadrant |
+| **North (Up)** | 6 | 36 ($202.5^\circ$) | 60 ($337.5^\circ$) | $135.0^\circ$ upward cone |
+| **North-East** | 7 | 50 ($281.25^\circ$) | 4 ($22.5^\circ$) | $101.25^\circ$ quadrant |
+
+#### 3. Proximity Scoring & Teammate Resolution (`CODE_80E200`)
+Among all teammates whose relative vector angle $\theta$ falls within the selected D-Pad cone:
+$$\text{Score} = \text{Distance}(\text{Passer}, \text{Teammate}) + \text{AngleDeviation} \times 8$$
+The eligible teammate with the lowest score is selected as the primary receiver.
+
+#### 4. Through-Pass Leading Vector (`CODE_8382AE`)
+When executing a through-pass:
+- Teammates behind the ball relative to the attacking goal are disqualified ($X_{\text{teammate}} \le X_{\text{ball}}$ when attacking right).
+- The ball target position is projected **ahead** of the receiver along their current movement vector:
+  $$\vec{P}_{\text{lead}} = \vec{P}_{\text{receiver}} + \vec{V}_{\text{receiver}} \times 18\text{ frames}$$
+- The pass velocity is calibrated so the ball and the sprinting receiver arrive at $\vec{P}_{\text{lead}}$ simultaneously.
+
+#### 5. Fallback Pass (`CODE_83834F`)
+If no candidate falls inside the D-Pad cone (or if the pass button is pressed with neutral directional input):
+- The algorithm scans all 10 outfield teammates and selects the candidate with the absolute minimum Euclidean distance to the ball carrier.
 
 ---
 

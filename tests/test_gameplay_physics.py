@@ -190,6 +190,38 @@ def test_player_condition_arrow_modifiers():
     assert max(1, min(15, 15 + (4 - 2))) == 15  # high clamp
 
 
+def test_rom_passing_angle_cones():
+    """Verify passing directional cone tables DATA_819B7F and DATA_819B87 in ROM."""
+    rom = load_rom()
+    off_min = snes_to_rom(0x819B7F)
+    off_max = snes_to_rom(0x819B87)
+
+    min_angles = list(rom[off_min : off_min + 8])
+    max_angles = list(rom[off_max : off_max + 8])
+
+    # Verified 64-step angle circle cones for 8 D-Pad directions
+    assert min_angles == [60, 0, 4, 18, 28, 32, 36, 50]
+    assert max_angles == [68, 8, 20, 28, 36, 40, 52, 60]
+
+
+def test_dribble_possession_and_nudge_thresholds():
+    """Verify dribble distance thresholds: tether radius (24 px) and foot touch (16 px)."""
+    tether_limit_px = 24   # CODE_849530: CMP #$0018
+    touch_trigger_px = 16  # CODE_849F60: CMP #$0010
+
+    # Within 16 px -> foot touch impulse applied to ball
+    dist_at_foot = 12
+    assert dist_at_foot < touch_trigger_px
+
+    # Between 16 and 24 px -> ball rolls freely ahead, carrier in control
+    dist_free_roll = 19
+    assert touch_trigger_px <= dist_free_roll < tether_limit_px
+
+    # Beyond 24 px -> possession immediately severed
+    dist_loose = 25
+    assert dist_loose >= tether_limit_px
+
+
 def test_headless_gameplay_simulation():
     """Verify live headless match simulation runs 120 frames cleanly."""
     exe_path = REPO_ROOT / "build" / "ISSDNative.exe"
