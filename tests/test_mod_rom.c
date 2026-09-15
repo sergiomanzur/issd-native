@@ -96,7 +96,9 @@ int main(void) {
     assert((rom[attr_at(0, 2) + 4] >> 4) == 6);        /* slot 2 is FW */
     assert((a[4] & 0x0F) == rating_nibble_for_50());   /* stamina still packed */
 
-    /* skin tone in the high nibble, hair style in the low one */
+    /* The appearance byte, whose halves keep their misleading names: the
+     * high nibble is the palette the sprite is drawn with, the low one is
+     * read by nothing but still has to come back the way it went in. */
     assert((a[6] >> 4) == 1);
     assert((a[6] & 0x0F) == 13);
 

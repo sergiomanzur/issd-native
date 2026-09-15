@@ -5,10 +5,12 @@
 Writes tools/mod_studio/dist/ISSDModStudio.exe. The build directories are kept
 out of the repository's own `build/`, which belongs to CMake.
 
-Two files have to travel with the code: the snapshot of what the cartridge
-looks like (baked.json), because a frozen exe has no repository to read, and
-validate_mod.py, so the Check button runs the same rules the command line
-does rather than a second copy of them.
+Three things have to travel with the code: the snapshot of what the
+cartridge looks like (baked.json), because a frozen exe has no repository
+to read; validate_mod.py, so the Check button runs the same rules the
+command line does rather than a second copy of them; and assets/, the
+pictures cut out of the game - the eight pitches and the player - because
+without them the editor quietly goes back to drawing its own.
 """
 import os
 import shutil
@@ -34,6 +36,18 @@ def main() -> int:
           % (len(data["formations"]), len(data["team_names"]),
              len(data["stock_stadiums"])))
 
+    # A missing capture is not a crash, just a worse editor, so it would
+    # ship unnoticed. Say so here instead.
+    from mod_studio import preview
+    missing = [n for n in (["pitch/slot%d.png" % i for i in range(8)]
+                           + ["player/%02X.png" % (v << 4) for v in range(4)])
+               if not os.path.isfile(os.path.join(preview.ASSETS, *n.split("/")))]
+    if missing:
+        print("missing captures: %s\n"
+              "run python tools/capture_editor_assets.py"
+              % ", ".join(missing))
+        return 2
+
     try:
         import PyInstaller                     # noqa: F401
     except ImportError:
@@ -53,6 +67,8 @@ def main() -> int:
         "--paths", HERE,
         "--add-data", "%s%s%s" % (os.path.join(PKG, "baked.json"), sep, "mod_studio"),
         "--add-data", "%s%s%s" % (os.path.join(HERE, "validate_mod.py"), sep, "."),
+        "--add-data", "%s%s%s" % (os.path.join(PKG, "assets"), sep,
+                                  os.path.join("mod_studio", "assets")),
         "--hidden-import", "PIL._tkinter_finder",
         os.path.join(HERE, "mod_studio_launch.py"),
     ]

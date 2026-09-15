@@ -13,9 +13,9 @@ import tempfile
 import tkinter as tk
 from tkinter import colorchooser, filedialog, messagebox, ttk
 
-from PIL import ImageTk
+from PIL import Image, ImageTk
 
-from . import cartridge, model, preview, repo
+from . import cartridge, model, preview, repo, tiles
 
 APP_NAME = "ISSD Mod Studio"
 SETTINGS = os.path.join(os.path.expanduser("~"),
@@ -98,6 +98,7 @@ class Studio(tk.Tk):
         f.add_separator()
         f.add_command(label="Import from cartridge...",
                       command=self.on_import)
+        f.add_command(label="Pitch tiles...", command=self.on_tiles)
         f.add_separator()
         f.add_command(label="Save", accelerator="Ctrl+S", command=self.on_save)
         f.add_command(label="Save as...", command=self.on_save_as)
@@ -146,6 +147,8 @@ class Studio(tk.Tk):
                    command=self.on_validate).pack(side="left", padx=2)
         ttk.Button(bar, text="Import from cartridge", width=20,
                    command=self.on_import).pack(side="left", padx=2)
+        ttk.Button(bar, text="Pitch tiles", width=12,
+                   command=self.on_tiles).pack(side="left", padx=2)
 
     def _build_body(self):
         body = ttk.Frame(self, padding=(8, 0))
@@ -495,9 +498,16 @@ class Studio(tk.Tk):
         shape_img = ttk.Label(shape_box, style="Panel.TLabel")
         shape_img.grid(row=1, column=0, sticky="w", pady=(10, 0))
 
+        # Which ground to stand the shape on. A pack that adds stadiums
+        # offers those; otherwise the eight the cartridge ships. The
+        # grass is the real thing, so this is also how you see what a
+        # ground looks like before picking it.
+        ground = tk.IntVar(value=int(team.get("_preview_stadium") or 0))
+
         def redraw_shape():
             im = preview.formation(team.get("formation") or "4-4-2",
-                                   team.get("tactics") or "balanced")
+                                   team.get("tactics") or "balanced",
+                                   stadium=ground.get())
             photo = ImageTk.PhotoImage(im)
             self._images.append(photo)
             shape_img.configure(image=photo)
@@ -506,6 +516,18 @@ class Studio(tk.Tk):
             row=0, column=0, columnspan=2, sticky="w", pady=(0, 6))
         self._bind_combo(shape_fields, 1, "Formation", team, "formation",
                          repo.formation_names(), on_change=redraw_shape)
+        def pick_ground(_=None):
+            names = {s["id"]: s["name"] for s in repo.load()["stock_stadiums"]}
+            ground.set((ground.get() + 1) % 8)
+            team["_preview_stadium"] = ground.get()
+            ground_btn.configure(
+                text="Pitch: %s" % names.get(ground.get(), ground.get()))
+            redraw_shape()
+        ground_btn = ttk.Button(shape_fields, width=18, command=pick_ground)
+        ground_btn.grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        _names = {s["id"]: s["name"] for s in repo.load()["stock_stadiums"]}
+        ground_btn.configure(text="Pitch: %s" % _names.get(ground.get(), ground.get()))
+
         self._bind_combo(shape_fields, 2, "Tactics", team, "tactics", repo.TACTICS,
                          note="shifts every line by six", on_change=redraw_shape,
                          width=14)
@@ -694,29 +716,30 @@ class Studio(tk.Tk):
         look.grid(row=6, column=0, columnspan=4, sticky="w")
         ttk.Label(look, text="Appearance", style="Head.TLabel").grid(
             row=0, column=0, columnspan=3, sticky="w")
-        ttk.Label(look, text="Skin tone and hair style are the two appearance "
-                            "fields the cartridge keeps per player. There is no "
-                            "hair colour: forcing a squad's tone changes the "
-                            "picture without the game reading a single different "
-                            "byte, so the colours come from a palette already "
-                            "loaded, not from a table a pack could point at.",
+        ttk.Label(look, text="One byte, and it is not what its name says. The top half picks the palette the sprite is drawn with - dark hair or fair, and nothing else the strip survives. The bottom half changes nothing in a match, though the cartridge varies it from 0 to 13. Measured by setting it and looking; the pictures are that player with that value.",
                   style="Muted.TLabel", wraplength=470, justify="left").grid(
             row=1, column=0, columnspan=3, sticky="w", pady=(2, 8))
-        head = ttk.Label(look, style="Panel.TLabel")
-        head.grid(row=4, column=0, columnspan=3, sticky="w", pady=(10, 0))
+
+        look_img = ttk.Label(look, style="Panel.TLabel")
+        look_img.grid(row=2, column=2, rowspan=3, sticky="w", padx=(16, 0))
+        look_note = ttk.Label(look, style="Muted.TLabel", wraplength=230,
+                              justify="left")
+        look_note.grid(row=5, column=2, sticky="w", padx=(16, 0))
 
         def redraw_head():
-            im = preview.player_head(player.get("skin_tone", 0),
-                                     player.get("hair_style", 0))
+            value = int(player.get("skin_tone", 0) or 0) & 3
+            im = preview.player_appearance(value)
             photo = ImageTk.PhotoImage(im)
             self._images.append(photo)
-            head.configure(image=photo)
+            look_img.configure(image=photo)
+            what, why = preview.APPEARANCE.get(value, ("?", ""))
+            look_note.configure(text="%s - %s" % (what, why))
 
-        self._bind_int(look, 2, "Skin tone", player, "skin_tone", 0, 2,
-                       note="0 light, 1 medium, 2 dark", on_change=redraw_head)
-        self._bind_int(look, 3, "Hair style", player, "hair_style", 0, 15,
-                       note="0-15; the cartridge's own squads use 0-13",
+        self._bind_int(look, 2, "Hair colour", player, "skin_tone", 0, 3,
+                       note="0 dark, 1 fair; 2 and 3 break the sprite",
                        on_change=redraw_head)
+        self._bind_int(look, 3, "Unused", player, "hair_style", 0, 15,
+                       note="kept so a squad round-trips; nothing reads it")
         redraw_head()
 
         ttk.Separator(f, orient="horizontal").grid(row=7, column=0, columnspan=4,
@@ -891,6 +914,9 @@ class Studio(tk.Tk):
         self._remember_rom(path)
         self.status.set("Cartridge: %s" % os.path.basename(path))
         return self.rom
+
+    def on_tiles(self):
+        TileDialog(self)
 
     def on_import(self):
         rom = self.cartridge_bytes()
@@ -1131,10 +1157,10 @@ def selftest(report_path: str, pack_path: str | None = None) -> int:
     """Open a window, build every pane, run the checker, and close.
 
     A packaged .exe can be broken in ways the source is not - a missing
-    baked.json, a Pillow that cannot talk to tk - and none of that shows up
-    until somebody clicks the thing that needs it. This clicks them all and
-    writes what happened to a file, because a windowed build has no console
-    to print to.
+    baked.json, captures that did not travel with the build, a Pillow that
+    cannot talk to tk - and none of that shows up until somebody clicks the
+    thing that needs it. This clicks them all and writes what happened to a
+    file, because a windowed build has no console to print to.
     """
     lines = []
     ok = True
@@ -1170,6 +1196,23 @@ def selftest(report_path: str, pack_path: str | None = None) -> int:
             ok = False
             lines.append("the baked cartridge data is missing")
 
+        # The captures. A missing one is not a crash - the editor falls
+        # back to inventing a pitch - so nothing else would notice.
+        shots = [("pitch", "slot%d.png" % n) for n in range(8)]
+        shots += [("player", "%02X.png" % (k << 4)) for k in range(4)]
+        absent = [n[-1] for n in shots if preview._asset(*n) is None]
+        lines.append("captures loaded: %d of %d"
+                     % (len(shots) - len(absent), len(shots)))
+        if absent:
+            ok = False
+            lines.append("missing: %s" % ", ".join(absent))
+
+        pane = TileDialog(studio)
+        pane.withdraw()
+        pane.redraw()
+        pane.destroy()
+        lines.append("tile pane built")
+
         v = _validator()
         if v is None:
             ok = False
@@ -1198,13 +1241,189 @@ def selftest(report_path: str, pack_path: str | None = None) -> int:
     return 0 if ok else 1
 
 
+class TileDialog(tk.Toplevel):
+    """Author the graphics a pitch is made of.
+
+    The game finds a replacement tile by a hash of its pixels, so a pack is
+    a folder of images named after what they stand in for - unreadable by
+    design. This shows the dump instead, grass first, because someone
+    building a pitch is looking for grass.
+    """
+    THUMB = 40
+    COLUMNS = 16
+
+    def __init__(self, studio):
+        super().__init__(studio)
+        self.studio = studio
+        self.dump = None
+        self.pack_dir = None
+        self.selected = None
+        self._thumbs = []
+        self.title("Pitch tiles")
+        self.geometry("880x660")
+        self.transient(studio)
+
+        top = ttk.Frame(self, padding=10)
+        top.pack(fill="x")
+        ttk.Button(top, text="Open tile dump...", width=18,
+                   command=self.open_dump).pack(side="left")
+        ttk.Button(top, text="Pack folder...", width=16,
+                   command=self.pick_pack).pack(side="left", padx=6)
+        self.where = ttk.Label(top, style="Muted.TLabel")
+        self.where.pack(side="left", padx=10)
+
+        how = ("Run the game with --dump-tiles <folder> to collect the tiles "
+               "of whatever it drew, then replace the ones you want. A "
+               "replacement can be any size the game will take: square, a "
+               "multiple of 8, up to 512. Four times is the usual choice.")
+        ttk.Label(self, text=how, style="Muted.TLabel", wraplength=840,
+                  justify="left", padding=(10, 0, 10, 8)).pack(anchor="w")
+
+        mid = ttk.Frame(self)
+        mid.pack(fill="both", expand=True, padx=10)
+        self.canvas = tk.Canvas(mid, background="#1d2026",
+                                highlightthickness=0)
+        bar = ttk.Scrollbar(mid, orient="vertical",
+                            command=self.canvas.yview)
+        self.canvas.configure(yscrollcommand=bar.set)
+        bar.pack(side="right", fill="y")
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.canvas.bind("<Button-1>", self.on_click)
+        self.canvas.bind("<MouseWheel>", self.on_wheel)
+
+        self.only_grass = tk.BooleanVar(value=True)
+        foot = ttk.Frame(self, padding=10)
+        foot.pack(fill="x")
+        ttk.Checkbutton(foot, text="Pitch tiles only",
+                        variable=self.only_grass,
+                        command=self.redraw).pack(side="left")
+        self.chosen = ttk.Label(foot, style="Muted.TLabel")
+        self.chosen.pack(side="left", padx=12)
+        ttk.Button(foot, text="Close",
+                   command=self.destroy).pack(side="right")
+        ttk.Button(foot, text="Replace with image...",
+                   command=self.replace).pack(side="right", padx=6)
+        ttk.Button(foot, text="Enlarge 4x into pack",
+                   command=self.enlarge).pack(side="right")
+        self.refresh_where()
+
+    # ------------------------------------------------------------ files --
+    def refresh_where(self):
+        d = os.path.basename(self.dump.path) if self.dump else "no dump"
+        p = os.path.basename(self.pack_dir) if self.pack_dir else "no pack"
+        self.where.configure(text="%s  ->  %s" % (d, p))
+
+    def open_dump(self):
+        path = filedialog.askdirectory(parent=self, title="The --dump-tiles folder")
+        if not path:
+            return
+        self.dump = tiles.Dump(path)
+        if not len(self.dump):
+            messagebox.showwarning(APP_NAME, "No tiles in that folder.",
+                                   parent=self)
+        self.selected = None
+        self.refresh_where()
+        self.redraw()
+
+    def pick_pack(self):
+        path = filedialog.askdirectory(
+            parent=self, title="Where the pack goes - a folder under mods/")
+        if path:
+            self.pack_dir = path
+            self.refresh_where()
+            self.redraw()
+
+    # ------------------------------------------------------------- grid --
+    def shown(self):
+        if not self.dump:
+            return []
+        return self.dump.grass if self.only_grass.get() else self.dump.tiles
+
+    def redraw(self):
+        self.canvas.delete("all")
+        self._thumbs = []
+        have = tiles.pack_contents(self.pack_dir) if self.pack_dir else set()
+        step = self.THUMB + 12
+        for i, (name, im, _g) in enumerate(self.shown()):
+            col, row = i % self.COLUMNS, i // self.COLUMNS
+            x, y = 12 + col * step, 12 + row * step
+            photo = ImageTk.PhotoImage(
+                im.convert("RGB").resize((self.THUMB, self.THUMB),
+                                         Image.NEAREST))
+            self._thumbs.append((photo, name))
+            self.canvas.create_image(x, y, image=photo, anchor="nw",
+                                     tags=("tile", name))
+            if name in have:
+                self.canvas.create_rectangle(
+                    x - 2, y - 2, x + self.THUMB + 1, y + self.THUMB + 1,
+                    outline="#6fd08c", width=2)
+            if name == self.selected:
+                self.canvas.create_rectangle(
+                    x - 4, y - 4, x + self.THUMB + 3, y + self.THUMB + 3,
+                    outline="#f0c419", width=2)
+        rows = (len(self.shown()) + self.COLUMNS - 1) // self.COLUMNS
+        self.canvas.configure(scrollregion=(0, 0, 0, 24 + rows * step))
+
+    def on_wheel(self, event):
+        self.canvas.yview_scroll(-1 if event.delta > 0 else 1, "units")
+
+    def on_click(self, event):
+        step = self.THUMB + 12
+        x = self.canvas.canvasx(event.x) - 12
+        y = self.canvas.canvasy(event.y) - 12
+        col, row = int(x // step), int(y // step)
+        index = row * self.COLUMNS + col
+        shown = self.shown()
+        if 0 <= col < self.COLUMNS and 0 <= index < len(shown):
+            self.selected = shown[index][0]
+            self.chosen.configure(text="tile %s" % self.selected)
+            self.redraw()
+
+    # ------------------------------------------------------------ edits --
+    def _ready(self):
+        if not self.selected:
+            messagebox.showinfo(APP_NAME, "Pick a tile first.", parent=self)
+            return False
+        if not self.pack_dir:
+            self.pick_pack()
+        return bool(self.pack_dir)
+
+    def replace(self):
+        if not self._ready():
+            return
+        path = filedialog.askopenfilename(
+            parent=self, title="The picture to use",
+            filetypes=[("Images", "*.png *.bmp *.gif *.jpg *.jpeg"),
+                       ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            src = Image.open(path)
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, "%s" % exc, parent=self)
+            return
+        tiles.put(self.pack_dir, self.selected, src, scale=4)
+        self.studio.status.set("Tile %s replaced." % self.selected)
+        self.redraw()
+
+    def enlarge(self):
+        """Put the cartridge's own art in the pack, bigger."""
+        if not self._ready():
+            return
+        for name, im, _g in self.shown():
+            if name == self.selected:
+                tiles.put(self.pack_dir, name, tiles.enlarge(im, 4), scale=4)
+                break
+        self.studio.status.set("Tile %s enlarged into the pack." % self.selected)
+        self.redraw()
+
+
 class ImportDialog(tk.Toplevel):
     """Pick what to take out of the cartridge.
 
     Everything the cartridge has for a team comes across: twenty names,
-    their positions, skin tones, hair styles and ratings, the shape it
-    plays and the colours it wears. Edit from there rather than from a
-    blank sheet.
+    their positions, appearance and ratings, the shape it plays and the
+    colours it wears. Edit from there rather than from a blank sheet.
     """
     def __init__(self, studio, rom):
         super().__init__(studio)
@@ -1219,8 +1438,8 @@ class ImportDialog(tk.Toplevel):
                   padding=(10, 8)).pack(anchor="w")
 
         note = ("Ticking a team brings its twenty players across with their "
-                "positions, skin tones, hair styles and ratings, plus its "
-                "shape and its colours.")
+                "positions, appearance and ratings, plus its shape and its "
+                "colours.")
         ttk.Label(self, text=note, wraplength=720, justify="left",
                   padding=(10, 0, 10, 8)).pack(anchor="w")
 

@@ -46,8 +46,16 @@ typedef struct {
     char     name[24];
     uint8_t  shirt_number;
     char     position[4];  /* "GK", "DF", "MF", "FW" */
-    uint8_t  skin_tone;    /* 0=Light, 1=Medium, 2=Dark */
-    uint8_t  hair_style;   /* 0 - 7 */
+    /* One byte in the cartridge, and neither half does what its name
+     * says - the names were a guess and the guess was wrong. The top
+     * half picks the palette the sprite is drawn with: 0 dark hair,
+     * 1 fair, and those are the only two the cartridge uses; 2 and 3
+     * select palettes the strip does not fit and turn the whole player
+     * orange or green. The bottom half changes nothing in a match,
+     * though the cartridge's own squads vary it from 0 to 13. Both keep
+     * their names so packs already written still load. */
+    uint8_t  skin_tone;    /* really hair colour: 0 dark, 1 fair */
+    uint8_t  hair_style;   /* kept so a squad round-trips; unread */
     IssdPlayerAttributes attributes;
 } IssdModPlayer;
 

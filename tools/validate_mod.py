@@ -157,13 +157,22 @@ def check_player(report, where, player, slot):
         elif not 0 <= value <= 99:
             report.error(where, "%s is %s; the scale is 0 to 99" % (key, value))
 
+    # The appearance byte. Neither half does what its name says, and the
+    # names are kept only so packs already written still load: skin_tone
+    # picks the palette the sprite is drawn with - dark hair or fair - and
+    # hair_style is read by nothing. Each is half a byte.
     for key in ("skin_tone", "hair_style"):
         if key in player:
-            limit = 2 if key == "skin_tone" else 15
             value = player[key]
-            if not isinstance(value, int) or not 0 <= value <= limit:
-                report.error(where, "%s is %s; the range is 0 to %d"
-                             % (key, value, limit))
+            if (not isinstance(value, int) or isinstance(value, bool)
+                    or not 0 <= value <= 15):
+                report.error(where, "%s is %s; it is half a byte, 0 to 15"
+                             % (key, value))
+            elif key == "skin_tone" and value > 1:
+                report.warn(where, "skin_tone is %s; it picks the palette "
+                                   "the player is drawn with, and only 0 "
+                                   "(dark hair) and 1 (fair) leave a "
+                                   "footballer on the screen" % value)
 
 
 def check_spread(report, where, players):

@@ -114,8 +114,8 @@ does.
 ### Starting from what is already there
 
 **Import from cartridge** reads your own dump and brings teams and grounds
-in as they are: twenty names each, their positions, skin tones, hair
-styles and ratings, the shape the team plays and the colours it wears.
+in as they are: twenty names each, their positions, appearance and
+ratings, the shape the team plays and the colours it wears.
 Open Mexico, change two players, save. A team pane in *replace* mode also
 has a **Load this team from the cartridge** button for one at a time.
 
@@ -320,8 +320,8 @@ A pack may also carry a `stadiums` array alongside `teams`; see section 8.
 | `shirt_number` | 1-99 | **Required.** Starts a player entry. |
 | `name` | text | **8 characters**, A-Z a-z, space and a full stop. Longer names are cut; anything else becomes a space. Leading spaces are how the cartridge sits a name on screen - `" Pabi"` - and are kept. |
 | `position` | `GK` `DF` `MF` `FW`, or 0-15 | The letters shown beside the name. The cartridge has six codes, not four: 3 and 5 sit between defence and midfield and between midfield and attack, and 51 of its 720 players have one. Write the number to keep one exactly. |
-| `skin_tone` | 0-2 | 0 light, 1 medium, 2 dark |
-| `hair_style` | 0-15 | |
+| `skin_tone` | 0-1 | Misnamed, and the name is kept so packs already written still load. It is the palette the player is drawn with: 0 dark hair, 1 fair. Those are the only two the cartridge uses; 2 and 3 select palettes the strip does not fit and turn the whole player orange or green. |
+| `hair_style` | 0-15 | The other half of the same byte. Nothing in a match reads it, though the cartridge's own squads vary it from 0 to 13. Kept so an imported squad goes back byte for byte. |
 | the ten attributes | 0-99 | see below |
 
 ### Attributes
@@ -572,6 +572,11 @@ right name is used. Replace any of them by hand - with an AI upscaler, or
 redrawn from scratch - and the game picks that up instead. Any square
 32-bit BMP whose edge is a multiple of 8 works, so a pack can mix 2x and 8x
 tiles; each is sampled to whatever the current scale is.
+
+A folder of files called `6bc41b4898647d62.bmp` is not something you can
+find a penalty spot in, though, so the editor's **Pitch tiles** pane shows
+the dump as pictures instead, sorted so the grass comes first, and writes
+replacements into a pack for you. See `tools/mod_studio/README.md`.
 
 ### What a tile's name means
 

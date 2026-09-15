@@ -58,6 +58,12 @@ saves/
 # content, not the screen captures the rule above is aimed at.
 !mods/**/*.bmp
 *.png
+
+# The editor's assets are cut out of screenshots but they are not
+# screenshots - the eight pitches and the four players it shows are the
+# only honest picture it has of what a setting does, and the exe will not
+# build without them.
+!tools/mod_studio/assets/**/*.png
 *.wav
 *.spc
 tier2_*.json

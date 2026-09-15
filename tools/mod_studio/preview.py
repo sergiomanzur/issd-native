@@ -1,19 +1,45 @@
 """The pictures.
 
-Three things are worth drawing rather than describing, because in each case
-the number in the file is not what the player will see:
+Things worth drawing rather than describing, because in each case the number
+in the file is not what the player will see:
 
   - a strip, because the cartridge stores five bits per channel and shades the
     other two tones itself, so #C8102E is not the red that reaches the pitch;
   - a formation, because ten pairs of signed numbers are not a shape;
   - a pitch, because 138 x 90 and 114 x 74 are the same two numbers until you
-    put them side by side.
+    put them side by side;
+  - a player's appearance byte, because it does not do what its name says.
+
+Two of these are photographs of the game rather than drawings of it. The
+pitch a formation sits on is the plan view the stadium screen draws, one per
+ground, mowing pattern and all; the player shown beside the appearance byte
+is that player, with that byte, in a match. Both are cut out of screenshots
+by tools/capture_editor_assets.py and live in assets/. A drawn rectangle was
+the right shape and the wrong pitch, and the head the editor used to draw
+for skin tone was of something the cartridge does not have.
 """
 from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
+import os
+
 from . import model, repo
+
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+_cache: dict = {}
+
+
+def _asset(*parts):
+    """A captured picture, or None when the build has none."""
+    key = parts
+    if key not in _cache:
+        path = os.path.join(ASSETS, *parts)
+        try:
+            _cache[key] = Image.open(path).convert("RGB")
+        except Exception:
+            _cache[key] = None
+    return _cache[key]
 
 GRASS_DARK = (28, 104, 40)
 GRASS_LIGHT = (38, 124, 48)
@@ -21,8 +47,20 @@ LINE = (236, 240, 236)
 INK = (24, 26, 32)
 
 
-def _pitch(size, margin=8, stripes=10):
+def _pitch(size, margin=8, stripes=10, stadium=None):
+    """The ground, photographed if we have it and drawn if we do not.
+
+    The capture is a plan view from the stadium screen, 62x46, so it is
+    turned upright and enlarged. Its markings are already right, which is why
+    nothing is drawn over it.
+    """
     w, h = size
+    if stadium is not None:
+        shot = _asset("pitch", "slot%d.png" % (int(stadium) % 8))
+        if shot is not None:
+            im = shot.rotate(90, expand=True).resize(size, Image.NEAREST)
+            return im, ImageDraw.Draw(im)
+
     im = Image.new("RGB", size, GRASS_DARK)
     d = ImageDraw.Draw(im)
     band = h / stripes
@@ -40,13 +78,18 @@ def _pitch(size, margin=8, stripes=10):
     return im, d
 
 
-def formation(name: str, tactics: str = "balanced", size=(210, 260)) -> Image.Image:
+def formation(name: str, tactics: str = "balanced", size=(210, 260),
+              stadium: int = 0) -> Image.Image:
     """Ten outfield players where the shape puts them, keeper at the back.
 
     Attacking and defensive shift every line by six the way
     issd_formation_apply_tactics does, so the preview moves when the pack does.
+
+    The grass underneath is the ground's own, taken from the stadium screen -
+    every stadium is mowed differently and it is the quickest way to see
+    which one a pack has selected.
     """
-    im, d = _pitch(size)
+    im, d = _pitch(size, stadium=stadium)
     w, h = size
     shape = repo.formation(name)
     if not shape:
@@ -164,48 +207,42 @@ def pitch_size(length: int, width: int, size=(210, 140)) -> Image.Image:
     return im
 
 
-def player_head(skin_tone: int, hair_style: int, size=(88, 88)) -> Image.Image:
-    """Skin tone and hair style are the two appearance fields a pack can set.
-    The shapes here are the editor's own - the cartridge's sprites are not
-    readable from a pack - so this is a legend, not a portrait."""
-    w, h = size
-    im = Image.new("RGB", size, (238, 240, 244))
-    d = ImageDraw.Draw(im)
-    skins = [(228, 188, 154), (196, 142, 104), (140, 92, 62)]
-    skin = skins[max(0, min(len(skins) - 1, int(skin_tone or 0)))]
-    hair = (38, 28, 22)
+# What the appearance byte really is. The high nibble picks the palette the
+# sprite is drawn with; measured by setting it and looking. 0 and 1 are the
+# only ones the cartridge uses and the only ones that leave a footballer on
+# the screen - 2 and 3 select palettes the strip does not fit and turn the
+# whole player orange or green. The low nibble changes nothing in a match,
+# though the cartridge's own squads vary it from 0 to 13.
+APPEARANCE = {
+    0: ("Dark hair", "what most of the cartridge's players have"),
+    1: ("Fair hair", "the other one it uses - 101 of its 720 players"),
+    2: ("Breaks the sprite", "the whole player turns orange"),
+    3: ("Breaks the sprite", "the whole player turns green"),
+}
 
-    cx, cy = w // 2, h // 2 + 6
-    d.ellipse([cx - 22, cy - 26, cx + 22, cy + 22], fill=skin)
-    style = int(hair_style or 0) % 16
-    if style == 0:
-        d.chord([cx - 23, cy - 32, cx + 23, cy + 6], 180, 360, fill=hair)
-    elif style in (1, 9):
-        d.chord([cx - 23, cy - 34, cx + 23, cy + 2], 180, 360, fill=hair)
-        d.rectangle([cx - 23, cy - 16, cx - 17, cy + 6], fill=hair)
-        d.rectangle([cx + 17, cy - 16, cx + 23, cy + 6], fill=hair)
-    elif style in (2, 10):
-        d.chord([cx - 23, cy - 30, cx + 23, cy - 2], 180, 360, fill=hair)
-    elif style in (3, 11):
-        for i in range(-3, 4):
-            d.polygon([(cx + i * 6, cy - 24), (cx + i * 6 + 4, cy - 36),
-                       (cx + i * 6 + 7, cy - 22)], fill=hair)
-        d.chord([cx - 23, cy - 30, cx + 23, cy - 4], 180, 360, fill=hair)
-    elif style in (4, 12):
-        d.ellipse([cx - 25, cy - 34, cx + 25, cy + 4], fill=hair)
-        d.ellipse([cx - 18, cy - 22, cx + 18, cy + 20], fill=skin)
-    elif style in (5, 13):
-        d.chord([cx - 23, cy - 30, cx + 23, cy - 6], 180, 360, fill=hair)
-        d.rectangle([cx - 6, cy - 34, cx + 6, cy - 22], fill=hair)
-    elif style in (6, 14):
-        d.chord([cx - 23, cy - 28, cx + 23, cy - 8], 180, 360, fill=hair)
-        d.rectangle([cx - 23, cy - 18, cx + 23, cy - 14], fill=hair)
-    else:
-        pass                                    # 7, 15: no hair at all
-    d.ellipse([cx - 10, cy - 8, cx - 5, cy - 3], fill=INK)
-    d.ellipse([cx + 5, cy - 8, cx + 10, cy - 3], fill=INK)
-    d.arc([cx - 8, cy + 2, cx + 8, cy + 12], 20, 160, fill=INK)
-    d.rectangle([0, 0, w - 1, h - 1], outline=(180, 184, 192))
+
+def player_appearance(hair_colour: int, size=(104, 176)) -> Image.Image:
+    """That player, with that byte, in a match.
+
+    Four screenshots of the same frame with nothing changed but the
+    appearance byte, so what is different between them is only ever what the
+    byte did. If the build has no captures, say so rather than draw
+    something invented.
+    """
+    value = int(hair_colour or 0) & 3
+    shot = _asset("player", "%02X.png" % (value << 4))
+    if shot is None:
+        im = Image.new("RGB", size, (30, 34, 40))
+        d = ImageDraw.Draw(im)
+        d.text((8, size[1] / 2 - 4), "no capture", fill=(150, 150, 160))
+        return im
+    scale = min(size[0] / shot.width, size[1] / shot.height)
+    out = shot.resize((max(1, int(shot.width * scale)),
+                       max(1, int(shot.height * scale))), Image.NEAREST)
+    im = Image.new("RGB", size, (30, 34, 40))
+    im.paste(out, ((size[0] - out.width) // 2, (size[1] - out.height) // 2))
+    ImageDraw.Draw(im).rectangle([0, 0, size[0] - 1, size[1] - 1],
+                                outline=(70, 78, 86))
     return im
 
 

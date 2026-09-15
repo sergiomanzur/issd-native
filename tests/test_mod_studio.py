@@ -16,7 +16,8 @@ import pytest
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "tools"))
 
-from mod_studio import cartridge, model, preview, repo   # noqa: E402
+from mod_studio import (cartridge, model, preview, repo,  # noqa: E402
+                        tiles)
 
 
 def test_baked_snapshot_matches_the_repository():
@@ -218,7 +219,7 @@ def test_an_imported_squad_written_back_is_the_same_bytes():
             stamina = repo.rating_to_nibble(player["stamina"])
             assert (code << 4) | stamina == raw[4], (
                 "team %d slot %d position %r" % (team, slot, pos))
-            # skin tone and hair style share the last one
+            # both halves of the appearance byte share the last one
             assert (player["skin_tone"] << 4) | player["hair_style"] == raw[6]
 
 
@@ -272,6 +273,139 @@ def test_every_editor_pane_builds():
             studio.tree.selection_set(iid)
             studio.show_selected()
             studio.update_idletasks()
+    finally:
+        studio.destroy()
+
+
+def test_the_pitches_and_the_players_are_real_pictures():
+    """The editor shows photographs of the game, not drawings of it.
+
+    A drawn rectangle was the right shape and the wrong pitch, and the head it
+    used to draw for the appearance byte was of something the cartridge does
+    not have. If a capture goes missing the editor silently falls back to
+    invention, so check the files are there as well as that they load.
+    """
+    for slot in range(8):
+        shot = preview._asset("pitch", "slot%d.png" % slot)
+        assert shot is not None, "no capture for ground %d" % slot
+        # A plan view off the stadium screen: wider than it is tall, and
+        # small, because that is the size the screen draws it.
+        assert shot.width > shot.height
+        assert shot.width < 200
+
+    # Every ground gives a different pitch. Two grounds sharing bytes would
+    # mean the capture caught the same screen twice.
+    seen = {preview._asset("pitch", "slot%d.png" % n).tobytes() for n in range(8)}
+    assert len(seen) == 8
+
+    for value in range(4):
+        assert value in preview.APPEARANCE
+        assert preview._asset("player", "%02X.png" % (value << 4)) is not None
+        im = preview.player_appearance(value)
+        assert im.size == (104, 176)
+
+
+def test_a_formation_sits_on_the_ground_it_names():
+    """The grass behind a shape is that ground's own, so two grounds must not
+    produce the same picture."""
+    a = preview.formation("4-4-2", "balanced", stadium=0)
+    b = preview.formation("4-4-2", "balanced", stadium=3)
+    assert a.size == b.size
+    assert a.tobytes() != b.tobytes()
+    # And the shape still moves when the tactics do.
+    c = preview.formation("4-4-2", "attacking", stadium=0)
+    assert a.tobytes() != c.tobytes()
+
+
+def test_a_tile_survives_the_trip_through_a_pack(tmp_path):
+    """The game reads 32-bit top-down BMPs. Anything else is a black tile in
+    the middle of the pitch."""
+    from PIL import Image
+
+    src = Image.new("RGBA", (8, 8))
+    src.putpixel((0, 0), (10, 200, 30, 255))
+    src.putpixel((7, 7), (200, 10, 30, 128))
+    out = tiles.put(str(tmp_path), "0123456789abcdef", src, scale=4)
+
+    with open(out, "rb") as f:
+        header = f.read(54)
+    assert header[:2] == b"BM"
+    import struct
+    width, height, _planes, bits = struct.unpack_from("<iiHH", header, 18)
+    assert (width, height, bits) == (32, -32, 32), "top-down 32-bit or nothing"
+
+    back = tiles.read_bmp(out)
+    assert back.size == (32, 32)
+    assert back.getpixel((0, 0)) == (10, 200, 30, 255)
+    assert back.getpixel((31, 31)) == (200, 10, 30, 128)
+    assert tiles.pack_contents(str(tmp_path)) == {"0123456789abcdef"}
+
+
+def test_a_replacement_is_always_a_size_the_game_will_load():
+    """Square, a multiple of 8, and no bigger than 512 - whatever was dropped
+    in. Refusing art for being 37 pixels wide helps nobody."""
+    assert tiles.legal_edge(32) == 32
+    assert tiles.legal_edge(37) == 32
+    assert tiles.legal_edge(0) == tiles.TILE
+    assert tiles.legal_edge(99999) == tiles.MAX_EDGE
+    for edge in (1, 7, 8, 9, 63, 512, 4096):
+        got = tiles.legal_edge(edge)
+        assert got % tiles.TILE == 0 and tiles.TILE <= got <= tiles.MAX_EDGE
+
+
+def test_a_dump_shows_the_grass_first():
+    """A dump is hundreds of files named after a hash. Sorted by how much of
+    each tile is pitch, someone building a pitch finds what they came for."""
+    dump = tiles.Dump(os.path.join(REPO, "mods", "estadio_akron_hd"))
+    assert len(dump) > 100
+    grassiness = [t[2] for t in dump.tiles]
+    assert grassiness == sorted(grassiness, reverse=True)
+    assert dump.grass, "a pitch pack with no grass in it"
+    assert dump.grass == dump.tiles[:len(dump.grass)]
+    for _name, im, _g in dump.tiles:
+        assert im.width == im.height
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY") and sys.platform != "win32",
+                    reason="needs a display")
+def test_the_tile_pane_puts_art_into_a_pack(tmp_path):
+    """Open a dump, pick a tile, put it in a pack - the whole path a person
+    takes, without the file dialogs."""
+    try:
+        import tkinter
+        tkinter.Tk().destroy()
+    except Exception as exc:                      # pragma: no cover
+        pytest.skip("no usable display: %s" % exc)
+
+    from mod_studio.app import Studio, TileDialog
+
+    studio = Studio()
+    try:
+        pane = TileDialog(studio)
+        pane.withdraw()
+        # Nothing open yet: an empty grid, and a click that lands on nothing.
+        pane.redraw()
+        assert pane.shown() == []
+
+        pane.dump = tiles.Dump(os.path.join(REPO, "mods", "estadio_akron_hd"))
+        pane.pack_dir = str(tmp_path)
+        pane.redraw()
+        assert len(pane._thumbs) == len(pane.dump.grass)
+
+        pane.only_grass.set(False)
+        pane.redraw()
+        assert len(pane._thumbs) == len(pane.dump)
+
+        class Click:
+            x = 12 + 5
+            y = 12 + 5
+        pane.on_click(Click())
+        assert pane.selected == pane.shown()[0][0]
+
+        pane.enlarge()
+        assert tiles.pack_contents(str(tmp_path)) == {pane.selected}
+        assert tiles.read_bmp(
+            os.path.join(str(tmp_path), pane.selected + ".bmp")).size == (32, 32)
     finally:
         studio.destroy()
 
