@@ -15,6 +15,7 @@ int main(int argc, char **argv) {
     cfg.internal_res = ISSD_RES_1X;
     cfg.master_volume = 70;
     strcpy(cfg.rom_path, "C:\\Games\\International Superstar Soccer Deluxe (USA).sfc");
+    strcpy(cfg.mods_dir, "C:\\Games\\ISSD Mods");
 
     if (!issd_config_save(&cfg, argv[1])) return 3;
 
@@ -26,15 +27,17 @@ int main(int argc, char **argv) {
     contents[n] = '\0';
     if (contents[0] == '{') return 5;
     if (!strstr(contents, "rom_path=")) return 6;
-    if (!strstr(contents, "aspect_ratio=2")) return 7;
+    if (!strstr(contents, "mods_dir=")) return 7;
+    if (!strstr(contents, "aspect_ratio=2")) return 8;
 
     IssdConfig loaded;
-    if (!issd_config_load(&loaded, argv[1])) return 8;
-    if (strcmp(loaded.rom_path, cfg.rom_path) != 0) return 9;
-    if (loaded.aspect_ratio != ISSD_ASPECT_16_9) return 10;
-    if (!loaded.true_widescreen) return 11;
-    if (loaded.internal_res != ISSD_RES_1X) return 12;
-    if (loaded.master_volume != 70) return 13;
+    if (!issd_config_load(&loaded, argv[1])) return 9;
+    if (strcmp(loaded.rom_path, cfg.rom_path) != 0) return 10;
+    if (strcmp(loaded.mods_dir, cfg.mods_dir) != 0) return 11;
+    if (loaded.aspect_ratio != ISSD_ASPECT_16_9) return 12;
+    if (!loaded.true_widescreen) return 13;
+    if (loaded.internal_res != ISSD_RES_1X) return 14;
+    if (loaded.master_volume != 70) return 15;
 
     puts("config persistence tests passed");
     return 0;

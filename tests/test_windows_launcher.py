@@ -17,6 +17,8 @@ def test_windows_launcher_cfg_round_trip(tmp_path):
             "-o",
             str(exe),
             "-lcomdlg32",
+            "-lshell32",
+            "-lole32",
         ],
         capture_output=True,
         text=True,

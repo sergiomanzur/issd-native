@@ -136,14 +136,16 @@ The project translates the original 65816 machine code and SNES hardware interac
 
 ## 🕹️ Running the Game
 
-1. Place your legally dumped ROM in the project folder or specify its path in `issd_config.json`:
-   ```json
+1. Place your legally dumped ROM in the project folder or specify its path in `issd_native.cfg`:
+   ```ini
    rom_path=International Superstar Soccer Deluxe (USA).sfc
+   mods_dir=mods
    ```
-2. Run `build\ISSDNative.exe`. If no ROM path is configured, a Windows file picker dialog will open automatically to select your ROM file.
+2. Run `build\ISSDNative.exe`. On Windows, if no valid ROM path is configured, a file picker dialog opens automatically. If no valid mods folder is configured and no `mods` folder exists next to the executable, the launcher offers a folder picker.
 
 ### CLI Options
 - `--rom <path>` : Load a specific ROM file.
+- `--mods-dir <path>` : Load roster and HD tile packs from a specific mods folder.
 - `--headless <frames>` : Run headless execution for automated regression benchmarking.
 - `--screenshot <file.bmp>` : Capture a screenshot at the final simulated frame.
 - `--auto-start <frame>` : Automate menu navigation into a live match.

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #define ISSD_CONFIG_ROM_PATH_MAX 1024
+#define ISSD_CONFIG_MODS_DIR_MAX 1024
 
 #ifdef __cplusplus
 extern "C" {
@@ -98,6 +99,9 @@ typedef struct {
 
     /* ROM */
     char rom_path[ISSD_CONFIG_ROM_PATH_MAX];
+
+    /* Mods */
+    char mods_dir[ISSD_CONFIG_MODS_DIR_MAX];
 } IssdConfig;
 
 extern IssdConfig g_issd_config;

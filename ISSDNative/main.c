@@ -1479,6 +1479,7 @@ int main(int argc, char **argv) {
 #endif
     const char *cli_config_path = NULL;
     const char *cli_rom_path = NULL;
+    const char *cli_mods_dir = NULL;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--headless") == 0) {
             g_headless = true;
@@ -1514,6 +1515,10 @@ int main(int argc, char **argv) {
             sscanf(argv[++i], "%d:%d", &g_dump_first, &g_dump_last);
         } else if (strcmp(argv[i], "--config") == 0 && i + 1 < argc) {
             cli_config_path = argv[++i];
+        } else if (strcmp(argv[i], "--rom") == 0 && i + 1 < argc) {
+            cli_rom_path = argv[++i];
+        } else if (strcmp(argv[i], "--mods-dir") == 0 && i + 1 < argc) {
+            cli_mods_dir = argv[++i];
         } else if (argv[i][0] != '-') {
             cli_rom_path = argv[i];
         }
@@ -1529,7 +1534,11 @@ int main(int argc, char **argv) {
     issd_save_init();
     issd_save_set_snapshot_backends(RtlSaveSnapshot, RtlLoadSnapshot);
     issd_mod_init();
-    const char *mods_dir = "mods";
+    const char *mods_dir = g_issd_config.mods_dir[0] ? g_issd_config.mods_dir : "mods";
+    if (cli_mods_dir && cli_mods_dir[0]) {
+        snprintf(g_issd_config.mods_dir, sizeof(g_issd_config.mods_dir), "%s", cli_mods_dir);
+        mods_dir = g_issd_config.mods_dir;
+    }
 #ifdef ISSD_ANDROID
     mods_dir = issd_android_mods_dir();
 #endif

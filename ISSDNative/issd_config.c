@@ -57,6 +57,7 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->debug_unhooked_code = false;
     cfg->active_mod_packs[0] = 0;
     cfg->hd_texture_packs[0] = 0;
+    snprintf(cfg->mods_dir, sizeof(cfg->mods_dir), "%s", "mods");
 
     if (issd_config_is_steam_deck()) {
         cfg->aspect_ratio = ISSD_ASPECT_16_10;   /* 1280x800 native */
@@ -145,6 +146,7 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     int ival = atoi(value);
 
     if (strcmp(key, "rom_path") == 0) copy_config_string(cfg->rom_path, sizeof(cfg->rom_path), value);
+    else if (strcmp(key, "mods_dir") == 0) copy_config_string(cfg->mods_dir, sizeof(cfg->mods_dir), value);
     else if (strcmp(key, "window_width") == 0) cfg->window_width = ival;
     else if (strcmp(key, "window_height") == 0) cfg->window_height = ival;
     else if (strcmp(key, "fullscreen") == 0) cfg->fullscreen = (ival != 0);
@@ -217,6 +219,7 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "# ISSD Native configuration\n");
     fprintf(f, "# ROM files are not distributed with this project. Select or provide your own valid cartridge dump.\n");
     fprintf(f, "rom_path=%s\n", cfg->rom_path);
+    fprintf(f, "mods_dir=%s\n", cfg->mods_dir);
     fprintf(f, "window_width=%d\n", cfg->window_width);
     fprintf(f, "window_height=%d\n", cfg->window_height);
     fprintf(f, "fullscreen=%d\n", cfg->fullscreen ? 1 : 0);
