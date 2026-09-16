@@ -1158,12 +1158,10 @@ bool RtlApuWriteWaitEcho(CpuState *cpu, uint16 adr, uint16 val, bool wide) {
   uint8_t port = (uint8_t)(adr & 3);
 
   RtlApuLock();
-  /* Apply all pending port writes (e.g. payload written to $2142-$2143) immediately */
-  while (g_snes->apu->portQHead != g_snes->apu->portQTail) {
-    ApuPortWrite *w = &g_snes->apu->portQueue[g_snes->apu->portQHead & (APU_PORT_QUEUE_LEN - 1)];
-    apu_writePortNow(g_snes->apu, w->port, w->val);
-    g_snes->apu->portQHead++;
-  }
+  /* Retire earlier bus writes at their guest times. Flattening the queue here
+   * can hide a command's zero release from the SPC before the next command
+   * replaces it (ISSD's voice driver then waits forever at $0AA8). */
+  rtl_sync_apu_to_cpu_locked();
   /* Apply this write immediately so the SPC can see and echo it. */
   if (wide)
     apu_writePortNow(g_snes->apu, (port + 1) & 3, (uint8_t)(val >> 8));
@@ -1185,6 +1183,14 @@ bool RtlApuWriteWaitEcho(CpuState *cpu, uint16 adr, uint16 val, bool wide) {
       }
       break;
     }
+    /* This replaces a guest STA/CMP/BNE loop, not a write followed by reads.
+     * The SPC may clear the input latches while acknowledging another sound
+     * (ISSD writes CONTROL=$11, clearing ports 0 AND 1). Retry the store so a
+     * concurrent voice command is not lost. Do not modify SPC-owned outputs. */
+    if (wide && g_snes->apu->inPorts[(port + 1) & 3] != (uint8_t)(val >> 8))
+      apu_writePortNow(g_snes->apu, (port + 1) & 3, (uint8_t)(val >> 8));
+    if (g_snes->apu->inPorts[port] != (uint8_t)val)
+      apu_writePortNow(g_snes->apu, port, (uint8_t)val);
     apu_cycle(g_snes->apu);
   }
   if (!echoed) {

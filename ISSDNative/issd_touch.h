@@ -50,6 +50,8 @@ typedef struct {
     bool visible;          /* false while the pad is hidden */
     bool pressed;
     const char *label;
+    const char *sublabel;  /* action name e.g. "SHOOT", "PASS", "DASH", "THRU" */
+    uint8_t color_r, color_g, color_b;
 } IssdTouchRect;
 
 /* Recompute the layout. Safe to call every frame; only does work when the

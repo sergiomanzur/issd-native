@@ -26,9 +26,12 @@ static bool hit_padded(const IssdTouchRect *r, int x, int y, int pad) {
 }
 
 static void place(IssdTouchControl c, int x, int y, int w, int h,
-                  bool round, const char *label) {
+                  bool round, const char *label, const char *sublabel,
+                  uint8_t cr, uint8_t cg, uint8_t cb) {
     T.r[c].x = x; T.r[c].y = y; T.r[c].w = w; T.r[c].h = h;
-    T.r[c].round = round; T.r[c].label = label; T.r[c].pressed = false;
+    T.r[c].round = round; T.r[c].label = label; T.r[c].sublabel = sublabel;
+    T.r[c].color_r = cr; T.r[c].color_g = cg; T.r[c].color_b = cb;
+    T.r[c].pressed = false;
 }
 
 void issd_touch_set_viewport(int width, int height) {
@@ -46,31 +49,31 @@ void issd_touch_set_viewport(int width, int height) {
     const int small = (int)(unit * 0.62f);
 
     /* D-pad: bottom left. Face cluster: bottom right, diamond. */
-    place(ISSD_TOUCH_DPAD, edge, height - edge - dpad, dpad, dpad, false, NULL);
+    place(ISSD_TOUCH_DPAD, edge, height - edge - dpad, dpad, dpad, false, NULL, NULL, 50, 55, 65);
 
     const int fx = width - edge - unit * 3 - gap * 2;
     const int fy = height - edge - unit * 3 - gap * 2;
     const int cx = fx + unit + gap;
     const int cy = fy + unit + gap;
-    place(ISSD_TOUCH_Y, fx,                     cy,                     unit, unit, true, "Y");
-    place(ISSD_TOUCH_X, cx,                     fy,                     unit, unit, true, "X");
-    place(ISSD_TOUCH_A, cx + unit + gap,        cy,                     unit, unit, true, "A");
-    place(ISSD_TOUCH_B, cx,                     cy + unit + gap,        unit, unit, true, "B");
+    place(ISSD_TOUCH_Y, fx,              cy,              unit, unit, true, "Y", "DASH",  46, 204, 113); /* SNES Green */
+    place(ISSD_TOUCH_X, cx,              fy,              unit, unit, true, "X", "THRU",  52, 152, 219); /* SNES Blue */
+    place(ISSD_TOUCH_A, cx + unit + gap, cy,              unit, unit, true, "A", "SHOOT", 231, 76, 60);  /* SNES Red */
+    place(ISSD_TOUCH_B, cx,              cy + unit + gap, unit, unit, true, "B", "PASS",  241, 196, 15); /* SNES Yellow */
 
     /* Shoulders along the top, clear of the face cluster. */
-    place(ISSD_TOUCH_L, edge,                      edge, unit * 2, small, false, "L");
-    place(ISSD_TOUCH_R, width - edge - unit * 2,   edge, unit * 2, small, false, "R");
+    place(ISSD_TOUCH_L, edge,                    edge, unit * 2, small, false, "L", NULL, 150, 155, 165);
+    place(ISSD_TOUCH_R, width - edge - unit * 2, edge, unit * 2, small, false, "R", NULL, 150, 155, 165);
 
     /* Start/Select centred low, where a thumb will not rest by accident. */
     const int sw = (int)(unit * 1.5f);
-    place(ISSD_TOUCH_SELECT, width / 2 - sw - gap / 2, height - edge - small, sw, small, false, "SELECT");
-    place(ISSD_TOUCH_START,  width / 2 + gap / 2,      height - edge - small, sw, small, false, "START");
+    place(ISSD_TOUCH_SELECT, width / 2 - sw - gap / 2, height - edge - small, sw, small, false, "SELECT", NULL, 120, 125, 135);
+    place(ISSD_TOUCH_START,  width / 2 + gap / 2,      height - edge - small, sw, small, false, "START",  NULL, 120, 125, 135);
 
     /* Hide toggle sits top-centre-left; the menu button top-centre-right.
      * The menu button is deliberately separated from the hide toggle so that
      * hiding the pad cannot be confused with losing access to the menu. */
-    place(ISSD_TOUCH_HIDE, width / 2 - small * 2 - gap, edge, small * 2, small, false, "HIDE");
-    place(ISSD_TOUCH_MENU, width / 2 + gap,             edge, small * 2, small, false, "MENU");
+    place(ISSD_TOUCH_HIDE, width / 2 - small * 2 - gap, edge, small * 2, small, false, "HIDE", NULL, 70, 130, 180);
+    place(ISSD_TOUCH_MENU, width / 2 + gap,             edge, small * 2, small, false, "MENU", NULL, 230, 126, 34);
 }
 
 void issd_touch_set_enabled(bool enabled) { T.enabled = enabled; }
@@ -95,20 +98,19 @@ void issd_touch_set_points(const int *xs, const int *ys, int count) {
     for (int i = 0; i < count; i++) {
         const int x = T.px[i], y = T.py[i];
 
-        /* The menu button is live whether or not the pad is hidden - that is
-         * the point of it. Checked first so it wins any overlap. */
+        /* The menu and hide/show buttons are live whether or not the pad is hidden. */
         if (hit_padded(&T.r[ISSD_TOUCH_MENU], x, y, pad_margin)) {
             menu_now = true;
             T.r[ISSD_TOUCH_MENU].pressed = true;
             continue;
         }
-        if (!T.pad_visible) continue;
-
         if (hit_padded(&T.r[ISSD_TOUCH_HIDE], x, y, pad_margin)) {
             hide_now = true;
             T.r[ISSD_TOUCH_HIDE].pressed = true;
             continue;
         }
+
+        if (!T.pad_visible) continue;
 
         /* D-pad as a 3x3: the centre cell presses nothing, edges press one
          * direction, corners press two so diagonals work. */
@@ -156,10 +158,21 @@ bool issd_touch_take_menu_press(void) {
 }
 
 int issd_touch_rects(const IssdTouchRect **out) {
+    T.r[ISSD_TOUCH_HIDE].label = T.pad_visible ? "HIDE" : "SHOW";
+    if (T.pad_visible) {
+        T.r[ISSD_TOUCH_HIDE].color_r = 70;
+        T.r[ISSD_TOUCH_HIDE].color_g = 130;
+        T.r[ISSD_TOUCH_HIDE].color_b = 180;
+    } else {
+        T.r[ISSD_TOUCH_HIDE].color_r = 46;
+        T.r[ISSD_TOUCH_HIDE].color_g = 160;
+        T.r[ISSD_TOUCH_HIDE].color_b = 100;
+    }
+
     for (int i = 0; i < ISSD_TOUCH_COUNT; i++) {
-        /* The menu button is never hidden. Everything else follows the pad. */
+        /* Menu and Hide/Show buttons are never hidden. Everything else follows the pad. */
         T.r[i].visible = T.enabled &&
-                         (i == ISSD_TOUCH_MENU || T.pad_visible);
+                         (i == ISSD_TOUCH_MENU || i == ISSD_TOUCH_HIDE || T.pad_visible);
     }
     if (out) *out = T.r;
     return ISSD_TOUCH_COUNT;

@@ -127,13 +127,13 @@ int main(void) {
     assert(hold_at(cx, t) == 0);
     issd_touch_set_points(NULL, NULL, 0);
 
-    /* --- while hidden, only the menu button is drawn --- */
+    /* --- while hidden, only the menu and hide/show buttons are drawn --- */
     {
         const IssdTouchRect *all = NULL;
         int n = issd_touch_rects(&all);
         for (int i = 0; i < n; i++) {
-            if (i == ISSD_TOUCH_MENU) assert(all[i].visible);
-            else                      assert(!all[i].visible);
+            if (i == ISSD_TOUCH_MENU || i == ISSD_TOUCH_HIDE) assert(all[i].visible);
+            else                                              assert(!all[i].visible);
         }
     }
 
@@ -148,12 +148,14 @@ int main(void) {
         assert(!issd_touch_pad_visible());         /* menu does not unhide */
     }
 
-    /* --- unhide works from hidden: the hide button is reachable again --- */
-    issd_touch_set_pad_visible(true);
+    /* --- unhide works from hidden: tap the SHOW button to restore the pad --- */
+    assert(!issd_touch_pad_visible());
+    tap_at(hx, hy);
     assert(issd_touch_pad_visible());
     tap_at(hx, hy);
     assert(!issd_touch_pad_visible());
-    issd_touch_set_pad_visible(true);
+    tap_at(hx, hy);
+    assert(issd_touch_pad_visible());
 
     /* --- menu press is edge triggered even when held for many frames --- */
     reset();

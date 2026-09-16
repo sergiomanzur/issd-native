@@ -122,6 +122,21 @@ A real frame-1200 snapshot contained a valid six-part player at `$0D00`, x=327,
 which the original draw list omitted. This provides a concrete regression case
 for whole-player visibility in the additional view.
 
+`$84E6C7` stores the current animation descriptor at player `$14` **before**
+testing the offscreen flag. When culled, the player retains an old (or zero)
+pose and receives no graphics DMA. Reconstructing that pose alone can display
+menu glyphs or scrambled body parts from stale VRAM. Supplemental players now
+read the bank `$82` descriptor, pair its pose with both length-prefixed graphics
+rows, and reproduce the uniform/number detail upload from `$84E77D`. This also
+follows the cartridge's advancing offscreen animation without guessing a pose
+from history. The transaction saves/restores all VRAM, including OBJ graphics.
+
+The stadium page stride also includes trailing empty metatile columns. These
+are allocation padding, not scenery; BG1's empty metatile produces the green
+block exposed by extended corner views. Each layer's occupied map extent now
+bounds horizontal sampling, extending the outermost tile column into padding.
+Native-view tilemap entries remain untouched.
+
 ### Validation and limits
 
 `tests/test_widescreen_native.c` tests ring wrap, high world-coordinate bits,

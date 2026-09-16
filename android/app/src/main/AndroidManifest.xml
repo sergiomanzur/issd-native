@@ -11,6 +11,9 @@
 
     <application
         android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.ISSD.Splash"
         android:allowBackup="false"
         android:hardwareAccelerated="true"
         android:isGame="true">
@@ -19,6 +22,7 @@
             android:name=".ISSDActivity"
             android:exported="true"
             android:label="@string/app_name"
+            android:theme="@style/Theme.ISSD.Splash"
             android:screenOrientation="sensorLandscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
             android:preferMinimalPostProcessing="true"

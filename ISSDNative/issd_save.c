@@ -7,10 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include "issd_android.h"
+#include "issd_widescreen.h"
+#include <sys/stat.h>
 #ifdef _WIN32
 #include <direct.h>
 #else
-#include <sys/stat.h>
+#include <errno.h>
 #endif
 
 extern uint8_t g_ram[0x20000];
@@ -19,19 +22,35 @@ extern uint8_t g_ram[0x20000];
 #define SAVE_VERSION 2
 #define SAVES_DIR "saves"
 
+static const char *GetSavesDir(char *buf, size_t size) {
+#ifdef ISSD_ANDROID
+    const char *internal = issd_android_internal_dir();
+    if (internal && internal[0]) {
+        snprintf(buf, size, "%s/saves", internal);
+        return buf;
+    }
+#endif
+    snprintf(buf, size, "%s", SAVES_DIR);
+    return buf;
+}
+
 static void EnsureSaveDir(void) {
+    char dir[1024];
+    GetSavesDir(dir, sizeof(dir));
 #ifdef _WIN32
-    _mkdir(SAVES_DIR);
+    _mkdir(dir);
 #else
-    mkdir(SAVES_DIR, 0755);
+    mkdir(dir, 0755);
 #endif
 }
 
 static void GetSlotPath(int slot_index, char *out_path, size_t max_len) {
+    char dir[1024];
+    GetSavesDir(dir, sizeof(dir));
     if (slot_index < 0) {
-        snprintf(out_path, max_len, "%s/quicksave.sav", SAVES_DIR);
+        snprintf(out_path, max_len, "%s/quicksave.sav", dir);
     } else {
-        snprintf(out_path, max_len, "%s/slot_%d.sav", SAVES_DIR, slot_index);
+        snprintf(out_path, max_len, "%s/slot_%d.sav", dir, slot_index);
     }
 }
 
@@ -53,6 +72,14 @@ static void CopyVideoState(IssdSaveSlot *slot, bool to_ppu) {
     }
 }
 
+static IssdSnapshotSaveFn s_save_snapshot_backend = NULL;
+static IssdSnapshotLoadFn s_load_snapshot_backend = NULL;
+
+void issd_save_set_snapshot_backends(IssdSnapshotSaveFn save_fn, IssdSnapshotLoadFn load_fn) {
+    s_save_snapshot_backend = save_fn;
+    s_load_snapshot_backend = load_fn;
+}
+
 bool issd_save_init(void) {
     EnsureSaveDir();
     return true;
@@ -60,8 +87,18 @@ bool issd_save_init(void) {
 
 bool issd_save_to_slot(int slot_index, const char *label) {
     EnsureSaveDir();
-    char path[128];
+    char path[1024];
     GetSlotPath(slot_index, path, sizeof(path));
+
+    if (s_save_snapshot_backend) {
+        bool ok = s_save_snapshot_backend(path);
+        if (ok) {
+            printf("[Save] Snapshot saved to '%s' (Slot %d)\n", path, slot_index < 0 ? 0 : slot_index + 1);
+        } else {
+            fprintf(stderr, "[Save] Snapshot save failed for '%s'\n", path);
+        }
+        return ok;
+    }
 
     IssdSaveSlot slot;
     memset(&slot, 0, sizeof(slot));
@@ -113,8 +150,19 @@ bool issd_save_to_slot(int slot_index, const char *label) {
 }
 
 bool issd_load_from_slot(int slot_index) {
-    char path[128];
+    char path[1024];
     GetSlotPath(slot_index, path, sizeof(path));
+
+    if (s_load_snapshot_backend) {
+        bool ok = s_load_snapshot_backend(path);
+        if (ok) {
+            issd_widescreen_reset();
+            printf("[Save] Snapshot loaded from '%s' (Slot %d)\n", path, slot_index < 0 ? 0 : slot_index + 1);
+        } else {
+            printf("[Save] Snapshot load failed for '%s'\n", path);
+        }
+        return ok;
+    }
 
     FILE *f = fopen(path, "rb");
     if (!f) {
@@ -135,6 +183,7 @@ bool issd_load_from_slot(int slot_index) {
     memcpy(g_ram, slot.wram, sizeof(slot.wram));
     CopyVideoState(&slot, true);
     snes_frame_counter = slot.frame_counter;
+    issd_widescreen_reset();
 
     printf("[Save] Loaded state from '%s' (%s - P1 Score: %u, P2 Score: %u)\n",
            path, slot.slot_label, slot.p1_score, slot.p2_score);
@@ -151,7 +200,7 @@ bool issd_load_quick(void) {
 
 bool issd_save_get_info(int slot_index, char *out_info, size_t max_len) {
     if (!out_info || max_len == 0) return false;
-    char path[128];
+    char path[1024];
     GetSlotPath(slot_index, path, sizeof(path));
 
     FILE *f = fopen(path, "rb");
@@ -160,25 +209,38 @@ bool issd_save_get_info(int slot_index, char *out_info, size_t max_len) {
         return false;
     }
 
-    IssdSaveSlot slot;
-    size_t read_bytes = fread(&slot, 1, sizeof(slot), f);
+    uint32_t magic = 0;
+    if (fread(&magic, 1, sizeof(magic), f) != sizeof(magic)) {
+        fclose(f);
+        snprintf(out_info, max_len, "Corrupted Slot");
+        return false;
+    }
     fclose(f);
 
-    if (read_bytes != sizeof(slot) || slot.magic != SAVE_MAGIC) {
+    if (magic != 0x52544c53u && magic != SAVE_MAGIC) {
         snprintf(out_info, max_len, "Corrupted Slot");
         return false;
     }
 
     char time_str[32] = {0};
-    time_t t = (time_t)slot.timestamp;
-    struct tm *tm_info = localtime(&t);
-    if (tm_info) {
-        strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", tm_info);
+#ifdef _WIN32
+    struct _stat st;
+    if (_stat(path, &st) == 0) {
+#else
+    struct stat st;
+    if (stat(path, &st) == 0) {
+#endif
+        time_t t = st.st_mtime;
+        struct tm *tm_info = localtime(&t);
+        if (tm_info) {
+            strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M", tm_info);
+        }
     }
 
-    snprintf(out_info, max_len, "[%s] Score: %u-%u Time: %02u:%02u (%s)",
-             slot.slot_label, slot.p1_score, slot.p2_score,
-             slot.match_seconds_remaining / 60, slot.match_seconds_remaining % 60,
-             time_str);
+    if (slot_index < 0) {
+        snprintf(out_info, max_len, "[QuickSave] (%s)", time_str[0] ? time_str : "Saved");
+    } else {
+        snprintf(out_info, max_len, "[Slot %d] (%s)", slot_index + 1, time_str[0] ? time_str : "Saved");
+    }
     return true;
 }

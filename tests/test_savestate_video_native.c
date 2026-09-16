@@ -21,6 +21,8 @@ void issd_bridge_update_state(IssdMatchState *out_state) {
   out_state->game_mode1 = 0x02;
 }
 
+void issd_widescreen_reset(void) {}
+
 static void fill(uint8_t *p, size_t n, unsigned seed) {
   for (size_t i = 0; i < n; i++) p[i] = (uint8_t)(seed + i * 7u + (i >> 5));
 }

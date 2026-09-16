@@ -35,6 +35,9 @@ typedef struct {
 
 extern IssdOverlayMenu g_overlay_menu;
 
+/* 8x8 Basic ASCII font (32-127) bitmap table */
+extern const uint8_t g_issd_font8x8[96][8];
+
 void issd_menu_init(void);
 void issd_menu_toggle(void);
 void issd_menu_open(void);
@@ -84,6 +87,7 @@ void issd_menu_render_team_grid(uint32_t *fb, int width, int height,
 /* Provided by the host: save settings and start the process again, so a
  * newly chosen mod pack is applied to a fresh cartridge image. */
 void issd_restart_application(void);
+void issd_request_quit(void);
 
 #ifdef __cplusplus
 }

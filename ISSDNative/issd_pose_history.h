@@ -39,6 +39,9 @@ void issd_pose_history_observe(unsigned object, int x, int y, uint16_t pose);
  * still or its recent history shows no clean cycle to continue. */
 uint16_t issd_pose_history_pose(unsigned object, int x, int y, uint16_t pose);
 
+/* Returns the last known valid pose for an object (either emitted or observed). */
+uint16_t issd_pose_history_last_pose(unsigned object);
+
 /* Exposed for tests: the window inside which the cartridge still animates. */
 bool issd_pose_history_live_window(int x, int y);
 

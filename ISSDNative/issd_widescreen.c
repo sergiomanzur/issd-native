@@ -9,7 +9,7 @@
  * never changes WRAM, camera bounds, activation, or game-visible VRAM/OAM. */
 static struct {
   Ppu *owner;
-  uint16_t vram[0x2000], oam[0x100];
+  uint16_t vram[0x8000], oam[0x100];
   uint8_t high_oam[0x20];
 } frame;
 
@@ -42,8 +42,11 @@ bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram) {
    *
    * Measured across a full Open Game from boot to kickoff, 0x0F covers 1061
    * frames of that sequence and 0x1C one more; an earlier fix excluded only
-   * 0x1C, which is why the coin toss stayed broken. */
-  if (submode == 0x0F || submode == 0x1C) return false;
+   * 0x1C, which is why the coin toss stayed broken.
+   * Submode 0x12 is the half-time stats screen (CODE_80B2C2). It uses mode 6
+   * and stadium stride, but is a framed stats card where metatiles should not
+   * leak into the side margins as green lines. */
+  if (submode == 0x0F || submode == 0x10 || submode == 0x12 || submode == 0x1C) return false;
   /* A previous guard tested $38 == 0xC4E4 && $3A == 0x8B here. Neither holds
    * during the coin toss: $38 is 0 throughout and $3A is a frame counter, so
    * the guard never once fired. Removed rather than left as reassurance. */
@@ -100,8 +103,30 @@ bool issd_widescreen_title_layout(const Ppu *ppu, const uint8_t *ram) {
   return word(ram, 0x32) == 1;
 }
 
+/* The stride is a page allocation, not the authored map width. Stadium maps
+ * end partway through their last page; the remaining zero columns are blank
+ * metatiles (solid green on BG1). Find the occupied horizontal extent per
+ * layer and repeat its outermost 8-pixel tile column when a corner exposes
+ * that padding. Repeating the whole 32-pixel metatile repeats diagonal wall
+ * transitions as a checkerboard instead of continuing the outer surface. */
+static void world_x_bounds(const uint8_t *ram, unsigned layer,
+                           int *first, int *last) {
+  unsigned stride = word(ram, 0x1ffcc);
+  *first = (int)(stride / 64) * 256;
+  *last = -32;
+  if (!stride) return;
+  for (unsigned i = 0; i < 0x1000; i++) {
+    if (!ram[0x1d000 + layer * 0x1000 + i]) continue;
+    unsigned column = (i % stride) / 64 * 8 + (i & 7);
+    int x = (int)column * 32;
+    if (x < *first) *first = x;
+    if (x > *last) *last = x;
+  }
+  if (*last < *first) { *first = 0; *last = (int)(stride / 64) * 256 - 32; }
+}
+
 static bool world_tile(const uint8_t *ram, unsigned layer,
-                       int x, int y, uint16_t *tile) {
+                       int x, int y, int first, int last, uint16_t *tile) {
   unsigned stride = word(ram, 0x1ffcc);
   /* $8B87E7: each 256x256 world page is an 8x8 byte block.
    * Every world row contains stride/64 pages.
@@ -110,10 +135,8 @@ static bool world_tile(const uint8_t *ram, unsigned layer,
    * stadium boundary metatiles (outer grandstands, hoardings, walls)
    * instead of failing and creating black void margins. */
   if (stride < 64 || (stride & 63) != 0) return false;
-  int max_pages_x = (int)(stride / 64);
-  int max_x = max_pages_x * 256 - 1;
-  if (x < 0) x = 0;
-  else if (x > max_x) x = max_x;
+  if (x < first) x = first + (x & 7);
+  else if (x >= last + 32) x = last + 24 + (x & 7);
 
   if (y < 0) y = 0;
   unsigned page_y = (unsigned)y >> 8;
@@ -139,6 +162,8 @@ static bool world_tile(const uint8_t *ram, unsigned layer,
 
 static void fill_pitch(Ppu *ppu, const uint8_t *ram, int left, int right) {
   for (unsigned layer = 0; layer < 2; layer++) {
+    int first, last;
+    world_x_bounds(ram, layer, &first, &last);
     /* PPU scroll registers retain ten bits. Recover the current world page
      * from WRAM, retaining the actual scanout offset (vertical is minus one). */
     int sx = (word(ram,0x13a0+layer*32)&~1023) | ppu->hScroll[layer];
@@ -152,7 +177,7 @@ static void fill_pitch(Ppu *ppu, const uint8_t *ram, int left, int right) {
         unsigned address = layer * 0x1000 + (ty & 31) * 32 +
                            (tx & 31) + (tx >> 5) * 0x400 + (ty >> 5) * 0x800;
         uint16_t tile;
-        if (!world_tile(ram, layer, x, y, &tile)) {
+        if (!world_tile(ram, layer, x, y, first, last, &tile)) {
           ppu->vram[address] = 0;
           continue;
         }
@@ -167,6 +192,82 @@ static bool rom_byte(const uint8_t *rom, size_t size, unsigned a, uint8_t *out) 
   if (!rom || offset >= size) return false;
   *out = rom[offset];
   return true;
+}
+
+static const uint8_t *rom_span(const uint8_t *rom, size_t size,
+                               unsigned address, unsigned count) {
+  unsigned offset = ((address >> 16) & 0x7f) * 0x8000 + (address & 0x7fff);
+  if (!rom || (address & 0xffff) < 0x8000 ||
+      count > 0x10000 - (address & 0xffff) ||
+      offset > size || count > size - offset) return NULL;
+  return rom + offset;
+}
+
+/* $84E6C7 updates object+$14 even when $1E suppresses the pose and graphics
+ * DMA. The descriptor in bank $82 pairs the actual pose with two
+ * length-prefixed graphics rows. Replaying only OAM (or a remembered pose)
+ * interprets old menu tiles or a different animation's tiles as a player.
+ * Reproduce those uploads in the presentation transaction, including the
+ * uniform/number tile selected by $84E77D. Each player owns its tile slots. */
+static uint16_t prepare_player(Ppu *ppu, const uint8_t *ram, unsigned object,
+                               const uint8_t *rom, size_t rom_size) {
+  const uint8_t *desc = rom_span(rom, rom_size,
+      0x820000 | word(ram, object + 0x14), 6);
+  if (!desc || !ram[object + 0x30]) return 0;
+  unsigned source = desc[2] | desc[3] << 8 | desc[4] << 16;
+  const uint8_t *rows[2];
+  unsigned lengths[2];
+  for (unsigned row = 0; row < 2; row++) {
+    const uint8_t *header = rom_span(rom, rom_size, source, 2);
+    if (!header) return 0;
+    lengths[row] = word(header, 0);
+    if (!lengths[row] || lengths[row] > 0x100 || (lengths[row] & 1)) return 0;
+    rows[row] = rom_span(rom, rom_size, source + 2, lengths[row]);
+    if (!rows[row]) return 0;
+    source += 2 + lengths[row];
+  }
+  unsigned dest = 0x6000 + (word(ram, object + 2) & 0x1ff) * 16;
+  if (dest + 0x180 > 0x8000) return 0;
+  for (unsigned row = 0; row < 2; row++)
+    for (unsigned j = 0; j < lengths[row]; j += 2)
+      ppu->vram[dest + row * 0x100 + j / 2] = word(rows[row], j);
+
+  unsigned type = ram[object + 0x30];
+  if (type == 8) {
+    const uint8_t *entry = rom_span(rom, rom_size, 0x81ceec + desc[5], 2);
+    const uint8_t *pixels = entry ?
+        rom_span(rom, rom_size, 0xa40000 | word(entry, 0), 64) : NULL;
+    if (pixels)
+      for (unsigned j = 0; j < 64; j += 2)
+        ppu->vram[0x7fe0 + j / 2] = word(pixels, j);
+  }
+  if (type > 1 && type != 9) {
+    unsigned tile = 0xf014; /* blank uniform detail */
+    unsigned detail = desc[5];
+    if (type != 7 && type != 8 && ram[object + 0x57] != 0x54) {
+      if (detail & 0x80) {
+        const uint8_t *entry = rom_span(rom, rom_size,
+            0x81ce8a + ram[object + 0x57], 2);
+        if (entry) {
+          tile = word(entry, 0);
+          if (tile != 0xf014) tile += ((detail & 0x7f) - 1) * 32;
+        }
+      } else if (detail && detail <= 12 && !(detail & 1)) {
+        if ((detail == 4 || detail == 6) && (ram[object + 4] & 0x40))
+          detail ^= 2;
+        const uint8_t *entry = rom_span(rom, rom_size, 0x81cede + detail, 2);
+        if (entry) {
+          tile = word(entry, 0);
+          if (detail < 10) tile += ram[object + 0x56] * 16;
+        }
+      }
+    }
+    const uint8_t *pixels = rom_span(rom, rom_size, 0x980000 | tile, 32);
+    if (pixels)
+      for (unsigned j = 0; j < 32; j += 2)
+        ppu->vram[dest + 0x170 + j / 2] = word(pixels, j);
+  }
+  return word(desc, 0);
 }
 
 typedef struct {
@@ -205,11 +306,13 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   int free_slot = 0;
   /* Existing negative sprites are genuine edge pieces; parked entries
    * never receive a hint. Positive 9-bit sprites require an explicit hint. */
+  unsigned left_threshold = 512u - (unsigned)(left_extra + 32);
+  if (left_threshold > 512u - 64u) left_threshold = 512u - 64u;
   for (unsigned slot=0; slot<128; slot++) {
     if (is_oam_slot_free(ppu, slot)) continue;
     unsigned raw = (ppu->oam[slot*2] & 255) |
       ((ppu->highOam[slot/4] >> ((slot%4)*2)) & 1) * 256;
-    if (raw >= 512-64) left[slot/8] |= 1 << (slot%8);
+    if (raw >= left_threshold) left[slot/8] |= 1 << (slot%8);
   }
   ObjectEntry objects[128];
   unsigned count = 0;
@@ -218,10 +321,12 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     objects[count].missing_native_copy = false;
     count++;
   }
-  /* Active players ($0400..$1B00 step $0100) not in the 4:3 list:
-   * add if they have an active pose */
+  /* Include players whose animation descriptor advanced while their native
+   * pose/graphics upload was culled. Zero-pose inactive records stay inactive. */
   for (unsigned object=0x400;object<0x1b00;object+=0x100) {
-    if (!word(ram, object)) continue;
+    unsigned pose = word(ram, object);
+    if (!pose && !(object >= 0x500 && ram[object + 0x30] &&
+                   (word(ram, object + 0x14) & 0x8000))) continue;
     bool exists=false;
     for (unsigned i=0;i<count;i++) {
       if (objects[i].object==object) { exists=true; break; }
@@ -271,17 +376,21 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     unsigned object = entry.object;
     if (object < 0x400 || object > 0x1c40) continue;
     unsigned pose = word(ram, object);
-    if (!pose) continue;
-    /* The cartridge stops advancing poses outside its own live window, so an
-     * object out in the widened margin would otherwise be a frozen statue.
-     * Presentation only: WRAM keeps the pose the game actually set. */
-    {
-      int ox = (int16_t)word(ram, object + 8);
-      int oy = (int16_t)word(ram, object + 12);
-      issd_pose_history_observe(object, ox, oy, (uint16_t)pose);
-      pose = issd_pose_history_pose(object, ox, oy, (uint16_t)pose);
+    int ox = (int16_t)word(ram, object + 8);
+    int oy = (int16_t)word(ram, object + 12);
+    if (entry.missing_native_copy && object >= 0x500 && object < 0x1b00 &&
+        !(object & 255) && ram[object + 0x30] &&
+        (word(ram, object + 0x14) & 0x8000)) {
+      /* Player geometry fits within 64 pixels of its origin. Avoid uploading
+       * invisible players, especially the shared type-8 detail tile. */
+      if (ox + 64 <= -left_extra || ox - 64 >= 256 + right_extra) continue;
+      pose = prepare_player(ppu, ram, object, rom, rom_size);
       if (!pose) continue;
     }
+    /* Geometry and graphics now follow the same cartridge descriptor. A
+     * guessed history pose cannot safely use another animation's tile data. */
+    issd_pose_history_observe(object, ox, oy, (uint16_t)pose);
+    if (!pose) continue;
     bool packed = (pose & 0x8000) != 0;
     uint8_t parts;
     if (packed) {
@@ -386,7 +495,12 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     return false;
   }
   static int s_inactive_frames = 0;
+  static bool s_was_pitch = false;
   bool is_pitch = issd_widescreen_pitch_layout(ppu, ram);
+  if (is_pitch && !s_was_pitch) {
+    issd_widescreen_reset();
+  }
+  s_was_pitch = is_pitch;
   if (is_pitch) {
     s_inactive_frames = 0;
   } else {
@@ -395,17 +509,19 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
 
   if (!is_pitch && (s_inactive_frames >= 2 || s_ws_extra == 0)) {
     s_ws_extra = 0;
-    if (issd_widescreen_title_layout(ppu, ram)) {
-      PpuSetExtraSpace(ppu, (uint16_t)extra);
-      PpuSetExtraSideSpace(ppu, extra, extra, 0);
-      PpuSetWidescreenLayerClamp(ppu, 0x0F);   /* every layer stays centred */
-    } else if (issd_widescreen_menu_layout(ppu, ram)) {
-      PpuSetExtraSpace(ppu, (uint16_t)extra);
-      PpuSetExtraSideSpace(ppu, extra, extra, 0);
-      PpuSetWidescreenLayerRepeat(ppu, 1u << 1);                     /* BG2 */
-      PpuSetWidescreenLayerClamp(ppu, (1u<<0) | (1u<<2) | (1u<<3));  /* rest */
+    unsigned submode = word(ram, 0x70);
+    bool is_pillarboxed = (submode == 0x0F || submode == 0x10 || submode == 0x12 || submode == 0x1C);
+    if (is_pillarboxed) {
+      PpuSetExtraSpaceCentered(ppu, (uint16_t)extra);
     } else {
-      PpuSetExtraSpaceCentered(ppu,(uint16_t)extra);
+      PpuSetExtraSpace(ppu, (uint16_t)extra);
+      PpuSetExtraSideSpace(ppu, extra, extra, 0);
+      if (issd_widescreen_menu_layout(ppu, ram)) {
+        PpuSetWidescreenLayerRepeat(ppu, 1u << 1);                     /* BG2 */
+        PpuSetWidescreenLayerClamp(ppu, (1u<<0) | (1u<<2) | (1u<<3));  /* rest */
+      } else {
+        PpuSetWidescreenLayerClamp(ppu, 0x0F);   /* all layers clamped, backdrop fills margins */
+      }
     }
     remember_ram(ram);
     return false;

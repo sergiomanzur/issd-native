@@ -79,6 +79,15 @@ def run(root, exe, rom, frames):
                     for r, g, b in crop.getdata()
                 )
                 assert purple < 120, "HUD/name glyphs leaked into 16:9 pitch margins"
+            if name in ("16_9", "21_9") and frames == 3480:
+                # Player $0800 is visible only in the added left margin. Its
+                # native pose is zero and graphics were never uploaded; the
+                # old fallback rendered menu letters in this blue-shirted
+                # player's place. Check actual pixels, not just OAM presence.
+                assert int.from_bytes(ram[0x808:0x80a], "little", signed=True) == -69
+                crop = picture.crop((margin-71, 130, margin-59, 194))
+                blue = sum(b > r+40 and b > g+20 for r, g, b in crop.getdata())
+                assert blue > 20, "offscreen player is using stale/menu graphics"
         print(f"PASS {name}: {width}x224, simulation unchanged, frame {frames}", flush=True)
     print(f"Artifacts: {root}", flush=True)
 

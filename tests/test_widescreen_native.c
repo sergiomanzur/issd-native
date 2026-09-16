@@ -35,6 +35,101 @@ static void fixture(void) {
   for(int i=0;i<0x2000;i++) ppu.vram[i]=0xdead;
   for(int i=0;i<128;i++) ppu.oam[i*2]=0xf0f0;
 }
+
+static void test_offscreen_player_graphics(void) {
+  fixture();
+  /* $84E6C7 records the animation descriptor before skipping an offscreen
+   * player's pose and two graphics uploads. VRAM still contains menu tiles. */
+  word(0x800, 0); word(0x802, 0x0060);
+  word(0x808, (uint16_t)-48); word(0x80c, 80);
+  word(0x814, 0xa400); word(0x81e, 1); word(0x830, 1);
+  rom[0x12400]=0x00; rom[0x12401]=0x90; /* bank $88 pose $9000 */
+  rom[0x12402]=0x00; rom[0x12403]=0x80; rom[0x12404]=0x96;
+  rom[0xb0000]=32; rom[0xb0022]=32; /* two length-prefixed tile rows */
+  memset(rom+0xb0002, 0x12, 32); memset(rom+0xb0024, 0x34, 32);
+  rom[0x41000]=1; rom[0x41003]=0; rom[0x41004]=0x10;
+  ppu.vram[0x6600]=0xbeef; ppu.vram[0x6700]=0xcafe;
+  assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
+  assert(ppu.vram[0x6600]==0x1212 && ppu.vram[0x6700]==0x3434);
+  assert((ppu.oam[0] & 255)==200 && (ppu.oam[0] >> 8)==72);
+  assert((ppu.oam[1] & 255)==0x60);
+  assert(ram[0x800]==0 && ram[0x81e]==1); /* presentation only */
+  issd_widescreen_end(&ppu);
+  assert(ppu.vram[0x6600]==0xbeef && ppu.vram[0x6700]==0xcafe);
+
+  /* Real player descriptors use decoded RAM geometry. The descriptor's new
+   * pose must replace the stale pose, and kit details follow the same frame. */
+  static const int extras[] = {32,51,71,95};
+  for (unsigned i=0;i<sizeof(extras)/sizeof(extras[0]);i++) {
+    issd_widescreen_reset();
+    word(0x808,(uint16_t)-20); word(0x800,0x9000); word(0x830,2);
+    rom[0x12400]=0x40; rom[0x12401]=0x40; rom[0x12405]=0x81;
+    word(0x4040,0xff01); word(0x6040,0); word(0x8040,0); word(0xa040,0);
+    rom[0xce8a]=0x00; rom[0xce8b]=0x90;
+    memset(rom+0xc1000,0x56,32); /* bank $98:$9000 */
+    assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),extras[i]));
+    assert(ppu.vram[0x6770]==0x5656);
+    assert((ppu.oam[0]&255)==228 && (ppu.oam[0]>>8)==72);
+    assert(ppu.highOam[0]&2);
+    issd_widescreen_end(&ppu);
+  }
+
+  /* Type 8 has an additional shared detail upload ($84E842). */
+  issd_widescreen_reset(); word(0x830,8); rom[0x12405]=2;
+  rom[0xceee]=0x00; rom[0xceef]=0x90;
+  memset(rom+0x121000,0x78,64); /* bank $A4:$9000 */
+  ppu.vram[0x7fe0]=0xabcd;
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71);
+  assert(ppu.vram[0x7fe0]==0x7878);
+  issd_widescreen_end(&ppu);
+  assert(ppu.vram[0x7fe0]==0xabcd);
+
+  /* A rejected second row must neither partially upload nor draw stale tiles. */
+  issd_widescreen_reset(); rom[0xb0023]=2;
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71);
+  assert(ppu.vram[0x6600]==0xbeef && ppu.oam[0]==0xf0f0);
+  issd_widescreen_end(&ppu);
+
+  issd_widescreen_reset();
+  assert(!issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),0));
+  assert(ppu.vram[0x6600]==0xbeef && ppu.oam[0]==0xf0f0);
+}
+
+static void test_padded_stadium_edge(void) {
+  static const int extras[] = {32,51,71,95};
+  for (unsigned width=0;width<sizeof(extras)/sizeof(extras[0]);width++) {
+  fixture();
+  /* The page stride includes zero padding after the authored stadium. Its
+   * blank metatile must not turn the added corner view into a green block. */
+  for (unsigned layer=0; layer<2; layer++) {
+    memset(ram+0x1d000+layer*0x1000,0,0x1000);
+    for (unsigned y=0;y<4;y++)
+      memset(ram+0x1d000+layer*0x1000+y*0x200,1,128);
+    ppu.hScroll[layer]=256; ppu.vScroll[layer]=256;
+  }
+  assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),extras[width]));
+  assert(ppu.vram[0x800]==0x2003); /* world x512: extend outer tile column */
+  assert(ppu.vram[0x1800]==0x2403);
+  assert(ppu.vram[0xc00]==0xdead); /* native columns unchanged */
+  issd_widescreen_end(&ppu);
+  assert(ppu.vram[0x800]==0xdead && ppu.vram[0x1800]==0xdead);
+  }
+
+  fixture();
+  /* Leading padding, including negative world coordinates at the left edge. */
+  for (unsigned layer=0;layer<2;layer++) {
+    for(unsigned page=0;page<8;page++)
+      for(unsigned row=0;row<8;row++) {
+        ram[0x1d000+layer*0x1000+page*0x200+row*8]=0;
+        ram[0x1d001+layer*0x1000+page*0x200+row*8]=0;
+      }
+    ppu.hScroll[layer]=64; ppu.vScroll[layer]=256;
+  }
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71);
+  assert(ppu.vram[0xc1f]==0x2000 && ppu.vram[0x1c1f]==0x2400);
+  assert(ppu.vram[0x808]==0xdead);
+  issd_widescreen_end(&ppu);
+}
 int main(void) {
   fixture();
   assert(issd_widescreen_pitch_layout(&ppu,ram));
@@ -181,5 +276,7 @@ int main(void) {
   issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),95);
   assert(ppu.extraLeftCur==95 && ppu.extraRightCur==95);
   issd_widescreen_end(&ppu);
+  test_offscreen_player_graphics();
+  test_padded_stadium_edge();
   puts("widescreen native tests passed");
 }

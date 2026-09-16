@@ -44,6 +44,10 @@ typedef struct {
     uint16_t vram[0x8000];
 } IssdSaveSlot;
 
+typedef bool (*IssdSnapshotSaveFn)(const char *path);
+typedef bool (*IssdSnapshotLoadFn)(const char *path);
+void issd_save_set_snapshot_backends(IssdSnapshotSaveFn save_fn, IssdSnapshotLoadFn load_fn);
+
 bool issd_save_init(void);
 bool issd_save_to_slot(int slot_index, const char *label);
 bool issd_load_from_slot(int slot_index);

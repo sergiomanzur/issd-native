@@ -137,14 +137,26 @@ bool Issd_HlePumpAudio(CpuState *cpu) {
     RtlApuLock();
 
     /* 1. Check if previous command in $4C is acknowledged */
+    static uint32_t s_inflight_stall_frames = 0;
     uint8_t in_flight = g_ram[0x4C];
     if (in_flight != 0) {
         if (g_snes->apu->outPorts[0] == in_flight) {
             g_ram[0x4C] = 0;
+            s_inflight_stall_frames = 0;
             apu_writePortNow(g_snes->apu, 0, 0);
         } else {
-            apu_writePortNow(g_snes->apu, 0, in_flight);
+            s_inflight_stall_frames++;
+            if (s_inflight_stall_frames > 4) {
+                /* Watchdog: SPC missed or dropped echo for >4 frames, unblock queue */
+                g_ram[0x4C] = 0;
+                s_inflight_stall_frames = 0;
+                apu_writePortNow(g_snes->apu, 0, 0);
+            } else {
+                apu_writePortNow(g_snes->apu, 0, in_flight);
+            }
         }
+    } else {
+        s_inflight_stall_frames = 0;
     }
 
     /* 2. Drain next pending sound effect from FIFO $7EE680 */
@@ -158,9 +170,13 @@ bool Issd_HlePumpAudio(CpuState *cpu) {
             s_sfx_dispatched++;
 
             apu_writePortNow(g_snes->apu, 0, sfx);
-            /* Fast-step SPC to acknowledge without CPU spin-waiting */
-            for (int i = 0; i < 256; i++) {
-                if (g_snes->apu->outPorts[0] == sfx) break;
+            /* Step SPC to acknowledge without excessive spin-waiting */
+            for (int i = 0; i < 1024; i++) {
+                if (g_snes->apu->outPorts[0] == sfx) {
+                    g_ram[0x4C] = 0;
+                    apu_writePortNow(g_snes->apu, 0, 0);
+                    break;
+                }
                 apu_cycle(g_snes->apu);
             }
         }

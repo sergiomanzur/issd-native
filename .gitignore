@@ -1,4 +1,4 @@
-﻿# ROMs and cartridge dumps (Strict copyright rule)
+# ROMs and cartridge dumps (Strict copyright rule)
 *.sfc
 *.smc
 *.bin
@@ -64,6 +64,8 @@ saves/
 # only honest picture it has of what a setting does, and the exe will not
 # build without them.
 !tools/mod_studio/assets/**/*.png
+!android/app/src/main/res/**/*.png
+!android/*.png
 *.wav
 *.spc
 tier2_*.json

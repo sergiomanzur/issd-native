@@ -7,13 +7,22 @@
 #include <string.h>
 
 #include "issd_hd.h"
+#include "issd_android.h"
 
 extern uint8_t g_ram[0x20000];
+
+static const char *get_mods_dir(void) {
+#ifdef ISSD_ANDROID
+    return issd_android_mods_dir();
+#else
+    return "mods";
+#endif
+}
 
 IssdOverlayMenu g_overlay_menu;
 
 /* 8x8 Basic ASCII font (32-127) bitmap table */
-static const uint8_t s_font8x8[96][8] = {
+const uint8_t g_issd_font8x8[96][8] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, /* 32 ' ' */
     {0x18,0x3C,0x3C,0x18,0x18,0x00,0x18,0x00}, /* 33 '!' */
     {0x66,0x66,0x24,0x00,0x00,0x00,0x00,0x00}, /* 34 '"' */
@@ -112,7 +121,17 @@ static const uint8_t s_font8x8[96][8] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}  /* 127 */
 };
 
+#ifdef ISSD_ANDROID
+#define MENU_ITEM_PICK_ROM 15
+#define MENU_ITEM_PICK_MODS_FOLDER 16
+#define MENU_ITEM_RESTART 17
+#define MENU_ITEM_QUIT 18
+#define MENU_TOTAL_ITEMS 19
+#else
+#define MENU_ITEM_RESTART 15
+#define MENU_ITEM_QUIT 16
 #define MENU_TOTAL_ITEMS 17
+#endif
 
 /* The mod list is one row per pack, roster packs first, then tile packs,
  * then the actions. Everything is addressed by row index so the same
@@ -152,14 +171,14 @@ static void mods_toggle_row(int row) {
         issd_hd_set_enabled(i, !issd_hd_is_enabled(i));
         /* Tiles are only images, so they can be swapped without a restart
          * and the change is visible the moment the menu closes. */
-        issd_hd_apply("mods");
+        issd_hd_apply(get_mods_dir());
         issd_mod_result_note_tiles(issd_hd_texture_count());
     }
     mods_store_selection();
 }
 
 static void mods_open(void) {
-    issd_hd_scan_packs("mods");   /* pick up anything dropped in since boot */
+    issd_hd_scan_packs(get_mods_dir());   /* pick up anything dropped in since boot */
     issd_hd_enable_from_list(g_issd_config.hd_texture_packs);
     g_overlay_menu.page = ISSD_MENU_PAGE_MODS;
     g_overlay_menu.current_item = 1;
@@ -189,7 +208,7 @@ static const char *issd_menu_mods_label(void) {
 
 static void DrawChar(uint32_t *fb, int fb_w, int fb_h, int x, int y, char c, uint32_t color) {
     if (c < 32 || c > 126) c = ' ';
-    const uint8_t *glyph = s_font8x8[c - 32];
+    const uint8_t *glyph = g_issd_font8x8[c - 32];
     for (int row = 0; row < 8; row++) {
         int py = y + row;
         if (py < 0 || py >= fb_h) continue;
@@ -476,32 +495,39 @@ bool issd_menu_confirm(void) {
         case 8: /* VSync */
             issd_menu_navigate_right();
             break;
-        case 9: /* Save */
+        case 9: { /* Save State */
             if (issd_save_to_slot(g_overlay_menu.current_slot, NULL)) {
                 snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message),
-                         "Saved Slot %d OK!", g_overlay_menu.current_slot + 1);
+                         "State Saved: Slot %d", g_overlay_menu.current_slot + 1);
+                issd_menu_notify(g_overlay_menu.status_message, 120);
             } else {
                 snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message), "Save Failed!");
+                issd_menu_notify("Save State Failed!", 120);
             }
             g_overlay_menu.status_timer = 120;
             break;
-        case 10: /* Load */
+        }
+        case 10: { /* Load State */
             if (issd_load_from_slot(g_overlay_menu.current_slot)) {
                 snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message),
-                         "Loaded Slot %d OK!", g_overlay_menu.current_slot + 1);
+                         "State Loaded: Slot %d", g_overlay_menu.current_slot + 1);
+                issd_menu_notify(g_overlay_menu.status_message, 120);
                 issd_menu_close();
             } else {
-                snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message), "Empty / Invalid Slot!");
+                snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message),
+                         "Slot %d is Empty!", g_overlay_menu.current_slot + 1);
+                issd_menu_notify(g_overlay_menu.status_message, 120);
             }
             g_overlay_menu.status_timer = 120;
             break;
+        }
         case 11: /* Volume */
         case 12: /* Engine Mode */
         case 13: /* Debug & JPN Mode */
         case 14: /* HD Tiles */
             issd_menu_navigate_right();
             break;
-        case 15: /* Save & Restart */
+        case MENU_ITEM_RESTART: /* Save & Restart */
             /* A mod pack is applied to the cartridge image before the
              * engine boots, and rosters are cached as a match loads, so
              * choosing one mid-session changes nothing until the game
@@ -509,10 +535,20 @@ bool issd_menu_confirm(void) {
             issd_config_save(&g_issd_config, NULL);
             issd_restart_application();
             break;
-        case 16: /* Save & Quit */
+        case MENU_ITEM_QUIT: /* Save & Quit */
             issd_config_save(&g_issd_config, NULL);
-            exit(0);
+            issd_request_quit();
             break;
+#ifdef ISSD_ANDROID
+        case MENU_ITEM_PICK_ROM:
+            issd_android_pick_rom();
+            issd_menu_notify("Choose ROM in Android picker", 180);
+            break;
+        case MENU_ITEM_PICK_MODS_FOLDER:
+            issd_android_pick_mods_folder();
+            issd_menu_notify("Choose mods folder in Android picker", 180);
+            break;
+#endif
         default:
             break;
     }
@@ -667,19 +703,30 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[6], sizeof(items[6]), "Filter:     <%s>", filter_str);
     snprintf(items[7], sizeof(items[7]), "Target FPS: <%s>", fps_str);
     snprintf(items[8], sizeof(items[8]), "VSync:      <%s>", g_issd_config.vsync ? "ON" : "OFF");
-    snprintf(items[9], sizeof(items[9]), "Save Slot:  <Slot %d>", g_overlay_menu.current_slot + 1);
-    snprintf(items[10], sizeof(items[10]), "Load Slot:  <Slot %d>", g_overlay_menu.current_slot + 1);
+    char slot_info[64];
+    bool has_save = issd_save_get_info(g_overlay_menu.current_slot, slot_info, sizeof(slot_info));
+    snprintf(items[9], sizeof(items[9]), "Save State: <Slot %d>", g_overlay_menu.current_slot + 1);
+    snprintf(items[10], sizeof(items[10]), "Load State: <Slot %d%s>", g_overlay_menu.current_slot + 1, has_save ? "" : " (Empty)");
     snprintf(items[11], sizeof(items[11]), "Volume:     <%d%%>", g_issd_config.master_volume);
     snprintf(items[12], sizeof(items[12]), "Engine:     <%s>", mode_str);
     snprintf(items[13], sizeof(items[13]), "Debug/JPN:  <%s>", g_issd_config.debug_unhooked_code ? "ENABLED" : "DISABLED");
     snprintf(items[14], sizeof(items[14]), "HD Tiles:   <%s>", issd_menu_hd_pack_label());
-    snprintf(items[15], sizeof(items[15]), "Save & Restart (applies mods)");
-    snprintf(items[16], sizeof(items[16]), "Save & Quit to Desktop");
+#ifdef ISSD_ANDROID
+    snprintf(items[MENU_ITEM_PICK_ROM], sizeof(items[MENU_ITEM_PICK_ROM]), "Choose ROM File...");
+    snprintf(items[MENU_ITEM_PICK_MODS_FOLDER], sizeof(items[MENU_ITEM_PICK_MODS_FOLDER]), "Choose Mods Folder...");
+#endif
+    snprintf(items[MENU_ITEM_RESTART], sizeof(items[MENU_ITEM_RESTART]), "Save & Restart (applies mods)");
+#ifdef ISSD_ANDROID
+    snprintf(items[MENU_ITEM_QUIT], sizeof(items[MENU_ITEM_QUIT]), "Save & Quit");
+#else
+    snprintf(items[MENU_ITEM_QUIT], sizeof(items[MENU_ITEM_QUIT]), "Save & Quit to Desktop");
+#endif
 
     int start_y = box_y + 14;
+    int row_h = MENU_TOTAL_ITEMS > 17 ? 10 : 11;
     for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {
         uint32_t color = (i == g_overlay_menu.current_item) ? 0xFF00FF66 : 0xFFE0E0E0;
-        int item_y = start_y + i * 11;
+        int item_y = start_y + i * row_h;
         if (i == g_overlay_menu.current_item) {
             DrawChar(fb, width, height, box_x + 4, item_y, '>', 0xFF00FF66);
         }

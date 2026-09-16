@@ -3,8 +3,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <math.h>
 
+#if !defined(__ANDROID__) && !defined(ISSD_ANDROID)
 #define SDL_MAIN_HANDLED
+#endif
 #include <SDL.h>
 
 #include "types.h"
@@ -135,10 +138,32 @@ static char **g_argv;
 
 static const char *ResolveConfigPath(char *out, size_t out_size, const char *cli_path);
 
+static int g_dump_first = -1, g_dump_last = -1;
+static int g_save_state_frame = -1;
+static int g_load_state_frame = -1;
+static uint32_t g_pixel_buffer[MAX_WS_WIDTH * SNES_HEIGHT];
+static uint32_t g_pad1_state = 0;
+static uint32_t g_pad2_state = 0;
+static bool g_running = true;
+static bool g_restart_requested = false;
+static bool g_headless = false;
+static int g_target_frames = -1;
+static const char *g_screenshot_path = NULL;
+static const char *g_dump_state_path = NULL;
+
+void issd_request_quit(void) {
+    g_running = false;
+}
+
 void issd_restart_application(void) {
     char cfg_path[1024];
     issd_config_save(&g_issd_config, ResolveConfigPath(cfg_path, sizeof(cfg_path), NULL));
-#ifdef _WIN32
+#if defined(ISSD_ANDROID) || defined(__ANDROID__)
+    /* On Android, execv("/proc/self/exe") or exit(0) crashes or destroys the JVM/Activity.
+     * Perform an in-process soft reset instead. */
+    g_restart_requested = true;
+    issd_menu_close();
+#elif defined(_WIN32)
     char exe[1024];
     if (GetModuleFileNameA(NULL, exe, sizeof(exe))) {
         /* Quote every argument: paths here routinely contain spaces. */
@@ -163,18 +188,6 @@ void issd_restart_application(void) {
     exit(0);
 #endif
 }
-
-static int g_dump_first = -1, g_dump_last = -1;
-static int g_save_state_frame = -1;
-static int g_load_state_frame = -1;
-static uint32_t g_pixel_buffer[MAX_WS_WIDTH * SNES_HEIGHT];
-static uint32_t g_pad1_state = 0;
-static uint32_t g_pad2_state = 0;
-static bool g_running = true;
-static bool g_headless = false;
-static int g_target_frames = -1;
-static const char *g_screenshot_path = NULL;
-static const char *g_dump_state_path = NULL;
 static const uint8_t *g_rom_data;
 static size_t g_rom_size;
 
@@ -632,6 +645,198 @@ static void PumpTouchState(void) {
     if (issd_touch_take_menu_press()) issd_menu_toggle();
 }
 
+static void TouchDrawFilledCircle(SDL_Renderer *renderer, int cx, int cy, int radius,
+                                 Uint8 r, Uint8 g, Uint8 b, Uint8 a) {
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    int r2 = radius * radius;
+    for (int dy = -radius; dy <= radius; dy++) {
+        int dx = (int)sqrtf((float)(r2 - dy * dy));
+        SDL_RenderDrawLine(renderer, cx - dx, cy + dy, cx + dx, cy + dy);
+    }
+}
+
+static void TouchDrawCircleOutline(SDL_Renderer *renderer, int cx, int cy, int radius, int thickness,
+                                  Uint8 r, Uint8 g, Uint8 b, Uint8 a) {
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    for (int t = 0; t < thickness; t++) {
+        int rad = radius - t;
+        if (rad < 0) break;
+        int x = rad, y = 0;
+        int err = 0;
+        while (x >= y) {
+            SDL_RenderDrawPoint(renderer, cx + x, cy + y);
+            SDL_RenderDrawPoint(renderer, cx + y, cy + x);
+            SDL_RenderDrawPoint(renderer, cx - y, cy + x);
+            SDL_RenderDrawPoint(renderer, cx - x, cy + y);
+            SDL_RenderDrawPoint(renderer, cx - x, cy - y);
+            SDL_RenderDrawPoint(renderer, cx - y, cy - x);
+            SDL_RenderDrawPoint(renderer, cx + y, cy - x);
+            SDL_RenderDrawPoint(renderer, cx + x, cy - y);
+            if (err <= 0) {
+                y += 1;
+                err += 2 * y + 1;
+            }
+            if (err > 0) {
+                x -= 1;
+                err -= 2 * x + 1;
+            }
+        }
+    }
+}
+
+static void TouchDrawRoundedRect(SDL_Renderer *renderer, const SDL_Rect *rect, int radius,
+                                Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool filled) {
+    if (radius * 2 > rect->h) radius = rect->h / 2;
+    if (radius * 2 > rect->w) radius = rect->w / 2;
+    if (radius < 1) radius = 1;
+
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+
+    if (filled) {
+        /* Center block spanning full height */
+        SDL_Rect mid = { rect->x + radius, rect->y, rect->w - 2 * radius, rect->h };
+        SDL_RenderFillRect(renderer, &mid);
+
+        /* Left and right side blocks between the corner arcs */
+        if (rect->h > 2 * radius) {
+            SDL_Rect left_side  = { rect->x, rect->y + radius, radius, rect->h - 2 * radius };
+            SDL_Rect right_side = { rect->x + rect->w - radius, rect->y + radius, radius, rect->h - 2 * radius };
+            SDL_RenderFillRect(renderer, &left_side);
+            SDL_RenderFillRect(renderer, &right_side);
+        }
+
+        /* 4 corner arcs */
+        int r2 = radius * radius;
+        for (int dy = 0; dy < radius; dy++) {
+            int dx = (int)sqrtf((float)(r2 - dy * dy));
+            int top_y = rect->y + radius - 1 - dy;
+            int bot_y = rect->y + rect->h - radius + dy;
+            /* Top-left */
+            SDL_RenderDrawLine(renderer, rect->x + radius - dx, top_y, rect->x + radius, top_y);
+            /* Top-right */
+            SDL_RenderDrawLine(renderer, rect->x + rect->w - radius, top_y, rect->x + rect->w - radius + dx, top_y);
+            /* Bottom-left */
+            SDL_RenderDrawLine(renderer, rect->x + radius - dx, bot_y, rect->x + radius, bot_y);
+            /* Bottom-right */
+            SDL_RenderDrawLine(renderer, rect->x + rect->w - radius, bot_y, rect->x + rect->w - radius + dx, bot_y);
+        }
+    } else {
+        /* Outline: 4 straight edges */
+        SDL_RenderDrawLine(renderer, rect->x + radius, rect->y, rect->x + rect->w - radius, rect->y);
+        SDL_RenderDrawLine(renderer, rect->x + radius, rect->y + rect->h - 1, rect->x + rect->w - radius, rect->y + rect->h - 1);
+        if (rect->h > 2 * radius) {
+            SDL_RenderDrawLine(renderer, rect->x, rect->y + radius, rect->x, rect->y + rect->h - radius);
+            SDL_RenderDrawLine(renderer, rect->x + rect->w - 1, rect->y + radius, rect->x + rect->w - 1, rect->y + rect->h - radius);
+        }
+
+        /* 4 corner arc outlines */
+        int x = radius, y = 0;
+        int err = 0;
+        int cx_l = rect->x + radius;
+        int cx_r = rect->x + rect->w - radius - 1;
+        int cy_t = rect->y + radius;
+        int cy_b = rect->y + rect->h - radius - 1;
+        while (x >= y) {
+            /* Top-left */
+            SDL_RenderDrawPoint(renderer, cx_l - x, cy_t - y);
+            SDL_RenderDrawPoint(renderer, cx_l - y, cy_t - x);
+            /* Top-right */
+            SDL_RenderDrawPoint(renderer, cx_r + x, cy_t - y);
+            SDL_RenderDrawPoint(renderer, cx_r + y, cy_t - x);
+            /* Bottom-left */
+            SDL_RenderDrawPoint(renderer, cx_l - x, cy_b + y);
+            SDL_RenderDrawPoint(renderer, cx_l - y, cy_b + x);
+            /* Bottom-right */
+            SDL_RenderDrawPoint(renderer, cx_r + x, cy_b + y);
+            SDL_RenderDrawPoint(renderer, cx_r + y, cy_b + x);
+            if (err <= 0) {
+                y += 1;
+                err += 2 * y + 1;
+            }
+            if (err > 0) {
+                x -= 1;
+                err -= 2 * x + 1;
+            }
+        }
+    }
+}
+
+static void TouchDrawText(SDL_Renderer *renderer, const char *text, int cx, int cy, int scale,
+                         Uint8 r, Uint8 g, Uint8 b, Uint8 a, bool shadow) {
+    if (!text || !*text) return;
+    int len = (int)strlen(text);
+    int total_w = len * 8 * scale;
+    int total_h = 8 * scale;
+    int start_x = cx - total_w / 2;
+    int start_y = cy - total_h / 2;
+
+    if (shadow) {
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, (Uint8)(a * 0.85f));
+        int off = scale > 1 ? scale : 1;
+        for (int i = 0; i < len; i++) {
+            char ch = text[i];
+            if (ch < 32 || ch > 126) ch = ' ';
+            const uint8_t *glyph = g_issd_font8x8[ch - 32];
+            int gx = start_x + i * 8 * scale + off;
+            int gy = start_y + off;
+            for (int row = 0; row < 8; row++) {
+                uint8_t bits = glyph[row];
+                if (!bits) continue;
+                for (int col = 0; col < 8; col++) {
+                    if (bits & (0x80 >> col)) {
+                        SDL_Rect px_box = { gx + col * scale, gy + row * scale, scale, scale };
+                        SDL_RenderFillRect(renderer, &px_box);
+                    }
+                }
+            }
+        }
+    }
+
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    for (int i = 0; i < len; i++) {
+        char ch = text[i];
+        if (ch < 32 || ch > 126) ch = ' ';
+        const uint8_t *glyph = g_issd_font8x8[ch - 32];
+        int gx = start_x + i * 8 * scale;
+        int gy = start_y;
+        for (int row = 0; row < 8; row++) {
+            uint8_t bits = glyph[row];
+            if (!bits) continue;
+            for (int col = 0; col < 8; col++) {
+                if (bits & (0x80 >> col)) {
+                    SDL_Rect px_box = { gx + col * scale, gy + row * scale, scale, scale };
+                    SDL_RenderFillRect(renderer, &px_box);
+                }
+            }
+        }
+    }
+}
+
+static void TouchDrawTriangle(SDL_Renderer *renderer, int x0, int y0, int x1, int y1, int x2, int y2,
+                             Uint8 r, Uint8 g, Uint8 b, Uint8 a) {
+    SDL_SetRenderDrawColor(renderer, r, g, b, a);
+    int min_y = y0 < y1 ? (y0 < y2 ? y0 : y2) : (y1 < y2 ? y1 : y2);
+    int max_y = y0 > y1 ? (y0 > y2 ? y0 : y2) : (y1 > y2 ? y1 : y2);
+    for (int y = min_y; y <= max_y; y++) {
+        int x_coords[3];
+        int num = 0;
+        int pts[3][2] = { {x0, y0}, {x1, y1}, {x2, y2} };
+        for (int i = 0; i < 3; i++) {
+            int j = (i + 1) % 3;
+            int py0 = pts[i][1], py1 = pts[j][1];
+            int px0 = pts[i][0], px1 = pts[j][0];
+            if ((py0 <= y && y < py1) || (py1 <= y && y < py0)) {
+                x_coords[num++] = px0 + (y - py0) * (px1 - px0) / (py1 - py0);
+            }
+        }
+        if (num == 2) {
+            int start = x_coords[0] < x_coords[1] ? x_coords[0] : x_coords[1];
+            int end   = x_coords[0] > x_coords[1] ? x_coords[0] : x_coords[1];
+            SDL_RenderDrawLine(renderer, start, y, end, y);
+        }
+    }
+}
+
 /* Drawn straight onto the renderer after the game frame, so the overlay is
  * always at native window resolution rather than the 256-pixel-wide SNES
  * buffer, and never gets scaled into mush. */
@@ -642,19 +847,152 @@ static void RenderTouchOverlay(SDL_Renderer *renderer) {
     if (!rects) return;
 
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    uint16_t pad_mask = issd_touch_pad_mask();
+
     for (int i = 0; i < count; i++) {
         const IssdTouchRect *r = &rects[i];
         if (!r->visible) continue;
-        SDL_Rect box = { r->x, r->y, r->w, r->h };
-        /* The menu button stays brighter than the rest: it is the one
-         * control that is always available and must be findable. */
-        const bool is_menu = (i == ISSD_TOUCH_MENU);
-        const Uint8 fill = r->pressed ? 190 : (is_menu ? 120 : 70);
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, fill);
-        SDL_RenderFillRect(renderer, &box);
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255,
-                               r->pressed ? 255 : (is_menu ? 220 : 150));
-        SDL_RenderDrawRect(renderer, &box);
+
+        if (i == ISSD_TOUCH_DPAD) {
+            /* Authentic SNES Cross D-Pad */
+            const int aw = r->w / 3;
+            const int ah = r->h / 3;
+            const int cx = r->x + r->w / 2;
+            const int cy = r->y + r->h / 2;
+
+            /* Base cross shapes */
+            SDL_Rect h_bar = { r->x, r->y + ah, r->w, ah };
+            SDL_Rect v_bar = { r->x + aw, r->y, aw, r->h };
+
+            SDL_SetRenderDrawColor(renderer, 30, 35, 45, 180);
+            SDL_RenderFillRect(renderer, &h_bar);
+            SDL_RenderFillRect(renderer, &v_bar);
+
+            /* Directional active arms / glow */
+            if (pad_mask & ISSD_PAD_UP) {
+                SDL_Rect up_bar = { r->x + aw, r->y, aw, ah };
+                SDL_SetRenderDrawColor(renderer, 80, 160, 240, 220);
+                SDL_RenderFillRect(renderer, &up_bar);
+            }
+            if (pad_mask & ISSD_PAD_DOWN) {
+                SDL_Rect dn_bar = { r->x + aw, r->y + 2 * ah, aw, ah };
+                SDL_SetRenderDrawColor(renderer, 80, 160, 240, 220);
+                SDL_RenderFillRect(renderer, &dn_bar);
+            }
+            if (pad_mask & ISSD_PAD_LEFT) {
+                SDL_Rect lf_bar = { r->x, r->y + ah, aw, ah };
+                SDL_SetRenderDrawColor(renderer, 80, 160, 240, 220);
+                SDL_RenderFillRect(renderer, &lf_bar);
+            }
+            if (pad_mask & ISSD_PAD_RIGHT) {
+                SDL_Rect rt_bar = { r->x + 2 * aw, r->y + ah, aw, ah };
+                SDL_SetRenderDrawColor(renderer, 80, 160, 240, 220);
+                SDL_RenderFillRect(renderer, &rt_bar);
+            }
+
+            /* Cross outline */
+            SDL_SetRenderDrawColor(renderer, 100, 110, 130, 220);
+            /* Top edge */
+            SDL_RenderDrawLine(renderer, r->x + aw, r->y, r->x + 2 * aw, r->y);
+            /* Top-right notch */
+            SDL_RenderDrawLine(renderer, r->x + 2 * aw, r->y, r->x + 2 * aw, r->y + ah);
+            SDL_RenderDrawLine(renderer, r->x + 2 * aw, r->y + ah, r->x + r->w, r->y + ah);
+            /* Right edge */
+            SDL_RenderDrawLine(renderer, r->x + r->w, r->y + ah, r->x + r->w, r->y + 2 * ah);
+            /* Bottom-right notch */
+            SDL_RenderDrawLine(renderer, r->x + r->w, r->y + 2 * ah, r->x + 2 * aw, r->y + 2 * ah);
+            SDL_RenderDrawLine(renderer, r->x + 2 * aw, r->y + 2 * ah, r->x + 2 * aw, r->y + r->h);
+            /* Bottom edge */
+            SDL_RenderDrawLine(renderer, r->x + 2 * aw, r->y + r->h, r->x + aw, r->y + r->h);
+            /* Bottom-left notch */
+            SDL_RenderDrawLine(renderer, r->x + aw, r->y + r->h, r->x + aw, r->y + 2 * ah);
+            SDL_RenderDrawLine(renderer, r->x + aw, r->y + 2 * ah, r->x, r->y + 2 * ah);
+            /* Left edge */
+            SDL_RenderDrawLine(renderer, r->x, r->y + 2 * ah, r->x, r->y + ah);
+            /* Top-left notch */
+            SDL_RenderDrawLine(renderer, r->x, r->y + ah, r->x + aw, r->y + ah);
+            SDL_RenderDrawLine(renderer, r->x + aw, r->y + ah, r->x + aw, r->y);
+
+            /* Center pivot dimple */
+            TouchDrawFilledCircle(renderer, cx, cy, aw / 4, 20, 25, 30, 220);
+            TouchDrawCircleOutline(renderer, cx, cy, aw / 4, 1, 70, 80, 100, 200);
+
+            /* Directional chevrons / arrows */
+            const int tri_s = aw / 4;
+            /* UP */
+            TouchDrawTriangle(renderer, cx, (int)(r->y + ah * 0.3f),
+                              cx - tri_s, (int)(r->y + ah * 0.75f),
+                              cx + tri_s, (int)(r->y + ah * 0.75f),
+                              255, 255, 255, (pad_mask & ISSD_PAD_UP) ? 255 : 180);
+            /* DOWN */
+            TouchDrawTriangle(renderer, cx, (int)(r->y + r->h - ah * 0.3f),
+                              cx - tri_s, (int)(r->y + r->h - ah * 0.75f),
+                              cx + tri_s, (int)(r->y + r->h - ah * 0.75f),
+                              255, 255, 255, (pad_mask & ISSD_PAD_DOWN) ? 255 : 180);
+            /* LEFT */
+            TouchDrawTriangle(renderer, (int)(r->x + aw * 0.3f), cy,
+                              (int)(r->x + aw * 0.75f), cy - tri_s,
+                              (int)(r->x + aw * 0.75f), cy + tri_s,
+                              255, 255, 255, (pad_mask & ISSD_PAD_LEFT) ? 255 : 180);
+            /* RIGHT */
+            TouchDrawTriangle(renderer, (int)(r->x + r->w - aw * 0.3f), cy,
+                              (int)(r->x + r->w - aw * 0.75f), cy - tri_s,
+                              (int)(r->x + r->w - aw * 0.75f), cy + tri_s,
+                              255, 255, 255, (pad_mask & ISSD_PAD_RIGHT) ? 255 : 180);
+
+        } else if (r->round) {
+            /* Circular face button with authentic SNES coloring, letter, and action sublabel */
+            const int cx = r->x + r->w / 2;
+            const int cy = r->y + r->h / 2;
+            const int rad = r->w / 2;
+
+            /* Base fill (translucent to see field beneath, bright when pressed) */
+            const Uint8 fill_alpha = r->pressed ? 240 : 155;
+            TouchDrawFilledCircle(renderer, cx, cy, rad, r->color_r, r->color_g, r->color_b, fill_alpha);
+
+            /* Outer glow / outline */
+            TouchDrawCircleOutline(renderer, cx, cy, rad, 3,
+                                   r->pressed ? 255 : r->color_r,
+                                   r->pressed ? 255 : r->color_g,
+                                   r->pressed ? 255 : r->color_b,
+                                   r->pressed ? 255 : 220);
+
+            /* Subtle top specular arc highlight */
+            TouchDrawCircleOutline(renderer, cx, cy - 2, rad - 5, 2, 255, 255, 255, r->pressed ? 120 : 60);
+
+            /* Main button letter (A, B, X, Y) */
+            int scale = rad / 14;
+            if (scale < 2) scale = 2;
+            int text_y = r->sublabel ? (cy - (int)(rad * 0.28f)) : cy;
+            TouchDrawText(renderer, r->label, cx, text_y, scale, 255, 255, 255, 255, true);
+
+            /* Action sublabel ("SHOOT", "PASS", "DASH", "THRU") */
+            if (r->sublabel) {
+                int sub_scale = rad / 28;
+                if (sub_scale < 1) sub_scale = 1;
+                TouchDrawText(renderer, r->sublabel, cx, cy + (int)(rad * 0.32f), sub_scale,
+                              255, 255, 210, 240, true);
+            }
+
+        } else {
+            /* Pill / capsule button for shoulders (L/R), START/SELECT, HIDE/SHOW, MENU */
+            SDL_Rect box = { r->x, r->y, r->w, r->h };
+            const int pill_rad = r->h / 2;
+            const Uint8 fill_alpha = r->pressed ? 240 : 160;
+
+            TouchDrawRoundedRect(renderer, &box, pill_rad,
+                                 r->color_r, r->color_g, r->color_b, fill_alpha, true);
+            TouchDrawRoundedRect(renderer, &box, pill_rad,
+                                 r->pressed ? 255 : (Uint8)((r->color_r + 255) / 2),
+                                 r->pressed ? 255 : (Uint8)((r->color_g + 255) / 2),
+                                 r->pressed ? 255 : (Uint8)((r->color_b + 255) / 2),
+                                 r->pressed ? 255 : 210, false);
+
+            int scale = r->h / 22;
+            if (scale < 1) scale = 1;
+            TouchDrawText(renderer, r->label, r->x + r->w / 2, r->y + r->h / 2, scale,
+                          255, 255, 255, 255, true);
+        }
     }
 }
 
@@ -684,9 +1022,22 @@ static void ProcessInputEvent(const SDL_Event *ev) {
         Uint8 btn = ev->cbutton.button;
 
         /* Check for In-Game Menu Toggle via Gamepad Guide / Home or Back+Start */
-        if (down && (btn == SDL_CONTROLLER_BUTTON_GUIDE)) {
-            issd_menu_toggle();
-            return;
+        if (down) {
+            bool is_guide = (btn == SDL_CONTROLLER_BUTTON_GUIDE);
+            bool is_back_start = false;
+            if (g_controller) {
+                if (btn == SDL_CONTROLLER_BUTTON_START &&
+                    SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_BACK)) {
+                    is_back_start = true;
+                } else if (btn == SDL_CONTROLLER_BUTTON_BACK &&
+                           SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_START)) {
+                    is_back_start = true;
+                }
+            }
+            if (is_guide || is_back_start) {
+                issd_menu_toggle();
+                return;
+            }
         }
 
         if (issd_menu_is_open()) {
@@ -1103,7 +1454,11 @@ static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int 
     }
 }
 
+#if defined(__ANDROID__) || defined(ISSD_ANDROID)
+DECLSPEC int SDL_main(int argc, char **argv) {
+#else
 int main(int argc, char **argv) {
+#endif
     g_argc = argc; g_argv = argv;
     setvbuf(stdout, NULL, _IONBF, 0);
     setvbuf(stderr, NULL, _IONBF, 0);
@@ -1172,21 +1527,26 @@ int main(int argc, char **argv) {
     issd_config_load(&g_issd_config, NULL);
 
     issd_save_init();
+    issd_save_set_snapshot_backends(RtlSaveSnapshot, RtlLoadSnapshot);
     issd_mod_init();
-    issd_mod_scan_and_load("mods");
+    const char *mods_dir = "mods";
+#ifdef ISSD_ANDROID
+    mods_dir = issd_android_mods_dir();
+#endif
+    issd_mod_scan_and_load(mods_dir);
     /* Replacement background tiles. The command line wins over the saved
      * setting so a pack can be tried without committing to it, and the
      * dump directory is set before the first frame so the very first
      * screen's tiles are captured too. */
     {
-        issd_hd_scan_packs("mods");
+        issd_hd_scan_packs(mods_dir);
         if (g_hd_pack_dir) {
             /* A directory named on the command line is used on its own,
              * so a pack can be tried without touching the saved stack. */
             issd_hd_load_pack(g_hd_pack_dir);
         } else {
             issd_hd_enable_from_list(g_issd_config.hd_texture_packs);
-            issd_hd_apply("mods");
+            issd_hd_apply(mods_dir);
         }
         issd_mod_result_note_tiles(issd_hd_active() ? issd_hd_texture_count() : 0);
         if (g_hd_dump_dir) {
@@ -1202,12 +1562,21 @@ int main(int argc, char **argv) {
     bool picked_rom = false;
     if (cli_rom_path && cli_rom_path[0]) {
         snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", cli_rom_path);
+#ifdef ISSD_ANDROID
+    } else if (!g_headless && PromptForRomFile(rom_path_buffer, sizeof(rom_path_buffer))) {
+        picked_rom = true;
+    } else if (g_issd_config.rom_path[0] && FileExists(g_issd_config.rom_path)) {
+        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
+    } else if (FileExists(DEFAULT_ROM_PATH)) {
+        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", DEFAULT_ROM_PATH);
+#else
     } else if (g_issd_config.rom_path[0] && FileExists(g_issd_config.rom_path)) {
         snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
     } else if (FileExists(DEFAULT_ROM_PATH)) {
         snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", DEFAULT_ROM_PATH);
     } else if (!g_headless && PromptForRomFile(rom_path_buffer, sizeof(rom_path_buffer))) {
         picked_rom = true;
+#endif
     } else if (g_issd_config.rom_path[0]) {
         snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
     } else {
@@ -1422,6 +1791,20 @@ int main(int argc, char **argv) {
 
         /* Simulation Tick: Paced deterministically at 60 Hz */
         bool frame_simulated = false;
+        if (g_restart_requested) {
+            g_restart_requested = false;
+            printf("[ISSD Native] Performing in-process soft reset...\n");
+            issd_mod_enable_from_list(g_issd_config.active_mod_packs);
+            issd_mod_reapply();
+            char summary[96];
+            issd_mod_result_note_tiles(issd_hd_texture_count());
+            issd_mod_result_summary(summary, sizeof(summary));
+            issd_menu_notify(summary, 300);
+            IssdBootReset();
+            frame_count = 0;
+            continue;
+        }
+
         if (g_headless || now >= next_sim_time) {
             if (issd_menu_is_open()) {
                 /* Paused: Render In-Game Menu Overlay */

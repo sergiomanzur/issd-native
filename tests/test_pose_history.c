@@ -18,11 +18,14 @@ static uint16_t margin(int x, uint16_t frozen) {
 }
 
 int main(void) {
-  /* The window matches CODE_83CFE5 exactly: x,y in [-32,288). */
-  assert(issd_pose_history_live_window(-32, 0));
-  assert(!issd_pose_history_live_window(-33, 0));
+  /* The live window requires x in [0, 288) and y in [-32, 288). */
+  assert(issd_pose_history_live_window(0, 0));
+  assert(!issd_pose_history_live_window(-1, 0));
+  assert(!issd_pose_history_live_window(-32, 0));
   assert(issd_pose_history_live_window(287, 0));
   assert(!issd_pose_history_live_window(288, 0));
+  assert(issd_pose_history_live_window(0, -32));
+  assert(!issd_pose_history_live_window(0, -33));
   assert(!issd_pose_history_live_window(0, 288));
 
   /* A player running left through the live window, pose stepping every 2
@@ -142,14 +145,16 @@ int main(void) {
   issd_pose_history_observe(0x04A0, -40, 100, 0x1234);
   assert(issd_pose_history_pose(0x04A0, -40, 100, 0x1234) == 0x1234);
 
-  /* Re-entering the live window hands control straight back to the game. */
+  /* Re-entering the live window hands control straight back to the game at x=0. */
   issd_pose_history_reset();
   x = 200;
   for (int rep = 0; rep < 4; rep++)
     for (int i = 0; i < 4; i++) { live(x, cyc[i]); x -= 3; live(x, cyc[i]); x -= 3; }
   x = -40;
-  for (int f = 0; f < 6; f++) { x -= 3; margin(x, frozen); }
-  assert(live(10, 0x4777) == 0x4777);
+  for (int f = 0; f < 6; f++) { x += 3; margin(x, frozen); }
+  assert(!issd_pose_history_live_window(-1, 100));
+  assert(issd_pose_history_live_window(0, 100));
+  assert(live(0, 0x4777) == 0x4777);
 
   puts("pose history tests passed");
   return 0;
