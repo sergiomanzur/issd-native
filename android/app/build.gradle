@@ -14,8 +14,8 @@ android {
         // storage fallbacks.
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName '0.1.0-beta.1'
+        versionCode 3
+        versionName '0.1.1b'
 
         externalNativeBuild {
             cmake {

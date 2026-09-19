@@ -257,6 +257,12 @@ def check_team(report, team, index, formations, seen_ids):
     elif isinstance(photo, str) and not photo.lower().endswith(".bmp"):
         report.error(where, "photo must be a 32-bit .bmp; %r is not" % (photo,))
 
+    flag = team.get("flag")
+    if flag is not None and not isinstance(flag, str):
+        report.error(where, "flag must be the name of a .bmp beside the pack")
+    elif isinstance(flag, str) and not flag.lower().endswith(".bmp"):
+        report.error(where, "flag must be a 32-bit .bmp; %r is not" % (flag,))
+
     for key in ("shirt", "shorts", "socks"):
         colour = team.get(key)
         if colour is None:
@@ -274,6 +280,10 @@ def check_team(report, team, index, formations, seen_ids):
         elif not 0 <= kit < KIT_RECORDS:
             report.error(where, "kit_record %d does not exist; there are %d"
                          % (kit, KIT_RECORDS))
+
+    stripes = team.get("stripes")
+    if stripes is not None and not isinstance(stripes, bool):
+        report.error(where, "stripes must be true or false")
 
     if (team.get("shirt") or team.get("shorts") or team.get("socks")) and (
             isinstance(team_id, int) and team_id in SHARED_KIT_TEAMS and

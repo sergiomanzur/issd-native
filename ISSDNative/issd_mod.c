@@ -267,6 +267,7 @@ static bool team_member(JsonReader *r, const char *key, void *ctx) {
         strcmp(key, "strategy") == 0)     return JSON_STR_FIELD(r, t->tactics);
     if (strcmp(key, "plate_name") == 0)   return JSON_STR_FIELD(r, t->plate_name);
     if (strcmp(key, "photo") == 0)        return JSON_STR_FIELD(r, t->photo);
+    if (strcmp(key, "flag") == 0)         return JSON_STR_FIELD(r, t->flag);
     if (strcmp(key, "new_team") == 0) {
         json_skip_ws(r);
         if (*r->p == 't' || *r->p == 'f') {
@@ -281,6 +282,17 @@ static bool team_member(JsonReader *r, const char *key, void *ctx) {
     if (strcmp(key, "shirt") == 0)        return json_colour(r, &t->shirt_rgb);
     if (strcmp(key, "shorts") == 0)       return json_colour(r, &t->shorts_rgb);
     if (strcmp(key, "socks") == 0)        return json_colour(r, &t->socks_rgb);
+    if (strcmp(key, "stripes") == 0) {
+        json_skip_ws(r);
+        if (*r->p == 't' || *r->p == 'f') {
+            t->stripes = (*r->p == 't');
+            return json_skip_value(r);
+        }
+        long v = 0;
+        if (!json_number(r, &v)) return false;
+        t->stripes = (v != 0);
+        return true;
+    }
     if (strcmp(key, "kit_record") == 0) {
         long v = 0;
         if (!json_number(r, &v)) return false;
@@ -622,6 +634,32 @@ bool issd_mod_team_photo_path(int team_id, char *out, size_t cap) {
             if (cut) *cut = '\0'; else dir[0] = '\0';
             if (dir[0]) snprintf(out, cap, "%s/%s", dir, t->photo);
             else        snprintf(out, cap, "%s", t->photo);
+            found = true;
+        }
+    }
+    return found;
+}
+
+bool issd_mod_team_flag_path(int team_id, char *out, size_t cap) {
+    bool found = false;
+    for (int i = 0; ; i++) {
+        const int pi = issd_mod_pack_at_order(i);
+        if (pi < 0) break;
+        const IssdModPack *pack = issd_mod_get_pack(pi);
+        if (!pack) continue;
+        for (int k = 0; k < pack->team_count; k++) {
+            const IssdModTeam *t = &pack->teams[k];
+            const int slot = t->new_team ? t->assigned_slot : (int)t->team_id;
+            if (slot != team_id) continue;
+            if (!t->flag[0]) continue;
+            char dir[256];
+            snprintf(dir, sizeof dir, "%s", pack->filepath);
+            char *cut = strrchr(dir, '/');
+            char *alt = strrchr(dir, '\\');
+            if (alt && (!cut || alt > cut)) cut = alt;
+            if (cut) *cut = '\0'; else dir[0] = '\0';
+            if (dir[0]) snprintf(out, cap, "%s/%s", dir, t->flag);
+            else        snprintf(out, cap, "%s", t->flag);
             found = true;
         }
     }

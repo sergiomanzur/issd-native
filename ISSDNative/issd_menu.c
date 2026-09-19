@@ -1125,3 +1125,313 @@ void issd_menu_render_team_grid(uint32_t *fb, int width, int height,
             DrawChar(fb, width, height, x, ty, name[i], GRID_INK);
     }
 }
+
+/* ------------------------------------------- team flags --------------- */
+
+#define FLAG_W 24
+#define FLAG_H 16
+
+static uint32_t s_flags[42][FLAG_W * FLAG_H];
+static bool     s_flag_loaded[42];
+static bool     s_flag_ok[42];
+
+static bool flag_load(int team_id, const char *path) {
+    if (team_id < 0 || team_id >= 42 || !path || !path[0]) return false;
+    FILE *f = fopen(path, "rb");
+    if (!f) return false;
+    PhotoFileHeader fh;
+    PhotoInfoHeader ih;
+    if (fread(&fh, sizeof fh, 1, f) != 1 || fread(&ih, sizeof ih, 1, f) != 1 ||
+        fh.type != 0x4D42 || ih.bits != 32 || ih.compression > 3) {
+        fclose(f);
+        return false;
+    }
+    const int w = ih.w;
+    const int h = ih.h < 0 ? -ih.h : ih.h;
+    if (w <= 0 || h <= 0 || (long)w * h > 4L * 1024 * 1024) { fclose(f); return false; }
+
+    uint32_t *src = (uint32_t *)malloc((size_t)w * h * sizeof(uint32_t));
+    if (!src) { fclose(f); return false; }
+    if (fseek(f, (long)fh.offset, SEEK_SET) != 0 ||
+        fread(src, sizeof(uint32_t), (size_t)w * h, f) != (size_t)w * h) {
+        free(src); fclose(f); return false;
+    }
+    fclose(f);
+
+    for (int y = 0; y < FLAG_H; y++) {
+        int sy = y * h / FLAG_H;
+        if (ih.h > 0) sy = h - 1 - sy;
+        for (int x = 0; x < FLAG_W; x++) {
+            const int sx = x * w / FLAG_W;
+            s_flags[team_id][y * FLAG_W + x] = 0xFF000000u | src[sy * w + sx];
+        }
+    }
+    free(src);
+    return true;
+}
+
+static void ensure_flag_loaded(int team_id) {
+    if (team_id < 0 || team_id >= 42 || s_flag_loaded[team_id]) return;
+    s_flag_loaded[team_id] = true;
+    char path[512];
+    s_flag_ok[team_id] = issd_mod_team_flag_path(team_id, path, sizeof path) &&
+                         flag_load(team_id, path);
+}
+
+static void draw_flag(uint32_t *fb, int width, int height, int dst_x, int dst_y, int team_id) {
+    if (team_id < 0 || team_id >= 42) return;
+    ensure_flag_loaded(team_id);
+    if (!s_flag_ok[team_id]) return;
+    for (int y = 0; y < FLAG_H; y++) {
+        const int py = dst_y + y;
+        if (py < 0 || py >= height) continue;
+        for (int x = 0; x < FLAG_W; x++) {
+            const int px = dst_x + x;
+            if (px < 0 || px >= width) continue;
+            uint32_t color = s_flags[team_id][y * FLAG_W + x];
+            if ((color >> 24) != 0) {
+                fb[(size_t)py * width + px] = color;
+            }
+        }
+    }
+}
+
+static void draw_outlined_text(uint32_t *fb, int width, int height,
+                               int x0, int y0, const char *text, int advance,
+                               uint32_t text_color, uint32_t edge_color) {
+    if (!text || !text[0]) return;
+    int len = (int)strlen(text);
+    if (edge_color != 0) {
+        for (int dy = -1; dy <= 1; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (!dx && !dy) continue;
+                int x = x0 + dx;
+                for (int i = 0; i < len; i++, x += advance)
+                    DrawChar(fb, width, height, x, y0 + dy, text[i], edge_color);
+            }
+        }
+    }
+    int x = x0;
+    for (int i = 0; i < len; i++, x += advance)
+        DrawChar(fb, width, height, x, y0, text[i], text_color);
+}
+
+static void draw_gradient_plate(uint32_t *fb, int width, int height, int margin,
+                                int x0, int x1, int y0, const char *name) {
+    if (!name || !name[0]) return;
+    int len = (int)strlen(name);
+    const int room = x1 - x0 + 1;
+    int advance = 8;
+    if (len * advance > room) advance = 6;
+    if (len * advance > room) len = room / advance;
+
+    for (int y = y0; y <= y0 + (TEAM_PLATE_Y1 - TEAM_PLATE_Y0); y++) {
+        if (y < 0 || y >= height) continue;
+        const uint32_t shade = kTeamPlateRow[y - y0];
+        for (int x = x0; x <= x1; x++) {
+            const int px = margin + x;
+            if (px < 0 || px >= width) continue;
+            fb[(size_t)y * width + px] = shade;
+        }
+    }
+
+    const int tx = margin + x0 + (room - len * advance) / 2;
+    const int ty = y0 + 4;
+    draw_outlined_text(fb, width, height, tx, ty, name, advance,
+                       TEAM_PLATE_INK, TEAM_PLATE_EDGE);
+}
+
+static bool on_handicap_screen(void) {
+    return (g_ram[0x32] == 0x06 && g_ram[0x70] == 0x0C &&
+            g_ram[0x18] == 116 && g_ram[0x1A] == 28);
+}
+
+static bool on_tonights_game_screen(void) {
+    return (g_ram[0x32] == 0x06 && g_ram[0x70] == 0x0C &&
+            g_ram[0x18] == 116 && g_ram[0x1A] == 52);
+}
+
+static bool on_prematch_presentation_screen(void) {
+    return (g_ram[0x32] == 0x06 && g_ram[0x70] == 0x0F && g_ram[0x1A] == 60);
+}
+
+void issd_menu_render_team_flags(uint32_t *fb, int width, int height, int margin) {
+    if (!fb) return;
+
+    /* 1. Team Selection Screen */
+    if (on_team_select()) {
+        const int sel_team = g_ram[TEAM_SELECTOR] / 2;
+        if (sel_team >= 0 && sel_team < 42) {
+            draw_flag(fb, width, height, margin + 135, 32, sel_team);
+        }
+
+        const int here = issd_mod_team_cell(sel_team);
+        if (here >= 0) {
+            const int first = (here / 6) * 6;
+            static const int kFlagCol[3] = { 60, 116, 172 };
+            for (int slot = 0; slot < 6; slot++) {
+                const int team = issd_mod_cell_team(first + slot);
+                if (team < 0 || team >= 42) continue;
+                const int fx = margin + kFlagCol[slot % 3];
+                const int fy = (slot < 3) ? 151 : 183;
+                draw_flag(fb, width, height, fx, fy, team);
+            }
+        }
+        return;
+    }
+
+    /* 2. Handicap Screen */
+    if (on_handicap_screen()) {
+        const int p1_team = g_ram[0x0DA0] / 2;
+        const int p2_team = g_ram[0x0EA0] / 2;
+
+        if (p1_team >= 0 && p1_team < 42) {
+            draw_flag(fb, width, height, margin + 92, 31, p1_team);
+            const char *p1_name = issd_mod_team_plate_name(p1_team);
+            if (p1_name && p1_name[0]) {
+                for (int y = 47; y <= 55; y++) {
+                    for (int x = 76; x <= 124; x++) {
+                        fb[(size_t)y * width + (margin + x)] = 0xFF2152BDu;
+                    }
+                }
+                int len = (int)strlen(p1_name);
+                int advance = 6;
+                if (len * advance > 48) advance = 5;
+                if (len * advance > 48) len = 48 / advance;
+                int sx = margin + 104 - (len * advance) / 2;
+                draw_outlined_text(fb, width, height, sx, 48, p1_name, advance,
+                                   0xFFFFFFFFu, 0xFF000000u);
+            }
+        }
+
+        if (p2_team >= 0 && p2_team < 42) {
+            draw_flag(fb, width, height, margin + 140, 31, p2_team);
+            const char *p2_name = issd_mod_team_plate_name(p2_team);
+            if (p2_name && p2_name[0]) {
+                for (int y = 47; y <= 55; y++) {
+                    for (int x = 136; x <= 184; x++) {
+                        fb[(size_t)y * width + (margin + x)] = 0xFF2152BDu;
+                    }
+                }
+                int len = (int)strlen(p2_name);
+                int advance = 6;
+                if (len * advance > 48) advance = 5;
+                if (len * advance > 48) len = 48 / advance;
+                int sx = margin + 152 - (len * advance) / 2;
+                draw_outlined_text(fb, width, height, sx, 48, p2_name, advance,
+                                   0xFFFFFFFFu, 0xFF000000u);
+            }
+        }
+        return;
+    }
+
+    /* 3. Tonight's Game Screen */
+    if (on_tonights_game_screen()) {
+        const int p1_team = g_ram[0x0DA0] / 2;
+        const int p2_team = g_ram[0x0EA0] / 2;
+
+        if (p1_team >= 0 && p1_team < 42) {
+            draw_flag(fb, width, height, margin + 88, 55, p1_team);
+            const char *p1_name = issd_mod_team_plate_name(p1_team);
+            if (p1_name && p1_name[0]) {
+                draw_gradient_plate(fb, width, height, margin, 17, 86, 56, p1_name);
+            }
+        }
+
+        if (p2_team >= 0 && p2_team < 42) {
+            draw_flag(fb, width, height, margin + 144, 55, p2_team);
+            const char *p2_name = issd_mod_team_plate_name(p2_team);
+            if (p2_name && p2_name[0]) {
+                draw_gradient_plate(fb, width, height, margin, 169, 238, 56, p2_name);
+            }
+        }
+        return;
+    }
+
+    /* 4. Pre-Match Presentation Screen (Stadium Fly-in / Vs Banner) */
+    if (on_prematch_presentation_screen()) {
+        const int p1_team = g_ram[0x0DA0] / 2;
+        const int p2_team = g_ram[0x0EA0] / 2;
+
+        if (p1_team >= 0 && p1_team < 42) {
+            draw_flag(fb, width, height, margin + 104, 64, p1_team);
+            const char *p1_name = issd_mod_team_plate_name(p1_team);
+            if (p1_name && p1_name[0]) {
+                for (int y = 63; y <= 82; y++) {
+                    for (int x = 16; x <= 102; x++) {
+                        fb[(size_t)y * width + (margin + x)] = 0xFF4A4AFFu;
+                    }
+                }
+                int len = (int)strlen(p1_name);
+                int advance = 7;
+                if (len * advance > 84) advance = 6;
+                if (len * advance > 84) len = 84 / advance;
+                int sx = margin + 100 - len * advance;
+                draw_outlined_text(fb, width, height, sx, 66, p1_name, advance,
+                                   TEAM_PLATE_INK, TEAM_PLATE_EDGE);
+            }
+        }
+
+        if (p2_team >= 0 && p2_team < 42) {
+            draw_flag(fb, width, height, margin + 128, 64, p2_team);
+            const char *p2_name = issd_mod_team_plate_name(p2_team);
+            if (p2_name && p2_name[0]) {
+                for (int y = 63; y <= 82; y++) {
+                    for (int x = 153; x <= 239; x++) {
+                        fb[(size_t)y * width + (margin + x)] = 0xFF4A4AFFu;
+                    }
+                }
+                int len = (int)strlen(p2_name);
+                int advance = 7;
+                if (len * advance > 84) advance = 6;
+                if (len * advance > 84) len = 84 / advance;
+                int sx = margin + 156;
+                draw_outlined_text(fb, width, height, sx, 66, p2_name, advance,
+                                   TEAM_PLATE_INK, TEAM_PLATE_EDGE);
+            }
+        }
+        return;
+    }
+
+    /* 5. In-Match HUD Scoreboard: Live play (Mode 0x08) */
+    if (g_ram[0x70] == 0x08) {
+        const int p1_team = g_ram[0x0DA0] / 2;
+        const int p2_team = g_ram[0x0EA0] / 2;
+
+        if (p1_team >= 0 && p1_team < 42) {
+            draw_flag(fb, width, height, margin + 12, 8, p1_team);
+            const char *p1_name = issd_mod_team_plate_name(p1_team);
+            if (p1_name && p1_name[0]) {
+                for (int y = 24; y < 32; y++) {
+                    for (int x = 8; x < 44; x++) {
+                        fb[(size_t)y * width + (margin + x)] = 0xFF00108Cu;
+                    }
+                }
+                int len = (int)strlen(p1_name);
+                int advance = 5;
+                if (len * advance > 36) len = 36 / advance;
+                int sx = margin + 26 - (len * advance) / 2;
+                draw_outlined_text(fb, width, height, sx, 24, p1_name, advance,
+                                   0xFFFFFFFFu, 0xFF000000u);
+            }
+        }
+
+        if (p2_team >= 0 && p2_team < 42) {
+            draw_flag(fb, width, height, margin + 84, 8, p2_team);
+            const char *p2_name = issd_mod_team_plate_name(p2_team);
+            if (p2_name && p2_name[0]) {
+                for (int y = 24; y < 32; y++) {
+                    for (int x = 80; x < 116; x++) {
+                        fb[(size_t)y * width + (margin + x)] = 0xFF00108Cu;
+                    }
+                }
+                int len = (int)strlen(p2_name);
+                int advance = 5;
+                if (len * advance > 36) len = 36 / advance;
+                int sx = margin + 98 - (len * advance) / 2;
+                draw_outlined_text(fb, width, height, sx, 24, p2_name, advance,
+                                   0xFFFFFFFFu, 0xFF000000u);
+            }
+        }
+    }
+}

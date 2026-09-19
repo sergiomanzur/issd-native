@@ -90,6 +90,9 @@ typedef struct {
      * a 32-bit BMP beside the pack file, any size, scaled into the 96x72
      * the frame leaves. Empty keeps the cartridge's photograph. */
     char     photo[64];
+    /* The team flag graphic. A 32-bit BMP beside the pack file, drawn over
+     * the select screen and in-game HUD. Empty keeps the cartridge's flag. */
+    char     flag[64];
     /* Kit colours. The cartridge keeps a seventeen-colour palette per kit:
      * three shirt shades, three shorts shades, two sock shades, and skin and
      * hair it shares with everyone. A pack gives the base colour of a part
@@ -105,6 +108,7 @@ typedef struct {
     uint32_t shorts_rgb;
     uint32_t socks_rgb;
     int      kit_record;      /* -1: use the measured table */
+    bool     stripes;         /* true: enable vertical shirt stripes on pitch */
     int      player_count;
     IssdModPlayer players[ISSD_MAX_PLAYERS_PER_TEAM];
 } IssdModTeam;
@@ -189,6 +193,10 @@ int         issd_mod_added_team_count(void);
 /* The full path of the squad photograph a pack gives a team, resolved
  * against the pack's own directory. False when no enabled pack has one. */
 bool        issd_mod_team_photo_path(int team_id, char *out, size_t cap);
+
+/* The full path of the custom flag graphic a pack gives a team, resolved
+ * against the pack's own directory. False when no enabled pack has one. */
+bool        issd_mod_team_flag_path(int team_id, char *out, size_t cap);
 
 /* The select screen's grid is not in team order: its first cell is
  * England. These read the cartridge's own cell table, so anything drawn

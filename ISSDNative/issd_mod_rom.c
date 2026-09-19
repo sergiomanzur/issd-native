@@ -284,9 +284,9 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
      * original squad had that slot. */
     rom[base + 4] = (uint8_t)((position_code(p->position) << 4) |
                                rating_to_nibble(a->stamina));
-    /* rom[base + 5] deliberately preserved. */
     rom[base + 6] = (uint8_t)(((p->skin_tone & 0x0F) << 4) |
                                (p->hair_style & 0x0F));
+    if (position_code(p->position) == 1) rom[base + 6] &= 0xF0;
 }
 
 /* ------------------------------------------------- more stadiums ----- */
@@ -457,6 +457,7 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
  * scribbled on. */
 #define ROM_KIT_TAIL_A        0x0120u
 #define ROM_KIT_TAIL_B        0x001Fu
+#define ROM_JERSEY_DETAILS_TABLE 0x00CE8Au
 
 /* Where a team's strip lives, or 0 when the cartridge does not say. */
 static size_t kit_offset(const uint8_t *rom, size_t rom_size, int team,
@@ -551,6 +552,31 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
     if (team->shirt_rgb)  write_part(rom, rec, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
     if (team->shorts_rgb) write_part(rom, rec, ROM_KIT_SHORTS, team->shorts_rgb, 3);
     if (team->socks_rgb)  write_part(rom, rec, ROM_KIT_SOCKS,  team->socks_rgb, 2);
+
+    /* Also update away/change kit so teams playing as P2/away wear the customized strip */
+    if (team->team_id < ROM_KIT_PTR_TEAMS) {
+        size_t home_ptr = ROM_KIT_PTRS_HOME + (size_t)team->team_id * 2u;
+        size_t away_ptr = ROM_KIT_PTRS_AWAY + (size_t)team->team_id * 2u;
+        if (home_ptr + 2 <= rom_size && away_ptr + 2 <= rom_size) {
+            rom[away_ptr]     = rom[home_ptr];
+            rom[away_ptr + 1] = rom[home_ptr + 1];
+        }
+    }
+    size_t rec_away = kit_offset(rom, rom_size, team->team_id, true);
+    if (rec_away && rec_away + ROM_KIT_STRIDE <= rom_size) {
+        if (team->shirt_rgb)  write_part(rom, rec_away, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
+        if (team->shorts_rgb) write_part(rom, rec_away, ROM_KIT_SHORTS, team->shorts_rgb, 3);
+        if (team->socks_rgb)  write_part(rom, rec_away, ROM_KIT_SOCKS,  team->socks_rgb, 2);
+    }
+
+    if (team->stripes && team->team_id < ROM_TEAMS) {
+        size_t joff = ROM_JERSEY_DETAILS_TABLE + (size_t)team->team_id * 2u;
+        if (joff + 2 <= rom_size) {
+            rom[joff]     = 0xD4;
+            rom[joff + 1] = 0xDE;
+            printf("[ModLoader] Team %u '%s' wears vertical stripes.\n", team->team_id, team->name);
+        }
+    }
     printf("[ModLoader] Team %u wears a new strip.\n", team->team_id);
     return true;
 }

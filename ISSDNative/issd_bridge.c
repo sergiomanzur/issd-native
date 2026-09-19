@@ -1,4 +1,4 @@
-﻿#include "issd_bridge.h"
+#include "issd_bridge.h"
 #include <stdio.h>
 #include "cpu_state.h"
 #include <string.h>
@@ -33,8 +33,8 @@ void issd_bridge_update_state(IssdMatchState* out_state) {
     out_state->game_mode2 = RAM_BYTE(0x0070);
     out_state->p1_score = RAM_BYTE(0x0DA2);
     out_state->p2_score = RAM_BYTE(0x0EA2);
-    out_state->p1_team = RAM_BYTE(0x0DA0);
-    out_state->p2_team = RAM_BYTE(0x0EA0);
+    out_state->p1_team = RAM_BYTE(0x0DA0) / 2;
+    out_state->p2_team = RAM_BYTE(0x0EA0) / 2;
     out_state->timer_seconds = RAM_BYTE(0x16D0);
     out_state->timer_minutes = RAM_BYTE(0x16D1);
     out_state->weather = RAM_BYTE(0x1E4C);

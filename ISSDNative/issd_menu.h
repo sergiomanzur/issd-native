@@ -84,6 +84,11 @@ void issd_menu_render_team_photo(uint32_t *fb, int width, int height,
 void issd_menu_render_team_grid(uint32_t *fb, int width, int height,
                                 int margin);
 
+/* Renders custom team flags over the select screen (top panel and 6-cell grid)
+ * and in-match HUD for any team a pack provides a flag for. */
+void issd_menu_render_team_flags(uint32_t *fb, int width, int height,
+                                 int margin);
+
 /* Provided by the host: save settings and start the process again, so a
  * newly chosen mod pack is applied to a fresh cartridge image. */
 void issd_restart_application(void);
