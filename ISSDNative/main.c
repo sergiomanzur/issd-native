@@ -639,6 +639,7 @@ static bool PromptForRomFile(char *out, size_t out_size) {
 static SDL_GameController *g_controller = NULL;
 static SDL_Window *g_window = NULL;
 static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int render_w, int render_h, SDL_Rect *out_rect);
+static int IssdWsExtraForAspect(void);
 
 /* SDL reports touches normalised to the window, and reports each finger
  * independently. issd_touch wants the full set of live points in window
