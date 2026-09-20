@@ -71,6 +71,61 @@ void issd_android_pick_mods_folder(void) {
     call_activity_picker("requestModsFolderPickerFromNative");
 }
 
+bool issd_android_is_picker_cancelled(void) {
+    JNIEnv *env = SDL_AndroidGetJNIEnv();
+    if (!env) return false;
+    jclass cls = (*env)->FindClass(env, "com/issdnative/ISSDActivity");
+    if (!cls) {
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        return false;
+    }
+    jmethodID mid = (*env)->GetStaticMethodID(env, cls, "isPickerCancelled", "()Z");
+    bool cancelled = false;
+    if (mid) {
+        cancelled = (*env)->CallStaticBooleanMethod(env, cls, mid);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    (*env)->DeleteLocalRef(env, cls);
+    return cancelled;
+}
+
+bool issd_android_is_finishing(void) {
+    JNIEnv *env = SDL_AndroidGetJNIEnv();
+    jobject activity = SDL_AndroidGetActivity();
+    if (!env || !activity) return false;
+
+    jclass cls = (*env)->GetObjectClass(env, activity);
+    if (!cls) {
+        (*env)->DeleteLocalRef(env, activity);
+        return false;
+    }
+    jmethodID mid = (*env)->GetMethodID(env, cls, "isFinishing", "()Z");
+    bool finishing = false;
+    if (mid) {
+        finishing = (*env)->CallBooleanMethod(env, activity, mid);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, activity);
+    return finishing;
+}
+
+void issd_android_set_game_running(bool running) {
+    JNIEnv *env = SDL_AndroidGetJNIEnv();
+    if (!env) return;
+    jclass cls = (*env)->FindClass(env, "com/issdnative/ISSDActivity");
+    if (!cls) {
+        if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+        return;
+    }
+    jmethodID mid = (*env)->GetStaticMethodID(env, cls, "setGameRunning", "(Z)V");
+    if (mid) {
+        (*env)->CallStaticVoidMethod(env, cls, mid, (jboolean)running);
+    }
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    (*env)->DeleteLocalRef(env, cls);
+}
+
 /* Android has no file picker we can call from C, and no meaningful working
  * directory. Instead of failing with "no ROM", scan the app's own external
  * directory - the folder a user can reach over USB - for a cartridge image.
@@ -83,8 +138,12 @@ bool issd_android_find_rom(char *out, size_t out_size) {
     snprintf(out, out_size, "%s/isss_deluxe.sfc", s_external);
     FILE *selected = fopen(out, "rb");
     if (selected) {
+        fseek(selected, 0, SEEK_END);
+        long sz = ftell(selected);
         fclose(selected);
-        return true;
+        if (sz > 512 * 1024) { /* A valid SNES ROM is at least 1-2 MB */
+            return true;
+        }
     }
     out[0] = '\0';
 
@@ -101,8 +160,17 @@ bool issd_android_find_rom(char *out, size_t out_size) {
         if (strcasecmp(ext, ".sfc") != 0 && strcasecmp(ext, ".smc") != 0) continue;
 
         snprintf(out, out_size, "%s/%s", s_external, name);
-        found = true;
-        break;
+        FILE *f = fopen(out, "rb");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            long sz = ftell(f);
+            fclose(f);
+            if (sz > 512 * 1024) {
+                found = true;
+                break;
+            }
+        }
+        out[0] = '\0';
     }
     closedir(dir);
     return found;

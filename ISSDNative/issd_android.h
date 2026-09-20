@@ -29,6 +29,9 @@ bool issd_android_find_rom(char *out, size_t out_size);
  * imports the result into app storage and restarts SDL when needed. */
 void issd_android_pick_rom(void);
 void issd_android_pick_mods_folder(void);
+bool issd_android_is_picker_cancelled(void);
+bool issd_android_is_finishing(void);
+void issd_android_set_game_running(bool running);
 
 #else
 
@@ -40,6 +43,9 @@ static inline bool issd_android_find_rom(char *out, size_t out_size) {
 }
 static inline void issd_android_pick_rom(void) {}
 static inline void issd_android_pick_mods_folder(void) {}
+static inline bool issd_android_is_picker_cancelled(void) { return false; }
+static inline bool issd_android_is_finishing(void) { return false; }
+static inline void issd_android_set_game_running(bool running) { (void)running; }
 
 #endif
 

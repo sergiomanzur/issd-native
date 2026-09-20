@@ -35,6 +35,7 @@
 #ifndef _WIN32
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 #include <errno.h>
 #endif
 #include "issd_frame_pacing.h"
@@ -605,10 +606,31 @@ static bool PromptForRomFile(char *out, size_t out_size) {
     if (!out || out_size == 0) return false;
     out[0] = '\0';
 #ifdef ISSD_ANDROID
-    /* Android has no file dialog callable from C. Scan the app's own
-     * external directory, which is where a user can copy a cartridge
-     * image over USB without granting storage permissions. */
-    return issd_android_find_rom(out, out_size);
+    /* Android has no file dialog callable directly from C.
+     * First check if a cartridge image already exists in external directory. */
+    if (issd_android_find_rom(out, out_size)) {
+        return true;
+    }
+    /* Otherwise prompt user via SAF picker and wait for file to appear. */
+    issd_android_pick_rom();
+    printf("[Android] Waiting for ROM selection in SAF picker...\n");
+    for (int wait = 0; wait < 1200; wait++) { /* Wait up to 5 minutes (1200 * 250ms) */
+        if (issd_android_is_picker_cancelled() || issd_android_is_finishing()) {
+            printf("[Android] ROM picker cancelled or app finishing.\n");
+            return false;
+        }
+        if (issd_android_find_rom(out, out_size)) {
+            printf("[Android] ROM file found: %s\n", out);
+            return true;
+        }
+#ifdef _WIN32
+        Sleep(250);
+#else
+        usleep(250000);
+#endif
+    }
+    printf("[Android] Timed out waiting for ROM selection.\n");
+    return false;
 #else
     return snesrecomp_pick_rom_file(out, out_size) == 1 && out[0] != 0;
 #endif
@@ -1572,10 +1594,10 @@ int main(int argc, char **argv) {
     if (cli_rom_path && cli_rom_path[0]) {
         snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", cli_rom_path);
 #ifdef ISSD_ANDROID
-    } else if (!g_headless && PromptForRomFile(rom_path_buffer, sizeof(rom_path_buffer))) {
-        picked_rom = true;
     } else if (g_issd_config.rom_path[0] && FileExists(g_issd_config.rom_path)) {
         snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
+    } else if (!g_headless && PromptForRomFile(rom_path_buffer, sizeof(rom_path_buffer))) {
+        picked_rom = true;
     } else if (FileExists(DEFAULT_ROM_PATH)) {
         snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", DEFAULT_ROM_PATH);
 #else
@@ -1772,6 +1794,10 @@ int main(int argc, char **argv) {
     printf("[Running] Starting main execution loop...\n");
 
     if (g_script_path) issd_script_load(g_script_path);
+
+#ifdef ISSD_ANDROID
+    issd_android_set_game_running(true);
+#endif
 
     while (g_running) {
         if (!g_headless) {
@@ -2069,6 +2095,10 @@ int main(int argc, char **argv) {
             break;
         }
     }
+
+#ifdef ISSD_ANDROID
+    issd_android_set_game_running(false);
+#endif
 
     if (g_screenshot_path) {
         int cur_ws_extra = IssdWsExtraForAspect();

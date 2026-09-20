@@ -37,6 +37,18 @@ public class ISSDActivity extends SDLActivity {
     private static final String PREFS = "issd_android";
     private static final String PREF_MODS_TREE_URI = "mods_tree_uri";
 
+    private static volatile boolean sRomPickerCancelled = false;
+    private static volatile boolean sGameRunning = false;
+    private boolean mPickerActive = false;
+
+    public static boolean isPickerCancelled() {
+        return sRomPickerCancelled;
+    }
+
+    public static void setGameRunning(boolean running) {
+        sGameRunning = running;
+    }
+
     static {
         System.loadLibrary("SDL2");
         System.loadLibrary("main");
@@ -98,7 +110,13 @@ public class ISSDActivity extends SDLActivity {
         return false;
     }
 
-    private void promptPickRom() {
+    private synchronized void promptPickRom() {
+        if (mPickerActive) {
+            Log.i(TAG, "ROM picker already active, ignoring duplicate prompt");
+            return;
+        }
+        mPickerActive = true;
+        sRomPickerCancelled = false;
         Toast.makeText(this, "Please select an ISS Deluxe (.sfc / .smc) ROM", Toast.LENGTH_LONG).show();
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -109,6 +127,7 @@ public class ISSDActivity extends SDLActivity {
             startActivityForResult(intent, REQUEST_PICK_ROM);
         } catch (Exception e) {
             Log.e(TAG, "Failed to launch ACTION_OPEN_DOCUMENT", e);
+            mPickerActive = false;
         }
     }
 
@@ -128,10 +147,20 @@ public class ISSDActivity extends SDLActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQUEST_PICK_ROM && resultCode == RESULT_OK && data != null) {
-            Uri uri = data.getData();
-            if (uri != null) {
-                copyRomFromUri(uri);
+        if (requestCode == REQUEST_PICK_ROM) {
+            mPickerActive = false;
+            if (resultCode == RESULT_OK && data != null && data.getData() != null) {
+                copyRomFromUri(data.getData());
+            } else {
+                sRomPickerCancelled = true;
+                File ext = getExternalFilesDir(null);
+                File targetDir = ext != null ? ext : getFilesDir();
+                if (!hasRomFile(targetDir)) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "No ROM selected. ISS Deluxe requires a ROM file to run.", Toast.LENGTH_LONG).show();
+                        finish();
+                    });
+                }
             }
         } else if (requestCode == REQUEST_PICK_MODS_FOLDER && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
@@ -171,14 +200,27 @@ public class ISSDActivity extends SDLActivity {
             Log.i(TAG, "ROM copied successfully to " + dstFile.getAbsolutePath() + " (" + dstFile.length() + " bytes)");
 
             runOnUiThread(() -> {
-                Toast.makeText(this, "ROM installed! Restarting...", Toast.LENGTH_SHORT).show();
-                recreate();
+                if (sGameRunning) {
+                    Toast.makeText(this, "ROM changed! Restarting...", Toast.LENGTH_SHORT).show();
+                    restartApp();
+                } else {
+                    Toast.makeText(this, "ROM installed!", Toast.LENGTH_SHORT).show();
+                }
             });
         } catch (Exception e) {
             deleteRecursively(tmpFile);
             Log.e(TAG, "Failed to copy ROM from URI: " + uri, e);
             runOnUiThread(() -> Toast.makeText(this, "Failed to copy ROM: " + e.getMessage(), Toast.LENGTH_LONG).show());
         }
+    }
+
+    private void restartApp() {
+        Intent intent = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        if (intent != null) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+        }
+        Runtime.getRuntime().exit(0);
     }
 
     private void replaceFile(File src, File dst) throws Exception {
@@ -214,7 +256,7 @@ public class ISSDActivity extends SDLActivity {
                 .apply();
             runOnUiThread(() -> {
                 Toast.makeText(this, "Mods folder imported. Restarting...", Toast.LENGTH_SHORT).show();
-                recreate();
+                restartApp();
             });
         } else {
             getSharedPreferences(PREFS, MODE_PRIVATE)
