@@ -15,6 +15,8 @@
   - Club América with vibrant canary yellow (`#FFE600`) and navy blue.
   - CD Guadalajara (Chivas) with authentic red & white vertical stripes on the pitch, blue shorts, and white socks.
 - **FIFA World Cup 2026 Mod Pack**: Official 32-nation mod pack for World Cup 2026 with up-to-date rosters, tactical formations, upscaled national flags, and custom team kits.
+- **Android Touch Overlay Menu Navigation**: Fully enabled touchscreen navigation in the in-game overlay menu. Players can navigate menus using on-screen D-pad buttons (Up/Down/Left/Right), confirm/cancel with action buttons (A/X/Start and B/Y/Select), or tap directly on menu items to toggle settings.
+- **Android ROM Picker Stability**: Resolved crash when selecting a ROM from the system file picker by waiting asynchronously for user selection and executing a clean process restart upon importing ROM/mods.
 
 ### Packaging
 
