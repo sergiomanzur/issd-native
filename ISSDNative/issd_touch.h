@@ -70,6 +70,10 @@ uint16_t issd_touch_pad_mask(void);
  * it does not reopen the menu every frame. */
 bool issd_touch_take_menu_press(void);
 
+/* True on the frame a touch down occurred outside on-screen gamepad controls.
+ * Coordinates are in viewport pixels. */
+bool issd_touch_take_screen_tap(int *out_x, int *out_y);
+
 /* Whether the pad (everything except the menu button) is currently shown. */
 bool issd_touch_pad_visible(void);
 void issd_touch_set_pad_visible(bool visible);

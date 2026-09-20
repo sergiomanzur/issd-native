@@ -8,6 +8,7 @@
 
 #include "issd_hd.h"
 #include "issd_android.h"
+#include "issd_touch.h"
 
 extern uint8_t g_ram[0x20000];
 
@@ -260,6 +261,7 @@ void issd_menu_toggle(void) {
     g_overlay_menu.is_open = !g_overlay_menu.is_open;
     if (!g_overlay_menu.is_open) g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
     if (g_overlay_menu.is_open) {
+        issd_touch_set_pad_visible(true);
         printf("[Overlay] Modern Menu opened.\n");
     } else {
         printf("[Overlay] Modern Menu closed.\n");
@@ -268,6 +270,7 @@ void issd_menu_toggle(void) {
 
 void issd_menu_open(void) {
     g_overlay_menu.is_open = true;
+    issd_touch_set_pad_visible(true);
 }
 
 void issd_menu_close(void) {
@@ -563,6 +566,68 @@ bool issd_menu_cancel(void) {
         return true;
     }
     issd_menu_close();
+    return true;
+}
+
+bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
+    if (!g_overlay_menu.is_open) return false;
+
+    int box_w = 240;
+    int box_h = 220;
+    int box_x = (width - box_w) / 2;
+    int box_y = (height - box_h) / 2;
+    if (box_x < 0) box_x = 0;
+    if (box_y < 0) box_y = 0;
+
+    /* Tapping outside the menu box closes the menu */
+    if (fb_x < box_x || fb_x >= box_x + box_w || fb_y < box_y || fb_y >= box_y + box_h) {
+        issd_menu_close();
+        return true;
+    }
+
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
+        int rows = mods_row_count();
+        int first = g_overlay_menu.scroll;
+        int y = box_y + 16;
+        for (int row = first; row < rows && row < first + MODS_VISIBLE_ROWS; row++, y += 11) {
+            if (fb_y >= y && fb_y < y + 11) {
+                if (mods_row_is_header(row)) return true;
+                g_overlay_menu.current_item = row;
+                issd_menu_confirm();
+                return true;
+            }
+        }
+        if (fb_y >= box_y + box_h - 22) {
+            issd_menu_cancel();
+            return true;
+        }
+        return true;
+    }
+
+    /* Main Menu Page */
+    int start_y = box_y + 14;
+    int row_h = MENU_TOTAL_ITEMS > 17 ? 10 : 11;
+    for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {
+        int item_y = start_y + i * row_h;
+        if (fb_y >= item_y && fb_y < item_y + row_h) {
+            g_overlay_menu.current_item = i;
+            if (fb_x > box_x + box_w * 3 / 4) {
+                issd_menu_navigate_right();
+            } else if (fb_x > box_x + box_w / 2) {
+                issd_menu_confirm();
+            } else {
+                issd_menu_confirm();
+            }
+            return true;
+        }
+    }
+
+    /* Tapping on the bottom status/footer area */
+    if (fb_y >= box_y + box_h - 22) {
+        issd_menu_cancel();
+        return true;
+    }
+
     return true;
 }
 

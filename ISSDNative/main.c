@@ -638,6 +638,7 @@ static bool PromptForRomFile(char *out, size_t out_size) {
 
 static SDL_GameController *g_controller = NULL;
 static SDL_Window *g_window = NULL;
+static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int render_w, int render_h, SDL_Rect *out_rect);
 
 /* SDL reports touches normalised to the window, and reports each finger
  * independently. issd_touch wants the full set of live points in window
@@ -665,6 +666,24 @@ static void PumpTouchState(void) {
     issd_touch_set_points(xs, ys, n);
 
     if (issd_touch_take_menu_press()) issd_menu_toggle();
+
+    int tap_x = 0, tap_y = 0;
+    if (issd_touch_take_screen_tap(&tap_x, &tap_y)) {
+        if (issd_menu_is_open()) {
+            int cur_ws_extra = IssdWsExtraForAspect();
+            int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
+            int cur_render_h = SNES_HEIGHT;
+            SDL_Rect dst_rect;
+            CalculateViewport(win_w, win_h, g_issd_config.aspect_ratio, cur_render_w, cur_render_h, &dst_rect);
+            if (dst_rect.w > 0 && dst_rect.h > 0 &&
+                tap_x >= dst_rect.x && tap_x < dst_rect.x + dst_rect.w &&
+                tap_y >= dst_rect.y && tap_y < dst_rect.y + dst_rect.h) {
+                int fb_x = (tap_x - dst_rect.x) * cur_render_w / dst_rect.w;
+                int fb_y = (tap_y - dst_rect.y) * cur_render_h / dst_rect.h;
+                issd_menu_handle_click(fb_x, fb_y, cur_render_w, cur_render_h);
+            }
+        }
+    }
 }
 
 static void TouchDrawFilledCircle(SDL_Renderer *renderer, int cx, int cy, int radius,
@@ -1320,6 +1339,25 @@ static void ProcessInputEvent(const SDL_Event *ev) {
             default:
                 break;
         }
+    } else if (ev->type == SDL_MOUSEBUTTONDOWN) {
+        if (issd_menu_is_open() && ev->button.button == SDL_BUTTON_LEFT) {
+            int win_w = 0, win_h = 0;
+            SDL_GetWindowSize(g_window, &win_w, &win_h);
+            int cur_ws_extra = IssdWsExtraForAspect();
+            int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
+            int cur_render_h = SNES_HEIGHT;
+            SDL_Rect dst_rect;
+            CalculateViewport(win_w, win_h, g_issd_config.aspect_ratio, cur_render_w, cur_render_h, &dst_rect);
+            int mx = ev->button.x;
+            int my = ev->button.y;
+            if (dst_rect.w > 0 && dst_rect.h > 0 &&
+                mx >= dst_rect.x && mx < dst_rect.x + dst_rect.w &&
+                my >= dst_rect.y && my < dst_rect.y + dst_rect.h) {
+                int fb_x = (mx - dst_rect.x) * cur_render_w / dst_rect.w;
+                int fb_y = (my - dst_rect.y) * cur_render_h / dst_rect.h;
+                issd_menu_handle_click(fb_x, fb_y, cur_render_w, cur_render_h);
+            }
+        }
     }
 }
 
@@ -1474,6 +1512,57 @@ static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int 
         out_rect->x = 0;
         out_rect->y = (win_h - out_rect->h) / 2;
     }
+}
+
+static uint16_t s_last_menu_touch_mask = 0;
+static int s_menu_touch_repeat_timer = 0;
+
+static void ProcessMenuTouchPad(void) {
+    if (!issd_menu_is_open()) {
+        s_last_menu_touch_mask = 0;
+        s_menu_touch_repeat_timer = 0;
+        return;
+    }
+
+    uint16_t mask = issd_touch_pad_mask();
+    uint16_t pressed = mask & ~s_last_menu_touch_mask;
+
+    bool repeat_tick = false;
+    if (mask & (ISSD_PAD_UP | ISSD_PAD_DOWN | ISSD_PAD_LEFT | ISSD_PAD_RIGHT)) {
+        if (pressed & (ISSD_PAD_UP | ISSD_PAD_DOWN | ISSD_PAD_LEFT | ISSD_PAD_RIGHT)) {
+            s_menu_touch_repeat_timer = 20; /* 330ms initial delay at 60fps */
+            repeat_tick = true;
+        } else {
+            if (--s_menu_touch_repeat_timer <= 0) {
+                s_menu_touch_repeat_timer = 8; /* 130ms repeat rate */
+                repeat_tick = true;
+            }
+        }
+    } else {
+        s_menu_touch_repeat_timer = 0;
+    }
+
+    if (repeat_tick) {
+        if (mask & ISSD_PAD_UP) issd_menu_navigate_up();
+        else if (mask & ISSD_PAD_DOWN) issd_menu_navigate_down();
+        else if (mask & ISSD_PAD_LEFT) issd_menu_navigate_left();
+        else if (mask & ISSD_PAD_RIGHT) issd_menu_navigate_right();
+    }
+
+    if (pressed & (ISSD_PAD_A | ISSD_PAD_START | ISSD_PAD_X)) {
+        issd_menu_confirm();
+    }
+    if (pressed & (ISSD_PAD_B | ISSD_PAD_SELECT | ISSD_PAD_Y)) {
+        issd_menu_cancel();
+    }
+    if (pressed & ISSD_PAD_L) {
+        issd_menu_navigate_left();
+    }
+    if (pressed & ISSD_PAD_R) {
+        issd_menu_navigate_right();
+    }
+
+    s_last_menu_touch_mask = mask;
 }
 
 #if defined(__ANDROID__) || defined(ISSD_ANDROID)
@@ -1842,6 +1931,7 @@ int main(int argc, char **argv) {
 
         if (g_headless || now >= next_sim_time) {
             if (issd_menu_is_open()) {
+                ProcessMenuTouchPad();
                 /* Paused: Render In-Game Menu Overlay */
                 issd_menu_render(g_pixel_buffer, cur_render_w, cur_render_h);
                 frame_simulated = true;

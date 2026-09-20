@@ -11,6 +11,8 @@ static struct {
     int           px[MAX_POINTS], py[MAX_POINTS], pn;
     uint16_t      mask;
     bool          menu_down, menu_fired, hide_down;
+    bool          screen_touch_down, screen_tap_fired;
+    int           screen_tap_x, screen_tap_y;
 } T = { .enabled = true, .pad_visible = true };
 
 static bool hit(const IssdTouchRect *r, int x, int y) {
@@ -94,52 +96,74 @@ void issd_touch_set_points(const int *xs, const int *ys, int count) {
 
     const int pad_margin = T.vh / 60;
     bool menu_now = false, hide_now = false;
+    int unhandled_x = -1, unhandled_y = -1;
 
     for (int i = 0; i < count; i++) {
         const int x = T.px[i], y = T.py[i];
+        bool control_hit = false;
 
         /* The menu and hide/show buttons are live whether or not the pad is hidden. */
         if (hit_padded(&T.r[ISSD_TOUCH_MENU], x, y, pad_margin)) {
             menu_now = true;
             T.r[ISSD_TOUCH_MENU].pressed = true;
+            control_hit = true;
             continue;
         }
         if (hit_padded(&T.r[ISSD_TOUCH_HIDE], x, y, pad_margin)) {
             hide_now = true;
             T.r[ISSD_TOUCH_HIDE].pressed = true;
+            control_hit = true;
             continue;
         }
 
-        if (!T.pad_visible) continue;
+        if (T.pad_visible) {
+            /* D-pad as a 3x3: the centre cell presses nothing, edges press one
+             * direction, corners press two so diagonals work. */
+            const IssdTouchRect *d = &T.r[ISSD_TOUCH_DPAD];
+            if (hit(d, x, y)) {
+                const int col = (x - d->x) * 3 / (d->w ? d->w : 1);
+                const int row = (y - d->y) * 3 / (d->h ? d->h : 1);
+                if (col == 0) T.mask |= ISSD_PAD_LEFT;
+                else if (col == 2) T.mask |= ISSD_PAD_RIGHT;
+                if (row == 0) T.mask |= ISSD_PAD_UP;
+                else if (row == 2) T.mask |= ISSD_PAD_DOWN;
+                if (T.mask) T.r[ISSD_TOUCH_DPAD].pressed = true;
+                control_hit = true;
+                continue;
+            }
 
-        /* D-pad as a 3x3: the centre cell presses nothing, edges press one
-         * direction, corners press two so diagonals work. */
-        const IssdTouchRect *d = &T.r[ISSD_TOUCH_DPAD];
-        if (hit(d, x, y)) {
-            const int col = (x - d->x) * 3 / (d->w ? d->w : 1);
-            const int row = (y - d->y) * 3 / (d->h ? d->h : 1);
-            if (col == 0) T.mask |= ISSD_PAD_LEFT;
-            else if (col == 2) T.mask |= ISSD_PAD_RIGHT;
-            if (row == 0) T.mask |= ISSD_PAD_UP;
-            else if (row == 2) T.mask |= ISSD_PAD_DOWN;
-            if (T.mask) T.r[ISSD_TOUCH_DPAD].pressed = true;
-            continue;
-        }
-
-        static const struct { IssdTouchControl c; uint16_t bit; } buttons[] = {
-            { ISSD_TOUCH_A, ISSD_PAD_A }, { ISSD_TOUCH_B, ISSD_PAD_B },
-            { ISSD_TOUCH_X, ISSD_PAD_X }, { ISSD_TOUCH_Y, ISSD_PAD_Y },
-            { ISSD_TOUCH_L, ISSD_PAD_L }, { ISSD_TOUCH_R, ISSD_PAD_R },
-            { ISSD_TOUCH_START, ISSD_PAD_START },
-            { ISSD_TOUCH_SELECT, ISSD_PAD_SELECT },
-        };
-        for (unsigned b = 0; b < sizeof(buttons) / sizeof(buttons[0]); b++) {
-            if (hit_padded(&T.r[buttons[b].c], x, y, pad_margin)) {
-                T.mask |= buttons[b].bit;
-                T.r[buttons[b].c].pressed = true;
-                break;
+            static const struct { IssdTouchControl c; uint16_t bit; } buttons[] = {
+                { ISSD_TOUCH_A, ISSD_PAD_A }, { ISSD_TOUCH_B, ISSD_PAD_B },
+                { ISSD_TOUCH_X, ISSD_PAD_X }, { ISSD_TOUCH_Y, ISSD_PAD_Y },
+                { ISSD_TOUCH_L, ISSD_PAD_L }, { ISSD_TOUCH_R, ISSD_PAD_R },
+                { ISSD_TOUCH_START, ISSD_PAD_START },
+                { ISSD_TOUCH_SELECT, ISSD_PAD_SELECT },
+            };
+            for (unsigned b = 0; b < sizeof(buttons) / sizeof(buttons[0]); b++) {
+                if (hit_padded(&T.r[buttons[b].c], x, y, pad_margin)) {
+                    T.mask |= buttons[b].bit;
+                    T.r[buttons[b].c].pressed = true;
+                    control_hit = true;
+                    break;
+                }
             }
         }
+
+        if (!control_hit && unhandled_x < 0) {
+            unhandled_x = x;
+            unhandled_y = y;
+        }
+    }
+
+    if (unhandled_x >= 0) {
+        if (!T.screen_touch_down) {
+            T.screen_tap_fired = true;
+            T.screen_tap_x = unhandled_x;
+            T.screen_tap_y = unhandled_y;
+            T.screen_touch_down = true;
+        }
+    } else {
+        T.screen_touch_down = false;
     }
 
     /* Both toggles fire on release, so a finger held down does not repeat. */
@@ -155,6 +179,14 @@ bool issd_touch_take_menu_press(void) {
     bool fired = T.menu_fired;
     T.menu_fired = false;
     return fired;
+}
+
+bool issd_touch_take_screen_tap(int *out_x, int *out_y) {
+    if (!T.screen_tap_fired) return false;
+    T.screen_tap_fired = false;
+    if (out_x) *out_x = T.screen_tap_x;
+    if (out_y) *out_y = T.screen_tap_y;
+    return true;
 }
 
 int issd_touch_rects(const IssdTouchRect **out) {

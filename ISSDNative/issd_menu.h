@@ -54,6 +54,7 @@ bool issd_menu_navigate_left(void);
 bool issd_menu_navigate_right(void);
 bool issd_menu_confirm(void);
 bool issd_menu_cancel(void);
+bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height);
 
 /* Render overlay on top of 256x224 32-bit ARGB framebuffer */
 void issd_menu_render(uint32_t *framebuffer, int width, int height);
