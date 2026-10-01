@@ -1,6 +1,10 @@
 # Changelog
 
-## Gameplay tweaks (2026-10-01)
+## v0.2.0-beta.1 (2026-10-01)
+
+Beta prerelease for Windows and Android; the project remains below 1.0.
+
+### Gameplay tweaks
 
 - Added a Gameplay Tweaks overlay page with independent, persistent,
   default-off goalkeeper and player AI switches, usable together without restart.
@@ -10,7 +14,7 @@
 - Included the enabled combination in campaign/manual-save compatibility and
   retail password eligibility. Added policy, menu, live-match and replay checks.
 
-## Unreleased
+### Saves, passwords and multiplayer
 
 - Native Continue Campaign with checked snapshots, context-specific autosaves, and two recoverable backup generations.
 - Verified Cup group/knockout and World Series setup/result/completion checkpoints, with team metadata and no duplicate saves after Continue.
@@ -25,6 +29,20 @@
 - Save format v8 preserves multitap state; older v4–v7 snapshots remain supported.
 - Deterministic input scripts accept optional P1–P4 labels for multiplayer regression tests.
 - In-process mod reapplication synchronizes the active cartridge image before resetting execution caches and save compatibility identity.
+
+### Packaging and validation
+
+- Windows x64 ZIP, Android APK and ZIP, existing Liga MX and World Cup mod packs,
+  and SHA-256 checksums. No ROM or personal configuration/saves are packaged.
+- Android version code advances to 4; version name is `0.2.0-beta.1`.
+- Full suite: 156 passed, 2 existing mod-pack failures, 1 skipped, 7 subtests
+  passed. Final focused AI/menu/save/replay/multiplayer/password checks:
+  34 passed, 1 skipped. Windows, Linux and Android builds succeeded.
+- Gameplay balance, wider mode coverage and device validation remain in progress.
+  Android uses the existing debug signing configuration for sideload testing.
+
+See [the release notes](docs/releases/v0.2.0-beta.1.md) for install instructions
+and known limitations.
 
 ## v0.1.1b
 

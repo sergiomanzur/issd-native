@@ -4,7 +4,7 @@ A native recompilation and modernization of **International Superstar Soccer Del
 
 The goal is to preserve the original gameplay while adding modern controls, presentation options, saves, and editable mod packs. This is a **beta project working toward 1.0**; recompilation coverage does not establish complete gameplay or hardware fidelity.
 
-The latest release documented in [CHANGELOG.md](CHANGELOG.md) is **v0.1.1b**. The current source also includes **unreleased four-player local multiplayer, campaign save recovery, and cartridge password interoperability** with regression tests. Existing release packages do not automatically include these source changes.
+The current release is **[v0.2.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.2.0-beta.1)**, a GitHub prerelease for Windows and Android. It includes four-player local multiplayer, campaign save recovery, cartridge password interoperability, and optional gameplay AI tweaks. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.2.0-beta.1.md).
 
 ## Current platforms
 
@@ -164,6 +164,11 @@ bash build-all.sh --only android
 ```
 
 The SteamOS package includes [steamos-run.sh](scripts/steamos-run.sh). Android needs JDK 17, the Android SDK (API 34), NDK `26.2.11394342`, CMake `3.22.1`, and Gradle or the Gradle wrapper. Set `ANDROID_SDK_ROOT` to the SDK location. [build-android.sh](scripts/build-android.sh) fetches the pinned SDL2 sources and assembles the release APK; [the app configuration](android/app/build.gradle) defines its ABIs and signing.
+
+After building Windows and Android for the version in `VERSION`, run
+`python tools/assemble_release.py` to create beta packages and SHA-256 checksums
+under `dist/releases/`. The packager uses an explicit file list and verifies the
+Android version before packaging.
 
 ## Testing and diagnostics
 
