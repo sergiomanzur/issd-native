@@ -183,13 +183,15 @@ int main(void) {
     issd_touch_set_enabled(true);
 
     /* --- layout survives rotation and small screens --- */
-    const int sizes[][2] = { {1920,1080}, {1080,1920}, {1280,720}, {960,544}, {2400,1080} };
+    const int sizes[][2] = { {1920,1080}, {1080,1920}, {1280,720}, {960,544}, {2400,1080},
+                            {1,1}, {1,10000}, {10000,1}, {7,11}, {19,17} };
     for (unsigned i = 0; i < sizeof(sizes) / sizeof(sizes[0]); i++) {
         const int vw = sizes[i][0], vh = sizes[i][1];
         issd_touch_set_viewport(vw, vh);
         reset();
         for (int c = 0; c < ISSD_TOUCH_COUNT; c++) {
             const IssdTouchRect *r = rect((IssdTouchControl)c);
+            assert(r->w > 0 && r->h > 0);
             if (r->x < 0 || r->y < 0 || r->x + r->w > vw || r->y + r->h > vh) {
                 printf("control %d escapes %dx%d viewport: %d,%d %dx%d\n",
                        c, vw, vh, r->x, r->y, r->w, r->h);

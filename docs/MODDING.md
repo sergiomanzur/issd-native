@@ -1,5 +1,10 @@
 # Modding ISSD Native
 
+Current limits and feature status are summarized in
+[Supported features](SUPPORTED_FEATURES.md). Older reverse-engineering
+assumptions are not hardware or whole-campaign certification; see
+[Acceptance checks](ACCEPTANCE_TESTS.md) for outstanding validation.
+
 A mod is a file you drop into `mods/`. Nothing is compiled, nothing is
 patched on disk, and the cartridge you supply is never modified: packs are
 applied to a copy of it in memory each time the game starts.
@@ -303,6 +308,8 @@ half-read.
 | `name` | text | For your own reference and the log. |
 | `plate_name` | text, 12 max | What the **select screen's name plate** should read. The cartridge's plates are graphics, one per team, so the host draws this one instead. Leave it out and the cartridge's own stands. |
 | `photo` | filename | A 32-bit `.bmp` beside the pack, drawn over the **squad photograph**. Any size; it is sampled into the 96x72 the frame leaves. |
+| `flag` | filename | A supported 32-bit `.bmp` beside the pack, used for the select-screen and in-game HUD flag. Empty keeps the cartridge graphic. |
+| `stripes` | boolean | Uses the original jersey-detail mapping for vertical shirt stripes. Not general sprite artwork replacement. |
 | `shirt` | `"#RRGGBB"` | Shirt colour. The three shades the cartridge uses are derived from it. |
 | `shorts` | `"#RRGGBB"` | Shorts colour. |
 | `socks` | `"#RRGGBB"` | Sock colour. |
@@ -482,9 +489,9 @@ way the cartridge shades its own - the lit shade is your colour, the others
 roughly three quarters and three fifths of it. Leave a part out and it is
 not touched. `#RRGGBB`, with or without the hash, upper or lower case.
 
-It is one flat colour per part, so a striped shirt cannot be drawn this way
-- the stripes are in the sprite graphics, not the palette. Chivas' red is
-the colour the strip reads as on the pitch.
+Palette recoloring alone is flat per part. The mod loader also supports vertical
+shirt stripes through the `stripes` field and the original jersey-detail
+mapping; this does not provide arbitrary replacement sprite artwork.
 
 **Some teams share a strip.** Which of the 84 palettes a team wears is not
 written down anywhere in the cartridge; it was measured a match at a time
@@ -503,8 +510,10 @@ team the table leaves blank - name `kit_record` to paint it.
 
 The plate beside the flag on the select screen is a graphic, one per team,
 so there is no way to add a word. The host paints over it instead - the
-same trick the stadium plate uses. Twelve characters fit. The flag next to
-it is left as the cartridge drew it.
+same trick the stadium plate uses. Twelve characters fit. A pack can also set
+`flag` to a supported 32-bit BMP path beside its JSON; the native renderer uses
+that replacement on the select screen and in-game HUD. An empty path retains
+the cartridge flag.
 
 The plate in the **match** HUD is a different graphic and still shows the
 cartridge's name.
@@ -825,14 +834,13 @@ Being straight about the ceiling saves everyone time.
   is what there is. Past 42 the grid itself would have to grow.
 - **Keeping an all-star side *and* adding a team in its cell.** A cell is
   one or the other.
-- **Striped or hooped shirts.** A kit is one colour per part.
-- **The team name in the match HUD**, and the flag beside it. The select
-  screen's plate can be renamed; those cannot.
+- **Arbitrary shirt patterns.** Vertical stripes have a native override; this
+  does not provide general sprite artwork or arbitrary hooped patterns.
+- **The team name in the match HUD.** Select-screen plates can be renamed and
+  select/HUD flags replaced; the match name graphic still has its original limit.
 - **More than 20 players per squad.**
 - **Player names longer than 8 characters**, and no accents or digits. A
   full stop is fine: the cartridge is full of them.
-- **Team names on the team select screen**, which are drawn graphics rather
-  than text.
 - **New formation labels.** The screen can only print three numbers and the
   sixteen it knows are fixed. The shape itself is free - see section 6.
 - **Sprites.** Tile packs replace backgrounds; players, the ball and most UI
@@ -842,9 +850,6 @@ Being straight about the ceiling saves everyone time.
 - **More than 42 teams.** Forty-two is what the select screen's seven
   groups of six hold, and the roster pointer table has exactly 43 entries.
   Going past that would mean growing the grid as well as the tables.
-- **The name on the stadium select screen**, which is drawn from shared
-  font tiles through a tilemap rather than from the name table. The
-  pre-match screen does show a renamed stadium.
 - **Audio.** Not wired up.
 
 ---

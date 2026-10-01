@@ -36,6 +36,7 @@
 #include "issd_hd.h"
 #include "issd_touch.h"
 #include "issd_input.h"
+#include "issd_controls.h"
 #include "snes/joypad.h"
 #include "issd_script.h"
 #include "issd_android.h"
@@ -163,6 +164,8 @@ static bool g_continue_requested = false;
 static bool g_allow_legacy_save = false;
 static bool g_frame_healthy = false;
 static bool g_touch_release_guard = false;
+static bool g_app_background;
+static bool s_keyboard_blocked[SDL_NUM_SCANCODES];
 static bool g_legacy_quick_confirm = false;
 static uint8_t *g_base_rom_data = NULL;
 static char g_applied_team_names[ISSD_ROM_TEAMS + ISSD_MAX_ADDED_TEAMS][64];
@@ -844,6 +847,11 @@ static void PumpTouchState(void) {
             n++;
         }
     }
+    if (g_touch_release_guard) {
+        issd_touch_reset_points();
+        if (n) return;
+        g_touch_release_guard = false;
+    }
     issd_touch_set_points(xs, ys, n);
 
     if (issd_touch_take_menu_press()) issd_menu_toggle();
@@ -1225,7 +1233,80 @@ static void ToggleFullscreen(void) {
     printf("[Video] Fullscreen %s\n", g_issd_config.fullscreen ? "ENABLED" : "DISABLED");
 }
 
+static void IssdBlockKeyboard(void) {
+    const Uint8 *state = SDL_GetKeyboardState(NULL);
+    for (int i = 0; i < SDL_NUM_SCANCODES; i++) s_keyboard_blocked[i] = state[i] != 0;
+}
+
+static const char *IssdKeyLabel(int scan) { return SDL_GetScancodeName((SDL_Scancode)scan); }
+
+static void IssdResetMenuInput(void) {
+    issd_input_block_held();
+    IssdBlockKeyboard();
+    g_pad1_state = 0;
+    g_touch_release_guard = true;
+    issd_touch_reset_points();
+}
+
+static uint16_t IssdKeyboardRead(void) {
+    const Uint8 *state = SDL_GetKeyboardState(NULL);
+    int keys[12] = { g_issd_config.key_p1_b, g_issd_config.key_p1_y,
+        g_issd_config.key_p1_select, g_issd_config.key_p1_start,
+        g_issd_config.key_p1_up, g_issd_config.key_p1_down,
+        g_issd_config.key_p1_left, g_issd_config.key_p1_right,
+        g_issd_config.key_p1_a, g_issd_config.key_p1_x,
+        g_issd_config.key_p1_l, g_issd_config.key_p1_r };
+    const int defaults[12] = {29,6,44,40,26,22,4,7,27,25,20,8};
+    const int aliases[12][2] = {{13,0},{24,0},{229,0},{0,0},{82,0},{81,0},
+        {80,0},{79,0},{14,0},{12,0},{0,0},{0,0}};
+    for (int i = 0; i < SDL_NUM_SCANCODES; i++) s_keyboard_blocked[i] &= state[i] != 0;
+    if (!g_input_focused || g_app_background) return 0;
+    uint16_t mask = 0;
+    for (int bit = 0; bit < 12; bit++) {
+        int key = keys[bit];
+        if (key > 0 && key < SDL_NUM_SCANCODES && state[key] && !s_keyboard_blocked[key]) mask |= 1u << bit;
+        if (key == defaults[bit]) for (int a = 0; a < 2; a++) {
+            int alias = aliases[bit][a];
+            if (alias && state[alias] && !s_keyboard_blocked[alias]) mask |= 1u << bit;
+        }
+    }
+    if ((mask & 48u) == 48u) mask &= ~48u;
+    if ((mask & 192u) == 192u) mask &= ~192u;
+    return mask;
+}
+
+static bool IssdHandleLifecycleEvent(Uint32 type) {
+    if (type == SDL_APP_WILLENTERBACKGROUND || type == SDL_APP_DIDENTERBACKGROUND) {
+        if (!g_app_background) {
+            g_app_background = true;
+            g_input_focused = false;
+            g_pad1_state = 0;
+            issd_input_set_focus(false);
+            IssdBlockKeyboard();
+            issd_touch_reset_points();
+            g_touch_release_guard = true;
+            issd_menu_open();
+            issd_config_save(&g_issd_config, NULL);
+        }
+        return true;
+    }
+    if (type == SDL_APP_WILLENTERFOREGROUND) return true;
+    if (type == SDL_APP_DIDENTERFOREGROUND) {
+        g_app_background = false;
+        g_input_focused = true;
+        g_pad1_state = 0;
+        issd_input_set_focus(true);
+        IssdBlockKeyboard();
+        issd_touch_reset_points();
+        g_touch_release_guard = true;
+        /* Resident gameplay remains in the pause overlay until explicit Resume. */
+        return true;
+    }
+    return false;
+}
+
 static void ProcessInputEvent(const SDL_Event *ev) {
+    if (IssdHandleLifecycleEvent(ev->type)) return;
     /* A preceding event can change gameplay settings in this same batch. */
     IssdRefreshSaveContext();
     if (ev->type == SDL_TEXTINPUT && g_input_focused && issd_menu_is_open() &&
@@ -1255,9 +1336,12 @@ static void ProcessInputEvent(const SDL_Event *ev) {
     } else if (ev->type == SDL_WINDOWEVENT) {
         if (ev->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
             ev->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
-            g_input_focused = ev->window.event == SDL_WINDOWEVENT_FOCUS_GAINED;
+            g_input_focused = !g_app_background && ev->window.event == SDL_WINDOWEVENT_FOCUS_GAINED;
             g_pad1_state = 0;
             issd_input_set_focus(g_input_focused);
+            IssdBlockKeyboard();
+            issd_touch_reset_points();
+            g_touch_release_guard = true;
         }
     } else if (ev->type == SDL_CONTROLLERBUTTONDOWN || ev->type == SDL_CONTROLLERBUTTONUP) {
         int player = issd_input_player(ev->cbutton.which);
@@ -1277,6 +1361,7 @@ static void ProcessInputEvent(const SDL_Event *ev) {
                 return;
             }
         }
+        if (issd_menu_binding_capture()) return;
         if (issd_menu_is_open() && down) {
             if (btn == SDL_CONTROLLER_BUTTON_DPAD_UP) issd_menu_navigate_up();
             else if (btn == SDL_CONTROLLER_BUTTON_DPAD_DOWN) issd_menu_navigate_down();
@@ -1291,12 +1376,19 @@ static void ProcessInputEvent(const SDL_Event *ev) {
         bool down = (ev->type == SDL_KEYDOWN);
         if (!g_input_focused || ev->key.repeat) return;
         SDL_Scancode code = ev->key.keysym.scancode;
+        if (down && issd_menu_binding_capture()) {
+            if (code == SDL_SCANCODE_ESCAPE) issd_menu_cancel();
+            else issd_menu_capture_key(code);
+            IssdBlockKeyboard();
+            issd_input_block_held();
+            return;
+        }
         if (down && code != SDL_SCANCODE_F6) g_legacy_quick_confirm = false;
 
         /* Check for In-Game Menu Toggle via Escape or F1 */
         if (down && (code == SDL_SCANCODE_ESCAPE || code == SDL_SCANCODE_F1)) {
             if (code == SDL_SCANCODE_ESCAPE && issd_menu_is_open() &&
-                g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
+                g_overlay_menu.page != ISSD_MENU_PAGE_MAIN) {
                 issd_menu_cancel();
                 return;
             }
@@ -1332,6 +1424,9 @@ static void ProcessInputEvent(const SDL_Event *ev) {
             if (code == SDL_SCANCODE_F2) {
                 /* Cycle Control Schema Hotkey */
                 g_overlay_menu.control_schema = (IssdControlSchema)((g_overlay_menu.control_schema + 1) % 3);
+                issd_config_player_preset(&g_issd_config, 0, g_overlay_menu.control_schema);
+                issd_config_save(&g_issd_config, NULL);
+                issd_input_block_held();
                 const char *s_name = (g_overlay_menu.control_schema == ISSD_SCHEMA_CLASSIC) ? "CLASSIC ISSD" :
                                      (g_overlay_menu.control_schema == ISSD_SCHEMA_FIFA) ? "MODERN FIFA" : "MODERN PES";
                 printf("[Input] Switched Control Schema to: %s\n", s_name);
@@ -1777,6 +1872,8 @@ int main(int argc, char **argv) {
     ResolveConfigPath(config_path, sizeof(config_path), cli_config_path);
     issd_config_set_default_path(config_path);
     issd_config_load(&g_issd_config, NULL);
+    issd_input_configure(g_issd_config.player_profiles);
+    issd_touch_set_layout(g_issd_config.touch_x, g_issd_config.touch_y, g_issd_config.touch_size);
 
     if (cli_save_dir && !issd_save_set_directory(cli_save_dir))
         Die(issd_save_error());
@@ -1815,6 +1912,8 @@ int main(int argc, char **argv) {
         }
     }
     issd_menu_init();
+    issd_controls_set_key_label(IssdKeyLabel);
+    issd_menu_set_input_reset_callback(IssdResetMenuInput);
     issd_menu_set_save_context_callback(IssdRefreshSaveContext);
     const IssdPasswordUiCallbacks password_callbacks = {
         .import_symbols = IssdPasswordImport,
@@ -2049,6 +2148,7 @@ int main(int argc, char **argv) {
     uint64_t next_render_time = next_sim_time;
     uint64_t last_present_time = next_sim_time;
     bool audio_paused = false;
+    int applied_vsync = -1;
 
     printf("[Running] Starting main execution loop...\n");
 
@@ -2070,18 +2170,37 @@ int main(int argc, char **argv) {
                 }
                 if (menu_was_open != issd_menu_is_open()) {
                     issd_input_block_held();
+                    IssdBlockKeyboard();
                     g_pad1_state = 0;
                 }
             }
             bool menu_was_open = issd_menu_is_open();
-            PumpTouchState();
+            if (!g_app_background) PumpTouchState();
             if (menu_was_open != issd_menu_is_open()) {
                 issd_input_block_held();
+                IssdBlockKeyboard();
                 g_pad1_state = 0;
             }
         }
 
         uint64_t now = SDL_GetPerformanceCounter();
+        if (g_app_background) {
+            if (audio_dev && !audio_paused) SDL_PauseAudioDevice(audio_dev, 1);
+            audio_paused = true;
+            next_sim_time = next_render_time = now;
+            SDL_Delay(20);
+            continue;
+        }
+        if (renderer && applied_vsync != (int)g_issd_config.vsync) {
+            if (SDL_RenderSetVSync(renderer, g_issd_config.vsync ? 1 : 0) != 0) {
+                SDL_RendererInfo info;
+                SDL_GetRendererInfo(renderer, &info);
+                g_issd_config.vsync = (info.flags & SDL_RENDERER_PRESENTVSYNC) != 0;
+                issd_menu_notify("VSync change unsupported by renderer", 180);
+                issd_config_save(&g_issd_config, NULL);
+            }
+            applied_vsync = g_issd_config.vsync;
+        }
         IssdRefreshSaveContext();
         if (audio_dev && audio_paused != issd_menu_is_open()) {
             audio_paused = issd_menu_is_open();
@@ -2121,12 +2240,18 @@ int main(int argc, char **argv) {
         if (g_headless || now >= next_sim_time) {
             if (issd_menu_is_open()) {
                 issd_input_block_held();
+                IssdBlockKeyboard();
+                bool capturing = issd_menu_binding_capture();
+                if (!g_headless && capturing) for (int p = 0; p < 4; p++)
+                    issd_menu_capture_pad(p, issd_input_raw(p));
+                if (capturing && !issd_menu_binding_capture()) issd_input_block_held();
                 g_pad1_state = 0;
                 ProcessMenuTouchPad();
                 /* Paused: Render In-Game Menu Overlay */
                 issd_menu_render(g_pixel_buffer, cur_render_w, cur_render_h);
                 frame_simulated = true;
             } else {
+                if (!g_headless) g_pad1_state = IssdKeyboardRead();
                 /* Clear frame buffer & set PPU draw buffer */
                 memset(g_pixel_buffer, 0, (size_t)cur_render_w * cur_render_h * sizeof(uint32_t));
                 PpuBeginDrawing(g_snes->ppu, (uint8_t *)g_pixel_buffer, (size_t)cur_render_w * sizeof(uint32_t),
@@ -2183,7 +2308,6 @@ int main(int argc, char **argv) {
                  * needs. */
                 uint32_t touch_bits = issd_touch_pad_mask();
                 if (g_touch_release_guard) {
-                    if (!touch_bits) g_touch_release_guard = false;
                     touch_bits = 0;
                 }
                 uint16_t pads[4];

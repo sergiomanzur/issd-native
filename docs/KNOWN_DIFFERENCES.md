@@ -1,6 +1,10 @@
 # ISSD Native — Known Differences & Behavioral Baseline
 
-This document tracks all intentional, architectural, and behavioral differences between the original SNES USA cartridge release of **International Superstar Soccer Deluxe** and **ISSD Native (Windows x86-64)**.
+This document records selected architectural differences and measured behavior
+against the original USA cartridge. It is not an exhaustive fidelity audit.
+The current [supported feature inventory](SUPPORTED_FEATURES.md) and
+[acceptance checklist](ACCEPTANCE_TESTS.md) separate working behavior, proposals
+and unexecuted game/device checks.
 
 ---
 
@@ -8,31 +12,32 @@ This document tracks all intentional, architectural, and behavioral differences 
 
 | Component | Original SNES Hardware | ISSD Native | Notes |
 | :--- | :--- | :--- | :--- |
-| **CPU** | Ricoh 5A22 (65816 @ 3.58 MHz / 2.68 MHz) | Native x86-64 Machine Code (Static Recompilation) | High-performance direct host execution; no 3.58 MHz CPU bottlenecks |
-| **PPU** | Custom S-PPU1 / S-PPU2 (256x224, Mode 1/2/7) | Software scanline rasterizer + SDL2 Texture rendering | Integer scaling, aspect ratio correction, optional scanline shaders |
-| **APU / Sound** | Sony SPC700 @ 1.024 MHz + S-DSP | Cycle-synchronized SPC700 emulation + S-DSP resampler | Crystal-rate sync via `RtlSetAudioOutputRate` to host sample rate (44.1k/48k) |
-| **Storage / Saves** | Password System only (no cartridge battery backup) | Native persistent JSON/binary save files + Password encoder/decoder | Multiple save slots, autosaves, tournament progress persistence |
+| **CPU** | Ricoh 5A22 (65816 @ 3.58 MHz / 2.68 MHz) | Translated host routines, interpreter fallback and native replacements | Not a proven cycle-accurate timing recreation |
+| **PPU** | Custom S-PPU1 / S-PPU2 (256x224, Mode 1/2/7) | Software rasterizer + SDL2 texture rendering | Integer/aspect viewport and CPU CRT effect; no configurable shader suite |
+| **APU / Sound** | Sony SPC700 @ 1.024 MHz + S-DSP | Native SPC700/S-DSP models and host linear resampler | Bounded occupancy correction; measured limitations below |
+| **Storage / Saves** | Password System only (no cartridge battery backup) | Validated binary snapshot envelopes and original password bridge | Manual slots and verified campaign checkpoints; config is separate |
 | **Controls** | 2/4-player SNES Controller Ports | SDL2 GameController (XInput, DirectInput, DualShock, Switch) + Keyboard | Arbitrary remapping, analog stick deadzones, per-player configuration |
 
 ---
 
 ## 2. Timing & Frame Pacing
 
-### Classic Mode vs. Enhanced Mode
-- **Classic Mode:**
-  - Accurately reproduces original 65816 CPU load and frame times.
-  - Matches original hardware behavior for speedruns and competitive preservation.
-- **Enhanced Mode (Default):**
-  - Eliminates accidental CPU cycle starvation slowdowns during crowded penalty box action (multiple player sprites, ball physics, radar updates).
-  - Maintains a constant, rock-solid **60.0 Hz logical simulation clock**.
-  - Presentation rendering is decoupled, enabling higher refresh rates (120 Hz, 144 Hz, 240 Hz) without affecting simulation determinism.
+### One baseline engine
+The legacy `engine_mode` enum is persisted but does not switch runtime timing.
+The overlay identifies the engine as fixed. Earlier claims of cycle-accurate
+Classic mode, speedrun preservation or an Enhanced mode that eliminates slowdown
+were design assumptions, not delivered selectable implementations.
+
+Simulation is scheduled at 60 Hz. Host performance can still cause slow frames.
+Higher requested presentation rates repeat guest frames; they do not interpolate
+poses or establish cartridge-equivalent timing under all load conditions.
 
 ---
 
 ## 3. Input Latency & Polling
 
 - **Original SNES:** Joypad registers `$4218-$421F` read during automatic Joypad Read in VBlank (~line 225-227).
-- **ISSD Native:** Direct sub-millisecond SDL2 event polling polled each frame boundary, reducing input latency compared to physical hardware with CRT/scaler adapters.
+- **ISSD Native:** SDL2 events and sampled controls feed native joypad state. No end-to-end input-to-display measurement establishes sub-millisecond latency or a universal improvement over original hardware.
 
 ---
 
@@ -51,6 +56,10 @@ This document tracks all intentional, architectural, and behavioral differences 
 
 ## 5. Compatibility & Regression Invariants
 
-To ensure 100% gameplay fidelity:
-- Player collision bounding boxes, dribble vectors, shot arcs, deflection physics, and referee AI decisions execute identically to the original game.
-- Deterministic RNG seeding is preserved for replayability.
+Regression checks exercise original physics paths, snapshot replay and bounded
+optional AI target policies. They do not establish 100% gameplay fidelity or
+equivalence for every collision, referee decision, mode and long tournament.
+Gameplay tweaks intentionally alter selected CPU targets when enabled; both are
+off by default. Deterministic replay checks cover their tested snapshot/input
+sequences. Untouched campaigns, extra-time/shootout flow and physical device
+acceptance remain explicit checks rather than inferred guarantees.

@@ -21,7 +21,10 @@ typedef enum {
     ISSD_MENU_PAGE_MAIN = 0,
     ISSD_MENU_PAGE_MODS = 1,
     ISSD_MENU_PAGE_PASSWORD = 2,
-    ISSD_MENU_PAGE_GAMEPLAY = 3
+    ISSD_MENU_PAGE_GAMEPLAY = 3,
+    ISSD_MENU_PAGE_CONTROLS = 4,
+    ISSD_MENU_PAGE_KEYBOARD = 5,
+    ISSD_MENU_PAGE_TOUCH = 6
 } IssdMenuPage;
 
 typedef struct {
@@ -47,6 +50,7 @@ void issd_menu_open(void);
 void issd_menu_offer_continue(void);
 void issd_menu_refresh_continue(void);
 void issd_menu_set_save_context_callback(void (*callback)(void));
+void issd_menu_set_input_reset_callback(void (*callback)(void));
 void issd_menu_close(void);
 bool issd_menu_is_open(void);
 
@@ -61,6 +65,9 @@ bool issd_menu_navigate_right(void);
 bool issd_menu_confirm(void);
 bool issd_menu_cancel(void);
 bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height);
+bool issd_menu_binding_capture(void);
+bool issd_menu_capture_key(int scancode);
+void issd_menu_capture_pad(int player, uint64_t raw);
 
 /* Render overlay on top of 256x224 32-bit ARGB framebuffer */
 void issd_menu_render(uint32_t *framebuffer, int width, int height);

@@ -8,7 +8,10 @@ controls for P1; four independent gamepad players require four gamepads.
 
 Use Open Game and the cartridge's player-count options to choose the match.
 The original modes include P1+P3 versus P2+P4 and all four players versus CPU.
-The selected Classic, FIFA, or PES controller layout applies to every gamepad.
+Each P1–P4 slot has its own saved Classic/FIFA/PES/custom profile. Open
+**Controls / Profiles** to remap its native actions and adjust independent stick
+and trigger thresholds. Profiles belong to slots, not particular controller IDs.
+See [the controls guide](CONTROLS.md).
 
 Removing a controller clears its input and leaves every other player's slot
 unchanged. A live match pauses in the overlay. Reconnecting fills the first

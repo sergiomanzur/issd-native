@@ -58,6 +58,22 @@ typedef struct {
  * viewport actually changed. */
 void issd_touch_set_viewport(int width, int height);
 
+/* Per-control viewport centres (0..1000), with -1 retaining the automatic
+ * position on that axis; sizes are percentages of each automatic control
+ * (50..200, default100). Arrays contain ISSD_TOUCH_COUNT entries. NULL arrays
+ * and invalid entries use their automatic/default values. Effective changes
+ * recompute the current viewport and clear held points and pending edges. */
+void issd_touch_set_layout(const int *xs, const int *ys, const int *sizes);
+
+/* Current rectangle centre in normalized viewport coordinates (0..1000).
+ * Returns false for an invalid control or before a viewport is established;
+ * output pointers are optional and are untouched on failure. */
+bool issd_touch_center(int control, int *x, int *y);
+
+/* Drop all held touches and pending menu/hide/screen edges without firing
+ * release actions or changing visibility; use when the app suspends. */
+void issd_touch_reset_points(void);
+
 /* Replace the current set of active touch points. Coordinates are viewport
  * pixels. Call once per frame with every finger currently down, then read
  * issd_touch_pad_mask(). */

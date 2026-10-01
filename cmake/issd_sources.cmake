@@ -34,6 +34,7 @@ set(ISSD_GAME_SOURCES
     "${ISSD_ROOT}/ISSDNative/issd_formation.c"
     "${ISSD_ROOT}/ISSDNative/issd_hd.c"
     "${ISSD_ROOT}/ISSDNative/issd_menu.c"
+    "${ISSD_ROOT}/ISSDNative/issd_controls.c"
     "${ISSD_ROOT}/ISSDNative/issd_decompress.c"
     "${ISSD_ROOT}/ISSDNative/issd_audio.c"
     "${ISSD_ROOT}/ISSDNative/issd_touch.c"

@@ -6,6 +6,18 @@
 
 #define ISSD_CONFIG_ROM_PATH_MAX 1024
 #define ISSD_CONFIG_MODS_DIR_MAX 1024
+#define ISSD_PROFILE_PLAYERS 4
+#define ISSD_PROFILE_BINDINGS 12
+#define ISSD_TOUCH_CONTROLS 11
+#define ISSD_PROFILE_CUSTOM 3
+#define ISSD_INPUT_SOURCE_MASK ((UINT64_C(0x1fffff) & ~(UINT64_C(1) << 5)) | (UINT64_C(0x3f) << 32))
+
+typedef struct {
+    int schema; /* 0 CLASSIC, 1 FIFA, 2 PES, 3 CUSTOM */
+    int stick_deadzone;   /* 0..30000, signed SDL stick axis threshold */
+    int trigger_deadzone; /* 0..30000, unsigned SDL trigger axis threshold */
+    uint64_t bindings[ISSD_PROFILE_BINDINGS]; /* indexed by native SNES bit */
+} IssdPlayerProfile;
 
 #ifdef __cplusplus
 extern "C" {
@@ -98,6 +110,10 @@ typedef struct {
     int key_p1_r;      /* Strategy */
     int key_p1_start;  /* Pause */
     int key_p1_select; /* Select */
+    IssdPlayerProfile player_profiles[ISSD_PROFILE_PLAYERS];
+    int touch_x[ISSD_TOUCH_CONTROLS]; /* normalized center 0..1000; -1 = automatic */
+    int touch_y[ISSD_TOUCH_CONTROLS];
+    int touch_size[ISSD_TOUCH_CONTROLS]; /* percentage 50..200 */
 
     /* ROM */
     char rom_path[ISSD_CONFIG_ROM_PATH_MAX];
@@ -109,6 +125,8 @@ typedef struct {
 extern IssdConfig g_issd_config;
 
 void issd_config_init_defaults(IssdConfig *cfg);
+/* Replace bindings with a named preset, retaining this player's thresholds. */
+void issd_config_player_preset(IssdConfig *cfg, int player, int schema);
 
 /* True when Steam launched us on a Steam Deck. Seeds first-run defaults
  * only; a config file on disk always wins. */

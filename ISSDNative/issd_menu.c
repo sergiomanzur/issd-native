@@ -1,4 +1,5 @@
 #include "issd_menu.h"
+#include "issd_controls.h"
 #include "issd_password_ui.h"
 #include "issd_config.h"
 #include "issd_save.h"
@@ -145,6 +146,8 @@ static bool s_slot_dirty = true, s_slot_available;
 static int s_slot_index = -2;
 static char s_slot_info[64];
 static void (*s_prepare_save_context)(void);
+static void (*s_reset_input)(void);
+void issd_menu_set_input_reset_callback(void (*callback)(void)) { s_reset_input = callback; }
 
 void issd_menu_set_save_context_callback(void (*callback)(void)) {
     s_prepare_save_context = callback;
@@ -282,13 +285,16 @@ void issd_menu_init(void) {
     g_overlay_menu.is_open = false;
     g_overlay_menu.current_item = 0;
     g_overlay_menu.current_slot = 0;
-    g_overlay_menu.control_schema = ISSD_SCHEMA_CLASSIC;
+    g_overlay_menu.control_schema = (IssdControlSchema)(g_issd_config.player_profiles[0].schema % 3);
+    issd_controls_end_capture();
     g_overlay_menu.status_timer = 0;
     g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
     g_overlay_menu.scroll = 0;
 }
 
 void issd_menu_toggle(void) {
+    issd_controls_end_capture();
+    if (s_reset_input) s_reset_input();
     g_overlay_menu.is_open = !g_overlay_menu.is_open;
     if (!g_overlay_menu.is_open) g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
     if (g_overlay_menu.is_open) {
@@ -301,6 +307,8 @@ void issd_menu_toggle(void) {
 }
 
 void issd_menu_open(void) {
+    issd_controls_end_capture();
+    if (s_reset_input) s_reset_input();
     g_overlay_menu.is_open = true;
     issd_menu_refresh_continue();
     issd_touch_set_pad_visible(true);
@@ -324,6 +332,8 @@ void issd_menu_offer_continue(void) {
 }
 
 void issd_menu_close(void) {
+    issd_controls_end_capture();
+    if (s_reset_input) s_reset_input();
     g_overlay_menu.is_open = false;
     s_legacy_confirm_slot = -2;
 }
@@ -389,6 +399,7 @@ static void gameplay_select(void) {
 bool issd_menu_navigate_up(void) {
     s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (issd_controls_active()) { issd_controls_step(-1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_up(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
         g_overlay_menu.current_item = (g_overlay_menu.current_item + 2) % 3; return true;
@@ -401,6 +412,7 @@ bool issd_menu_navigate_up(void) {
 bool issd_menu_navigate_down(void) {
     s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (issd_controls_active()) { issd_controls_step(1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_down(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
         g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % 3; return true;
@@ -416,6 +428,7 @@ static const int s_fps_presets[] = { 60, 120, 144, 165, 240, 0 };
 bool issd_menu_navigate_left(void) {
     s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (issd_controls_active()) { issd_controls_adjust(-1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_left(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
     if (g_overlay_menu.current_item == MENU_ITEM_GAMEPLAY && g_overlay_menu.page == ISSD_MENU_PAGE_MAIN) {
@@ -426,8 +439,8 @@ bool issd_menu_navigate_left(void) {
         return true;
     }
     switch (g_overlay_menu.current_item) {
-        case 1: /* Schema */
-            g_overlay_menu.control_schema = (IssdControlSchema)((g_overlay_menu.control_schema - 1 + 3) % 3);
+        case 1: /* Player profiles */
+            issd_controls_open();
             break;
         case 2: /* Mods page */
             mods_open();
@@ -465,7 +478,7 @@ bool issd_menu_navigate_left(void) {
             if (g_issd_config.master_volume >= 10) g_issd_config.master_volume -= 10;
             break;
         case 12: /* Engine Mode */
-            g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
+            /* Reserved legacy setting; no alternate engine exists. */
             break;
         case 14: /* HD Tiles: shown here, chosen on the Mods page */
             mods_open();
@@ -491,6 +504,7 @@ bool issd_menu_navigate_left(void) {
 bool issd_menu_navigate_right(void) {
     s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (issd_controls_active()) { issd_controls_adjust(1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_right(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
     if (g_overlay_menu.current_item == MENU_ITEM_GAMEPLAY && g_overlay_menu.page == ISSD_MENU_PAGE_MAIN) {
@@ -501,8 +515,8 @@ bool issd_menu_navigate_right(void) {
         return true;
     }
     switch (g_overlay_menu.current_item) {
-        case 1: /* Schema */
-            g_overlay_menu.control_schema = (IssdControlSchema)((g_overlay_menu.control_schema + 1) % 3);
+        case 1: /* Player profiles */
+            issd_controls_open();
             break;
         case 2: /* Mods page */
             mods_open();
@@ -540,7 +554,7 @@ bool issd_menu_navigate_right(void) {
             if (g_issd_config.master_volume <= 90) g_issd_config.master_volume += 10;
             break;
         case 12: /* Engine Mode */
-            g_issd_config.engine_mode = (IssdEngineMode)!g_issd_config.engine_mode;
+            /* Reserved legacy setting; no alternate engine exists. */
             break;
         case 14: /* HD Tiles: shown here, chosen on the Mods page */
             mods_open();
@@ -566,6 +580,7 @@ bool issd_menu_navigate_right(void) {
 bool issd_menu_confirm(void) {
     if (s_prepare_save_context) s_prepare_save_context();
     if (!g_overlay_menu.is_open) return false;
+    if (issd_controls_active()) { issd_controls_confirm(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
         password_ui_result(issd_password_ui_confirm());
@@ -687,6 +702,7 @@ bool issd_menu_confirm(void) {
 
 bool issd_menu_cancel(void) {
     if (!g_overlay_menu.is_open) return false;
+    if (issd_controls_active()) { issd_controls_cancel(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
         g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
         g_overlay_menu.current_item = MENU_ITEM_GAMEPLAY;
@@ -707,6 +723,7 @@ bool issd_menu_cancel(void) {
 
 bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
     if (!g_overlay_menu.is_open) return false;
+    if (issd_menu_binding_capture()) return true;
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
         if (s_prepare_save_context) s_prepare_save_context();
         password_ui_result(issd_password_ui_click(fb_x, fb_y, width, height));
@@ -726,6 +743,16 @@ bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
         return true;
     }
 
+    if (issd_controls_active()) {
+        int count = g_overlay_menu.page == ISSD_MENU_PAGE_CONTROLS ? 20 : g_overlay_menu.page == ISSD_MENU_PAGE_KEYBOARD ? 14 : 7;
+        int row = g_overlay_menu.scroll + (fb_y - box_y - 22) / 12;
+        if (fb_y >= box_y + 22 && fb_y < box_y + 178 && row < count) {
+            g_overlay_menu.current_item = row;
+            if (fb_x < box_x + 30) issd_controls_adjust(-1);
+            else issd_controls_confirm();
+        } else if (fb_y >= box_y + 190) issd_controls_cancel();
+        return true;
+    }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
         for (int row = 0; row < 3; row++) {
             int y = box_y + 28 + row * 24;
@@ -876,6 +903,11 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
      * pages or ON/OFF labels cannot leave text from previous renders behind. */
     FillBox(fb, width, height, box_x + 1, box_y + 1, box_w - 2, box_h - 2, 0xFF002244);
 
+    if (issd_controls_active()) {
+        issd_controls_render(fb, width, height, box_x, box_y, DrawString);
+        return;
+    }
+
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
         DrawString(fb, width, height, box_x + 48, box_y + 4, "GAMEPLAY TWEAKS", 0xFFFFD700);
         char rows[3][29];
@@ -906,8 +938,6 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     DrawString(fb, width, height, box_x + 44, box_y + 4, "ISSD NATIVE MENU", 0xFFFFD700);
 
     /* Display Strings */
-    const char *schema_str = (g_overlay_menu.control_schema == ISSD_SCHEMA_CLASSIC) ? "CLASSIC" :
-                             (g_overlay_menu.control_schema == ISSD_SCHEMA_FIFA)    ? "FIFA" : "PES";
 
 
     const char *aspect_str = (g_issd_config.aspect_ratio == ISSD_ASPECT_4_3)     ? "4:3 CRT" :
@@ -933,11 +963,10 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
         snprintf(fps_str, sizeof(fps_str), "UNCAPPED");
     }
 
-    const char *mode_str = (g_issd_config.engine_mode == ISSD_MODE_ENHANCED) ? "ENHANCED 60Hz" : "CLASSIC SNES";
 
     char items[MENU_TOTAL_ITEMS][44];
     snprintf(items[0], sizeof(items[0]), "Resume Match");
-    snprintf(items[1], sizeof(items[1]), "Controls:   <%s>", schema_str);
+    snprintf(items[1], sizeof(items[1]), "Controls / Profiles...");
     snprintf(items[2], sizeof(items[2]), "Mods...     <%s>", issd_menu_mods_label());
     snprintf(items[3], sizeof(items[3]), "Aspect:     <%s>", aspect_str);
     snprintf(items[4], sizeof(items[4]), "Widescreen: <%s>", g_issd_config.true_widescreen ? "ON (TRUE FOV)" : "OFF (4:3 NATIVE)");
@@ -950,7 +979,7 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[9], sizeof(items[9]), "Save State: <Slot %d>", g_overlay_menu.current_slot + 1);
     snprintf(items[10], sizeof(items[10]), "Load State: <Slot %d%s>", g_overlay_menu.current_slot + 1, s_slot_available ? "" : " (---)");
     snprintf(items[11], sizeof(items[11]), "Volume:     <%d%%>", g_issd_config.master_volume);
-    snprintf(items[12], sizeof(items[12]), "Engine:     <%s>", mode_str);
+    snprintf(items[12], sizeof(items[12]), "Engine: BASELINE (FIXED)");
     snprintf(items[13], sizeof(items[13]), "Debug/JPN:  <%s>", g_issd_config.debug_unhooked_code ? "ENABLED" : "DISABLED");
     snprintf(items[14], sizeof(items[14]), "HD Tiles:   <%s>", issd_menu_hd_pack_label());
     refresh_continue_info();

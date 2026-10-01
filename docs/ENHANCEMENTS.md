@@ -1,8 +1,10 @@
 # ISSD Native — Enhancements & Modern Features
 
 This document combines implemented enhancements and older design proposals.
-Entries outside the save and gameplay tweaks sections are not a certification of current
-behavior; use [the README](../README.md) for implementation status.
+The implemented behavior and inactive settings are inventoried in
+[Supported features](SUPPORTED_FEATURES.md); [Acceptance checks](ACCEPTANCE_TESTS.md)
+records the remaining game/device validation. Items labeled proposed below are
+roadmap ideas, not advertised working behavior.
 
 ---
 
@@ -14,20 +16,20 @@ behavior; use [the README](../README.md) for implementation status.
   - `4:3 Aspect (CRT standard)`: Scaled with authentic SNES aspect ratio.
   - `8:7 Aspect (Pixel perfect 1:1)`: Displays square pixels directly.
   - `Widescreen (16:9 / 16:10)`: Expanded horizontal viewport with extended pitch visibility.
-- **CRT Shader & Scanlines:** Configurable scanline strength and aperture grille filters for authentic retro display feel.
-- **Borderless / Fullscreen:** Smooth borderless windowed mode and exclusive fullscreen.
+- **CRT effect (implemented):** CPU CRT processing and a separate legacy 1x scanline path. Adjustable strength/aperture grille shaders are proposed, not implemented.
+- **Fullscreen (implemented):** SDL desktop fullscreen. Exclusive fullscreen is not implemented.
 
 ### Refresh Rate & Fluidity
-- **Decoupled Simulation & Rendering:** Authoritative 60 Hz gameplay simulation with interpolated 120 / 144 / 165 / 240 Hz presentation rendering for buttery smooth camera scrolling.
-- **Eliminated Slowdown:** Hardware cycle constraints removed in Enhanced Mode while preserving authentic simulation physics.
+- **Decoupled Simulation & Rendering (implemented):** 60 Hz gameplay simulation and requested 120 / 144 / 165 / 240 Hz presentation. Higher presentation rates repeat frames; interpolation is proposed, not implemented.
+- **Alternate timing modes (proposed):** The legacy Classic/Enhanced setting has no runtime timing consumer. The overlay labels the single engine baseline as fixed; no selectable slowdown-removal mode is established.
 
 ---
 
 ## 2. Audio & Sound Enhancements
 
-- **Crystal-Rate Host Resampling:** High quality band-limited sinc/linear resampling targeting 44.1 kHz, 48.0 kHz, and 96.0 kHz sound cards with zero pitch drift and no buffer starvation.
-- **Volume Controls:** Independent slider controls for Master Volume, Crowd / SFX Volume, and Background Music.
-- **MSU-1 / CD Audio Stream:** Support for uncompressed CD-quality orchestral and modern ISSD soundtrack replacement packs.
+- **Host resampling (implemented):** Linear interpolation to the obtained SDL device rate, with bounded occupancy correction and continuity protection. This is not sinc resampling and cannot guarantee no starvation or pitch drift.
+- **Volume (implemented):** Master volume. Persisted music/SFX volume fields have no independent runtime consumer; separate mixing is proposed.
+- **MSU-1 / CD Audio Stream (proposed):** No runtime replacement soundtrack implementation.
 
 ---
 
@@ -52,7 +54,7 @@ is checked by saves and retail-password eligibility. See
 
 ## 4. Quality of Life (QoL) Features
 
-- **Instant Rematch / Quick Restart:** Skip lengthy menu navigations to immediately restart a match with identical teams and stadium conditions.
-- **Intro Skip Option:** Optionally bypass Konami logo and opening cinematics on startup directly to the Title Screen / Main Menu.
-- **Universal Pause:** Pause anywhere safely during cutscenes, replays, or gameplay.
-- **Controller Remapping:** Interactive in-game input configurator with per-player controller profiles.
+- **Instant Rematch (proposed):** Native Restart resets the game; it does not recreate the same match directly.
+- **Intro Skip (proposed):** The persisted `skip_intro` setting has no runtime consumer.
+- **Native pause (implemented):** Overlay pauses guest execution. Complete acceptance across every cutscene/replay and Android recreation is pending.
+- **Controller Remapping (implemented):** In-game per-player preset/custom profiles, thresholds, P1 keyboard remapping and touch layout controls. Physical device acceptance remains pending.

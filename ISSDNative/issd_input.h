@@ -3,6 +3,7 @@
 
 #include <SDL.h>
 #include "issd_menu.h"
+#include "issd_config.h"
 
 #define ISSD_LOCAL_PLAYERS 4
 
@@ -18,6 +19,10 @@ int issd_input_player(SDL_JoystickID instance);
 SDL_GameController *issd_input_controller(int player);
 uint8_t issd_input_connected(void);
 uint16_t issd_input_read(int player, IssdControlSchema schema);
+/* Retains the live array; it must remain valid until configure(NULL). */
+void issd_input_configure(const IssdPlayerProfile *profiles);
+/* Physical capture ignores held blocking but respects focus and deadzones. */
+uint64_t issd_input_raw(int player);
 void issd_input_block_held(void);
 void issd_input_set_focus(bool focused);
 

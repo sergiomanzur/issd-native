@@ -3,9 +3,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <limits.h>
+#include <inttypes.h>
 
 IssdConfig g_issd_config;
 static char s_default_config_path[1024] = "issd_native.cfg";
+
+void issd_config_player_preset(IssdConfig *cfg, int player, int schema) {
+    if (!cfg || player < 0 || player >= ISSD_PROFILE_PLAYERS || schema < 0 || schema > 2) return;
+    IssdPlayerProfile *p = &cfg->player_profiles[player];
+    p->schema = schema;
+    memset(p->bindings, 0, sizeof(p->bindings));
+#define B(source, bit) (p->bindings[bit] |= UINT64_C(1) << (source))
+    B(0, 0); B(3, 9); B(4, 2); B(6, 3);
+    B(11, 4); B(32, 4); B(12, 5); B(33, 5);
+    B(13, 6); B(34, 6); B(14, 7); B(35, 7);
+    B(9, 10); B(36, 11); B(37, 1);
+    B(1, schema == 2 ? 1 : 8); B(2, schema == 2 ? 8 : 1);
+    B(10, schema == 0 ? 11 : 1);
+#undef B
+}
 
 void issd_config_set_default_path(const char *filepath) {
     if (!filepath || !filepath[0]) return;
@@ -81,6 +99,15 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->key_p1_r = 8;
     cfg->key_p1_start = 40;
     cfg->key_p1_select = 44;
+    for (int i = 0; i < ISSD_PROFILE_PLAYERS; i++) {
+        cfg->player_profiles[i].stick_deadzone = 12000;
+        cfg->player_profiles[i].trigger_deadzone = 12000;
+        issd_config_player_preset(cfg, i, 0);
+    }
+    for (int i = 0; i < ISSD_TOUCH_CONTROLS; i++) {
+        cfg->touch_x[i] = cfg->touch_y[i] = -1;
+        cfg->touch_size[i] = 100;
+    }
 }
 
 static char *trim(char *s) {
@@ -144,8 +171,65 @@ static bool parse_config_line(char *line, char *key, size_t key_size, char **val
     return key[0] != '\0';
 }
 
-static void apply_config_value(IssdConfig *cfg, const char *key, const char *value) {
-    int ival = atoi(value);
+static bool number_end(const char *end) {
+    while (isspace((unsigned char)*end)) end++;
+    if (*end == ',') end++;
+    while (isspace((unsigned char)*end)) end++;
+    return *end == '\0';
+}
+
+static bool parse_int(const char *value, int *out) {
+    char *end;
+    errno = 0;
+    long long n = strtoll(value, &end, 10);
+    if (end == value || !number_end(end)) return false;
+    /* strtoll saturates on overflow; narrowing happens only after clamping. */
+    *out = n < INT_MIN ? INT_MIN : n > INT_MAX ? INT_MAX : (int)n;
+    return true;
+}
+
+static bool parse_mask(const char *value, uint64_t *out) {
+    while (isspace((unsigned char)*value)) value++;
+    if (*value == '-') return false;
+    char *end;
+    errno = 0;
+    unsigned long long n = strtoull(value, &end, 10);
+    if (end == value || errno == ERANGE || !number_end(end)) return false;
+    *out = (uint64_t)n & ISSD_INPUT_SOURCE_MASK;
+    return true;
+}
+
+static int clamp(int n, int low, int high) { return n < low ? low : n > high ? high : n; }
+
+static void apply_config_value(IssdConfig *cfg, const char *key, const char *value,
+                               uint16_t seen[ISSD_PROFILE_PLAYERS]) {
+    int ival = 0;
+    bool valid_int = parse_int(value, &ival);
+    char field[64];
+    for (int p = 0; p < ISSD_PROFILE_PLAYERS; p++) {
+        IssdPlayerProfile *profile = &cfg->player_profiles[p];
+        snprintf(field, sizeof(field), "player_%d_schema", p + 1);
+        if (!strcmp(key, field)) { if (valid_int) profile->schema = clamp(ival, 0, 3); return; }
+        snprintf(field, sizeof(field), "player_%d_stick_deadzone", p + 1);
+        if (!strcmp(key, field)) { if (valid_int) profile->stick_deadzone = clamp(ival, 0, 30000); return; }
+        snprintf(field, sizeof(field), "player_%d_trigger_deadzone", p + 1);
+        if (!strcmp(key, field)) { if (valid_int) profile->trigger_deadzone = clamp(ival, 0, 30000); return; }
+        for (int b = 0; b < ISSD_PROFILE_BINDINGS; b++) {
+            snprintf(field, sizeof(field), "player_%d_bind_%d", p + 1, b);
+            if (!strcmp(key, field)) {
+                if (parse_mask(value, &profile->bindings[b])) seen[p] |= 1u << b;
+                return;
+            }
+        }
+    }
+    for (int i = 0; i < ISSD_TOUCH_CONTROLS; i++) {
+        snprintf(field, sizeof(field), "touch_%d_x", i);
+        if (!strcmp(key, field)) { if (valid_int) cfg->touch_x[i] = clamp(ival, -1, 1000); return; }
+        snprintf(field, sizeof(field), "touch_%d_y", i);
+        if (!strcmp(key, field)) { if (valid_int) cfg->touch_y[i] = clamp(ival, -1, 1000); return; }
+        snprintf(field, sizeof(field), "touch_%d_size", i);
+        if (!strcmp(key, field)) { if (valid_int) cfg->touch_size[i] = clamp(ival, 50, 200); return; }
+    }
 
     if (strcmp(key, "rom_path") == 0) copy_config_string(cfg->rom_path, sizeof(cfg->rom_path), value);
     else if (strcmp(key, "mods_dir") == 0) copy_config_string(cfg->mods_dir, sizeof(cfg->mods_dir), value);
@@ -201,15 +285,24 @@ bool issd_config_load(IssdConfig *cfg, const char *filepath) {
     }
 
     char line[1024];
+    uint16_t seen[ISSD_PROFILE_PLAYERS] = {0};
     while (fgets(line, sizeof(line), f)) {
         char key[64];
         char *value = NULL;
         if (parse_config_line(line, key, sizeof(key), &value)) {
-            apply_config_value(cfg, key, value);
+            apply_config_value(cfg, key, value, seen);
         }
     }
 
     fclose(f);
+    /* Schema-only and unordered files receive preset defaults for missing bindings. */
+    for (int p = 0; p < ISSD_PROFILE_PLAYERS; p++) {
+        IssdConfig preset;
+        int schema = cfg->player_profiles[p].schema;
+        issd_config_player_preset(&preset, p, schema == 3 ? 0 : schema);
+        for (int b = 0; b < ISSD_PROFILE_BINDINGS; b++)
+            if (!(seen[p] & (1u << b))) cfg->player_profiles[p].bindings[b] = preset.player_profiles[p].bindings[b];
+    }
     printf("[Config] Loaded configuration from '%s'.\n", path);
     return true;
 }
@@ -259,6 +352,19 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "key_p1_r=%d\n", cfg->key_p1_r);
     fprintf(f, "key_p1_start=%d\n", cfg->key_p1_start);
     fprintf(f, "key_p1_select=%d\n", cfg->key_p1_select);
+    for (int p = 0; p < ISSD_PROFILE_PLAYERS; p++) {
+        const IssdPlayerProfile *profile = &cfg->player_profiles[p];
+        fprintf(f, "player_%d_schema=%d\n", p + 1, clamp(profile->schema, 0, 3));
+        fprintf(f, "player_%d_stick_deadzone=%d\n", p + 1, clamp(profile->stick_deadzone, 0, 30000));
+        fprintf(f, "player_%d_trigger_deadzone=%d\n", p + 1, clamp(profile->trigger_deadzone, 0, 30000));
+        for (int b = 0; b < ISSD_PROFILE_BINDINGS; b++)
+            fprintf(f, "player_%d_bind_%d=%" PRIu64 "\n", p + 1, b, profile->bindings[b] & ISSD_INPUT_SOURCE_MASK);
+    }
+    for (int i = 0; i < ISSD_TOUCH_CONTROLS; i++) {
+        fprintf(f, "touch_%d_x=%d\n", i, clamp(cfg->touch_x[i], -1, 1000));
+        fprintf(f, "touch_%d_y=%d\n", i, clamp(cfg->touch_y[i], -1, 1000));
+        fprintf(f, "touch_%d_size=%d\n", i, clamp(cfg->touch_size[i], 50, 200));
+    }
 
     fclose(f);
     printf("[Config] Saved configuration to '%s'.\n", path);

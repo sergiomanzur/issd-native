@@ -13,6 +13,7 @@ def test_mods_stack(tmp_path):
         [
             repo / "tests/test_mod_stack.c",
             repo / "ISSDNative/issd_menu.c",
+            repo / "ISSDNative/issd_controls.c",
             repo / "ISSDNative/issd_password_ui.c",
             repo / "ISSDNative/issd_config.c",
             repo / "ISSDNative/issd_mod.c",

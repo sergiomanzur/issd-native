@@ -27,6 +27,9 @@ const char *issd_save_error(void) { return "No checkpoint"; }
 bool issd_save_is_legacy(int s) { (void)s; return false; }
 bool issd_load_from_slot_confirmed(int s, bool allow) { (void)allow; return issd_load_from_slot(s); }
 void issd_touch_set_pad_visible(bool visible) { (void)visible; }
+void issd_touch_set_layout(const int *x,const int *y,const int *s) { (void)x;(void)y;(void)s; }
+int issd_touch_rects(const void **out) { (void)out; return 0; }
+bool issd_touch_center(int c,int *x,int *y) { (void)c;(void)x;(void)y;return false; }
 void issd_request_quit(void) { }
 static int g_restarts;
 void issd_restart_application(void) { g_restarts++; }

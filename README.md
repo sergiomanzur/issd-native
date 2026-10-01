@@ -6,6 +6,12 @@ The goal is to preserve the original gameplay while adding modern controls, pres
 
 The current release is **[v0.2.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.2.0-beta.1)**, a GitHub prerelease for Windows and Android. It includes four-player local multiplayer, campaign save recovery, cartridge password interoperability, and optional gameplay AI tweaks. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.2.0-beta.1.md).
 
+Current source also includes **unreleased per-player remapping/deadzones,
+configurable touch layouts, and a background/resume pause path**. These additions
+are not in the published v0.2.0-beta.1 downloads. The [supported-feature inventory](docs/SUPPORTED_FEATURES.md)
+records actual behavior and inactive settings; [acceptance checks](docs/ACCEPTANCE_TESTS.md)
+separate automated evidence from pending complete-campaign and device testing.
+
 ## Current platforms
 
 | Platform | Current state |
@@ -23,7 +29,7 @@ Current Windows, Linux, and Android builds succeed; gameplay and controller regr
 - **Original game modes:** Open Game/exhibition, International Cup, World Series, scenarios, training, and penalty shootouts. Full end-to-end certification of every mode is still pending.
 - **Native runtime paths:** Konami five-mode LZSS/RLE decompression, VRAM/WRAM streaming, static indirect dispatch, and audio command fast paths. SPC700 execution and S-DSP sound generation remain in the runner.
 - **Local multiplayer:** Up to four independent SDL2 gamepads, SNES multitap support, stable player slots, connection notifications, and automatic pause when a gamepad disconnects during live play.
-- **Controls:** Classic ISSD, modern FIFA, and modern PES gamepad layouts; keyboard input for P1; Android touch controls. The selected gamepad layout applies to all players.
+- **Controls:** Saved P1–P4 Classic/FIFA/PES/custom gamepad profiles, in-game remapping and separate stick/trigger deadzones; remappable P1 keyboard inputs; individual Android touch positions and sizes. See [controls](docs/CONTROLS.md).
 - **Overlay menu:** Presentation, audio, controls, saves, and mod selection, accessible from keyboard, gamepad, and Android touch.
 - **Campaign saves:** Explicit Continue, safe campaign checkpoints, two backup generations, and compatibility checks against applied gameplay data. See [the campaign saves guide](docs/CAMPAIGN_SAVES.md).
 - **Password bridge:** Native entry/export for all six original Cup/World Series password formats, original checksum validation and restoration, and autosave after import. Requires unmodified retail gameplay. See [the password guide](docs/PASSWORD_BRIDGE.md).
@@ -84,7 +90,13 @@ Disconnecting a pad clears its input without moving the remaining players to oth
 
 Any assigned pad can open the overlay with **Guide/Home** or **Back+Start**, then navigate with the D-pad, A, and B. Held gamepad controls must be released before affecting gameplay after closing the overlay or regaining window focus. See [the multiplayer guide](docs/LOCAL_MULTIPLAYER.md) for protocol, script, and validation details.
 
-Keyboard bindings send these SNES inputs to P1:
+Open **Controls / Profiles** in the overlay to edit P1–P4 presets, bindings and
+deadzones, or select **P1 Keyboard** and **Touch Layout**. Changes persist and
+apply immediately. Overlay navigation stays fixed so gameplay remapping cannot
+remove access to settings. Profiles follow player slots, not controller identity.
+
+Default keyboard bindings send these SNES inputs to P1. Remapping an action
+replaces its legacy aliases too:
 
 | Keys | Input |
 | --- | --- |
@@ -100,7 +112,7 @@ Keyboard bindings send these SNES inputs to P1:
 | Shortcut | Action |
 | --- | --- |
 | Escape / F1 | Toggle overlay |
-| F2 | Cycle gamepad layout |
+| F2 | Cycle and save P1 gamepad preset |
 | F3 | Cycle aspect ratio |
 | F4 | Cycle internal scale when applicable to the filter |
 | F5 / F6 | Quicksave / quickload |
@@ -181,9 +193,9 @@ python -m pytest tests/test_local_multiplayer.py -q
 
 Tests need Python and pytest, with compiler/SDL2 requirements for native harnesses. Some also require Pillow. ROM-backed checks require your supported ROM and a built executable; see the individual test files for setup.
 
-The latest full project-suite run (2026-10-01) produced **156 passed, 2 failed, 1 skipped, and 7 subtests passed**. Campaign, password, recovery, transactional snapshot, advancing replay, multiplayer, and gameplay-tweak checks passed. After the final AI hook and overlay redraw fixes, focused AI/menu/configuration/campaign/replay/multiplayer/password verification produced **34 passed, 1 skipped**. The current Windows `build/ISSDNative.exe`, Linux, and Android `arm64-v8a`/`x86_64` release builds compiled successfully.
+The latest full project-suite run (2026-10-01) produced **174 passed, 2 failed, 1 skipped, and 7 subtests passed**. Campaign, password, recovery, transactional snapshot, advancing replay, multiplayer, and gameplay-tweak checks passed. After the final input-clearing and remapping-capture fixes, focused controls, configuration, touch, host lifecycle, menu, multiplayer, campaign and AI-hook verification produced **30 passed** in 125.74 seconds. A separately added fresh-start, nine-match accelerated Cup test passed in 266.03 seconds, including Continue after every result and completion. The current Windows `build/ISSDNative.exe`, Linux, and Android `arm64-v8a`/`x86_64` release builds compiled successfully.
 
-The two remaining baseline failures are an appearance-nibble expectation (`test_mod_rom_patching`) and shipped-pack kit-sharing warnings (`test_shipped_packs_validate`). The earlier menu harness linking and snapshot replay failures are fixed. Physical four-controller matches, Android controls, physical-cartridge password comparison, and gameplay-tweak balance still need playtesting. This is not yet a fully passing 1.0 test baseline.
+The two remaining baseline failures are an appearance-nibble expectation (`test_mod_rom_patching`) and shipped-pack kit-sharing warnings (`test_shipped_packs_validate`). The earlier menu harness linking and snapshot replay failures are fixed. Full tournament, shootout, substitution and device acceptance evidence is tracked in [ACCEPTANCE_TESTS.md](docs/ACCEPTANCE_TESTS.md). Physical four-controller matches, Android controls, physical-cartridge password comparison, and gameplay-tweak balance still need playtesting. This is not yet a fully passing 1.0 test baseline.
 
 Useful runtime options:
 
@@ -217,7 +229,7 @@ For example:
 2. Playtest two-, three-, and four-player matches on physical controllers, including reconnect/focus changes and Android handhelds.
 3. Verify full tournament progression, scenarios, training, penalties, long sessions, and audio against the original game.
 4. Resolve widescreen edge behavior and clearly separate faithful presentation from experimental enhancements.
-5. Add per-player remapping and controller profiles, and finish release packaging across supported platforms.
+5. Validate remapping/profile ergonomics on physical controllers and touch devices, and finish release packaging across supported platforms.
 
 Rollback netplay, interpolated presentation, expanded asset replacement, and additional gameplay mods remain future work. The Classic/Enhanced labels and settings such as skip intro or fast menus should not be treated as proof that distinct gameplay behavior is implemented.
 

@@ -13,7 +13,14 @@ static struct {
     bool          menu_down, menu_fired, hide_down;
     bool          screen_touch_down, screen_tap_fired;
     int           screen_tap_x, screen_tap_y;
-} T = { .enabled = true, .pad_visible = true };
+    int           layout_x[ISSD_TOUCH_COUNT], layout_y[ISSD_TOUCH_COUNT];
+    int           layout_size[ISSD_TOUCH_COUNT];
+} T = {
+    .enabled = true, .pad_visible = true,
+    .layout_x = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
+    .layout_y = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
+    .layout_size = {100,100,100,100,100,100,100,100,100,100,100}
+};
 
 static bool hit(const IssdTouchRect *r, int x, int y) {
     return x >= r->x && x < r->x + r->w && y >= r->y && y < r->y + r->h;
@@ -23,8 +30,10 @@ static bool hit(const IssdTouchRect *r, int x, int y) {
  * margin. The d-pad does not: it is already large and a margin there would
  * overlap its neighbours. */
 static bool hit_padded(const IssdTouchRect *r, int x, int y, int pad) {
-    return x >= r->x - pad && x < r->x + r->w + pad &&
-           y >= r->y - pad && y < r->y + r->h + pad;
+    return (int64_t)x >= (int64_t)r->x - pad &&
+           (int64_t)x < (int64_t)r->x + r->w + pad &&
+           (int64_t)y >= (int64_t)r->y - pad &&
+           (int64_t)y < (int64_t)r->y + r->h + pad;
 }
 
 static void place(IssdTouchControl c, int x, int y, int w, int h,
@@ -36,11 +45,8 @@ static void place(IssdTouchControl c, int x, int y, int w, int h,
     T.r[c].pressed = false;
 }
 
-void issd_touch_set_viewport(int width, int height) {
-    if (width <= 0 || height <= 0) return;
-    if (width == T.vw && height == T.vh) return;
-    T.vw = width; T.vh = height;
-
+static void compute_layout(void) {
+    const int width = T.vw, height = T.vh;
     /* Everything scales off the short edge so the layout holds at any aspect
      * and any density, from a phone to a 1080p handheld. */
     const int s     = height < width ? height : width;
@@ -76,6 +82,74 @@ void issd_touch_set_viewport(int width, int height) {
      * hiding the pad cannot be confused with losing access to the menu. */
     place(ISSD_TOUCH_HIDE, width / 2 - small * 2 - gap, edge, small * 2, small, false, "HIDE", NULL, 70, 130, 180);
     place(ISSD_TOUCH_MENU, width / 2 + gap,             edge, small * 2, small, false, "MENU", NULL, 230, 126, 34);
+
+    for (int i = 0; i < ISSD_TOUCH_COUNT; ++i) {
+        IssdTouchRect *r = &T.r[i];
+        /* Use the original centres for automatic axes. Width/height rounding
+         * preserves every default rectangle exactly on ordinary viewports. */
+        int64_t cx = T.layout_x[i] < 0 ? r->x + r->w / 2 :
+                     (int64_t)width * T.layout_x[i] / 1000;
+        int64_t cy = T.layout_y[i] < 0 ? r->y + r->h / 2 :
+                     (int64_t)height * T.layout_y[i] / 1000;
+        int64_t w = (int64_t)r->w * T.layout_size[i] / 100;
+        int64_t h = (int64_t)r->h * T.layout_size[i] / 100;
+        if (w < 1) w = 1;
+        if (h < 1) h = 1;
+        if (w > width) w = width;
+        if (h > height) h = height;
+        int64_t x = cx - w / 2, y = cy - h / 2;
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x > width - w) x = width - w;
+        if (y > height - h) y = height - h;
+        r->x = (int)x; r->y = (int)y; r->w = (int)w; r->h = (int)h;
+    }
+}
+
+void issd_touch_reset_points(void) {
+    T.pn = 0; T.mask = 0;
+    memset(T.px, 0, sizeof(T.px)); memset(T.py, 0, sizeof(T.py));
+    T.menu_down = T.menu_fired = T.hide_down = false;
+    T.screen_touch_down = T.screen_tap_fired = false;
+    T.screen_tap_x = T.screen_tap_y = 0;
+    for (int i = 0; i < ISSD_TOUCH_COUNT; ++i) T.r[i].pressed = false;
+}
+
+void issd_touch_set_layout(const int *xs, const int *ys, const int *sizes) {
+    bool changed = false;
+    for (int i = 0; i < ISSD_TOUCH_COUNT; ++i) {
+        int x = xs && xs[i] >= 0 && xs[i] <= 1000 ? xs[i] : -1;
+        int y = ys && ys[i] >= 0 && ys[i] <= 1000 ? ys[i] : -1;
+        int size = sizes && sizes[i] >= 50 && sizes[i] <= 200 ? sizes[i] : 100;
+        if (x != T.layout_x[i] || y != T.layout_y[i] || size != T.layout_size[i]) {
+            T.layout_x[i] = x; T.layout_y[i] = y; T.layout_size[i] = size;
+            changed = true;
+        }
+    }
+    if (!changed) return;
+    issd_touch_reset_points();
+    if (T.vw > 0 && T.vh > 0) compute_layout();
+}
+
+void issd_touch_set_viewport(int width, int height) {
+    if (width <= 0 || height <= 0) return;
+    if (width == T.vw && height == T.vh) return;
+    T.vw = width; T.vh = height;
+    issd_touch_reset_points();
+    compute_layout();
+}
+
+bool issd_touch_center(int control, int *x, int *y) {
+    if (control < 0 || control >= ISSD_TOUCH_COUNT || T.vw <= 0 || T.vh <= 0)
+        return false;
+    const IssdTouchRect *r = &T.r[control];
+    /* Twice the geometric centre retains half-pixels in odd-sized controls.
+     * Round to the nearest normalized coordinate without floating point. */
+    int nx = (int)(((2*(int64_t)r->x+r->w)*1000+T.vw) / (2*(int64_t)T.vw));
+    int ny = (int)(((2*(int64_t)r->y+r->h)*1000+T.vh) / (2*(int64_t)T.vh));
+    if (x) *x = nx;
+    if (y) *y = ny;
+    return true;
 }
 
 void issd_touch_set_enabled(bool enabled) { T.enabled = enabled; }
@@ -121,8 +195,8 @@ void issd_touch_set_points(const int *xs, const int *ys, int count) {
              * direction, corners press two so diagonals work. */
             const IssdTouchRect *d = &T.r[ISSD_TOUCH_DPAD];
             if (hit(d, x, y)) {
-                const int col = (x - d->x) * 3 / (d->w ? d->w : 1);
-                const int row = (y - d->y) * 3 / (d->h ? d->h : 1);
+                const int col = (int)((int64_t)(x - d->x) * 3 / d->w);
+                const int row = (int)((int64_t)(y - d->y) * 3 / d->h);
                 if (col == 0) T.mask |= ISSD_PAD_LEFT;
                 else if (col == 2) T.mask |= ISSD_PAD_RIGHT;
                 if (row == 0) T.mask |= ISSD_PAD_UP;

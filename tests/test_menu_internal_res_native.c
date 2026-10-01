@@ -19,6 +19,8 @@ static bool campaign_available, continue_ok, legacy;
 static int continue_calls, confirmed_loads;
 static int prepared_contexts;
 static int slot_queries;
+static int input_resets;
+static void reset_input(void) { input_resets++; }
 static void prepare_context(void) { prepared_contexts++; }
 bool issd_save_to_slot(int s, const char *l) { (void)s; (void)l; return true; }
 bool issd_load_from_slot(int s) { (void)s; return true; }
@@ -29,6 +31,9 @@ const char *issd_save_error(void) { return "Invalid autosave"; }
 bool issd_save_is_legacy(int s) { (void)s; return legacy; }
 bool issd_load_from_slot_confirmed(int s, bool allow) { (void)s; if (legacy && !allow) return false; confirmed_loads++; return true; }
 void issd_touch_set_pad_visible(bool visible) { (void)visible; }
+void issd_touch_set_layout(const int *x,const int *y,const int *s) { (void)x;(void)y;(void)s; }
+int issd_touch_rects(const void **out) { (void)out; return 0; }
+bool issd_touch_center(int c,int *x,int *y) { (void)c;(void)x;(void)y;return false; }
 void issd_request_quit(void) { }
 void issd_restart_application(void) { }
 
@@ -42,6 +47,7 @@ static void select_internal_res_row(void) {
 int main(void) {
     issd_config_init_defaults(&g_issd_config);
     issd_menu_init();
+    issd_menu_set_input_reset_callback(reset_input);
 
     /* Nearest: the row must not move, in either direction. */
     g_issd_config.scaling_filter = ISSD_FILTER_NEAREST;
@@ -152,5 +158,51 @@ int main(void) {
     assert(framebuffer[102 * 256 + 20] == 0xff002244); /* Old page text must be erased. */
     issd_menu_cancel();
     assert(g_overlay_menu.page == ISSD_MENU_PAGE_MAIN && g_overlay_menu.current_item == 17);
+    g_overlay_menu.current_item = 1;
+    issd_menu_confirm();
+    assert(g_overlay_menu.page == ISSD_MENU_PAGE_CONTROLS);
+    g_overlay_menu.current_item = 2;
+    int deadzone = g_issd_config.player_profiles[0].stick_deadzone;
+    issd_menu_navigate_right();
+    assert(g_issd_config.player_profiles[0].stick_deadzone > deadzone);
+    assert(g_issd_config.player_profiles[1].stick_deadzone == 12000);
+    g_overlay_menu.current_item = 4;
+    issd_menu_confirm();
+    assert(issd_menu_binding_capture());
+    issd_menu_open(); /* lifecycle pause cancels an armed binding capture */
+    assert(!issd_menu_binding_capture());
+    issd_menu_confirm();
+    assert(issd_menu_binding_capture());
+    issd_menu_capture_pad(0, UINT64_C(1)); /* held confirm is ignored */
+    issd_menu_capture_pad(0, 0);
+    issd_menu_capture_pad(1, UINT64_C(2)); /* another player is ignored */
+    assert(issd_menu_binding_capture());
+    issd_menu_capture_pad(0, UINT64_C(2));
+    assert(!issd_menu_binding_capture());
+    assert(g_issd_config.player_profiles[0].bindings[0] == UINT64_C(2));
+    g_overlay_menu.current_item = 16;
+    issd_menu_confirm();
+    assert(g_overlay_menu.page == ISSD_MENU_PAGE_KEYBOARD);
+    g_overlay_menu.current_item = 0;
+    issd_menu_confirm();
+    assert(issd_menu_capture_key(5));
+    assert(g_issd_config.key_p1_b == 5);
+    issd_menu_cancel();
+    g_overlay_menu.current_item = 17;
+    issd_menu_confirm();
+    assert(g_overlay_menu.page == ISSD_MENU_PAGE_TOUCH);
+    g_overlay_menu.current_item = 3;
+    issd_menu_navigate_right();
+    assert(g_issd_config.touch_size[0] == 105);
+    issd_menu_cancel();
+    issd_menu_cancel();
+    assert(g_overlay_menu.page == ISSD_MENU_PAGE_MAIN && g_overlay_menu.current_item == 1);
+    int before_close = input_resets;
+    issd_menu_close();
+    assert(input_resets == before_close + 1);
+    issd_menu_open();
+    before_close = input_resets;
+    issd_menu_toggle();
+    assert(input_resets == before_close + 1);
     return 0;
 }

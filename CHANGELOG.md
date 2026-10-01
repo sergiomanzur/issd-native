@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — controls and acceptance
+
+- Saved P1–P4 controller profiles with presets, in-game button/axis/trigger
+  remapping, and independent adjustable stick/trigger deadzones.
+- In-game P1 keyboard remapping; configured bindings now drive input. Default
+  aliases are sampled together, so releasing one cannot cancel another.
+- Individual normalized touch positions and button sizes, reset actions, and
+  rotation-safe bounds. Layout changes clear held touch state.
+- Background/foreground pause path clears held inputs, pauses simulation/audio
+  and requires explicit resume. Real Android lifecycle validation remains pending.
+- VSync applies live where supported; the inactive engine selector now displays
+  a fixed baseline rather than advertising an alternate engine.
+- Evidence-based supported-feature/setting inventory and repeatable acceptance
+  checks distinguish automated fixtures from full campaign/device certification.
+
 ## v0.2.0-beta.1 (2026-10-01)
 
 Beta prerelease for Windows and Android; the project remains below 1.0.

@@ -3,24 +3,32 @@
 static SDL_GameController *s_controllers[ISSD_LOCAL_PLAYERS];
 static uint64_t s_blocked[ISSD_LOCAL_PLAYERS];
 static bool s_focused = true;
+static const IssdPlayerProfile *s_profiles;
+
+void issd_input_configure(const IssdPlayerProfile *profiles) { s_profiles = profiles; }
 
 enum { STICK_UP = 32, STICK_DOWN, STICK_LEFT, STICK_RIGHT, TRIGGER_LEFT, TRIGGER_RIGHT };
 
-static uint64_t raw_controls(SDL_GameController *pad) {
+static uint64_t raw_controls(int player) {
+    SDL_GameController *pad = s_controllers[player];
     if (!pad || !SDL_GameControllerGetAttached(pad)) return 0;
+    int stick = s_profiles ? s_profiles[player].stick_deadzone : 12000;
+    int trigger = s_profiles ? s_profiles[player].trigger_deadzone : 12000;
+    stick = stick < 0 ? 0 : stick > 30000 ? 30000 : stick;
+    trigger = trigger < 0 ? 0 : trigger > 30000 ? 30000 : trigger;
     uint64_t raw = 0;
-    for (int button = 0; button < SDL_CONTROLLER_BUTTON_MAX; button++)
-        if (SDL_GameControllerGetButton(pad, (SDL_GameControllerButton)button))
+    for (int button = 0; button < SDL_CONTROLLER_BUTTON_MAX && button <= 20; button++)
+        if (button != SDL_CONTROLLER_BUTTON_GUIDE && SDL_GameControllerGetButton(pad, (SDL_GameControllerButton)button))
             raw |= UINT64_C(1) << button;
     int x = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
     int y = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
-    if (x < -12000) raw |= UINT64_C(1) << STICK_LEFT;
-    if (x > 12000) raw |= UINT64_C(1) << STICK_RIGHT;
-    if (y < -12000) raw |= UINT64_C(1) << STICK_UP;
-    if (y > 12000) raw |= UINT64_C(1) << STICK_DOWN;
-    if (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 12000)
+    if (x < -stick) raw |= UINT64_C(1) << STICK_LEFT;
+    if (x > stick) raw |= UINT64_C(1) << STICK_RIGHT;
+    if (y < -stick) raw |= UINT64_C(1) << STICK_UP;
+    if (y > stick) raw |= UINT64_C(1) << STICK_DOWN;
+    if (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > trigger)
         raw |= UINT64_C(1) << TRIGGER_LEFT;
-    if (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 12000)
+    if (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > trigger)
         raw |= UINT64_C(1) << TRIGGER_RIGHT;
     return raw;
 }
@@ -47,7 +55,7 @@ int issd_input_add(int device_index) {
         SDL_GameController *pad = SDL_GameControllerOpen(device_index);
         if (!pad) return -1;
         s_controllers[i] = pad;
-        s_blocked[i] = raw_controls(pad);
+        s_blocked[i] = raw_controls(i);
         SDL_GameControllerSetPlayerIndex(pad, i);
         return i;
     }
@@ -85,7 +93,7 @@ uint8_t issd_input_connected(void) {
 }
 
 void issd_input_block_held(void) {
-    for (int i = 0; i < ISSD_LOCAL_PLAYERS; i++) s_blocked[i] = raw_controls(s_controllers[i]);
+    for (int i = 0; i < ISSD_LOCAL_PLAYERS; i++) s_blocked[i] = raw_controls(i);
 }
 
 void issd_input_set_focus(bool focused) {
@@ -95,11 +103,15 @@ void issd_input_set_focus(bool focused) {
 
 uint16_t issd_input_read(int player, IssdControlSchema schema) {
     if (player < 0 || player >= ISSD_LOCAL_PLAYERS) return 0;
-    uint64_t raw = raw_controls(s_controllers[player]);
+    uint64_t raw = raw_controls(player);
     s_blocked[player] &= raw;
     if (!s_focused) return 0;
     raw &= ~s_blocked[player];
     uint16_t mask = 0;
+    if (s_profiles) {
+        for (int bit = 0; bit < ISSD_PROFILE_BINDINGS; bit++)
+            if (raw & s_profiles[player].bindings[bit]) mask |= 1u << bit;
+    } else {
 #define MAP(source, bit) do { if (raw & (UINT64_C(1) << (source))) mask |= 1u << (bit); } while (0)
     MAP(SDL_CONTROLLER_BUTTON_DPAD_UP, 4); MAP(STICK_UP, 4);
     MAP(SDL_CONTROLLER_BUTTON_DPAD_DOWN, 5); MAP(STICK_DOWN, 5);
@@ -116,7 +128,12 @@ uint16_t issd_input_read(int player, IssdControlSchema schema) {
     MAP(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER, schema == ISSD_SCHEMA_CLASSIC ? 11 : 1);
     MAP(TRIGGER_RIGHT, 1);
 #undef MAP
+    }
     if ((mask & 48u) == 48u) mask &= ~48u;
     if ((mask & 192u) == 192u) mask &= ~192u;
     return mask;
+}
+
+uint64_t issd_input_raw(int player) {
+    return s_focused && player >= 0 && player < ISSD_LOCAL_PLAYERS ? raw_controls(player) : 0;
 }
