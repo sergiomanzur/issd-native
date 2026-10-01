@@ -1,7 +1,7 @@
 # Campaign saves, Continue, and password interoperability
 
 Date: 2026-10-01
-Status: Proposed specification for user review; implementation has not started.
+Status: Approved. Implementation and verification are recorded in the companion plan and campaign saves guide.
 
 ## Intended outcome
 
@@ -22,7 +22,7 @@ Stage 1 must be usable independently. Stage 2 must not be represented as shipped
 until cartridge-compatible round trips pass. No online saves, account system,
 cloud sync, or general-purpose campaign editor is included.
 
-## Current evidence
+## Evidence before implementation
 
 - `ISSDNative/issd_save.c` exposes quicksave and eight manual slots. In the
   application, it delegates to `RtlSaveSnapshot`/`RtlLoadSnapshot`; its smaller

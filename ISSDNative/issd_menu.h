@@ -19,7 +19,9 @@ typedef enum {
  * more of them than fit, and a cursor that has to skip headers. */
 typedef enum {
     ISSD_MENU_PAGE_MAIN = 0,
-    ISSD_MENU_PAGE_MODS = 1
+    ISSD_MENU_PAGE_MODS = 1,
+    ISSD_MENU_PAGE_PASSWORD = 2,
+    ISSD_MENU_PAGE_GAMEPLAY = 3
 } IssdMenuPage;
 
 typedef struct {
@@ -41,6 +43,10 @@ extern const uint8_t g_issd_font8x8[96][8];
 void issd_menu_init(void);
 void issd_menu_toggle(void);
 void issd_menu_open(void);
+/* Open at Continue only when a compatible checkpoint exists; never auto-load. */
+void issd_menu_offer_continue(void);
+void issd_menu_refresh_continue(void);
+void issd_menu_set_save_context_callback(void (*callback)(void));
 void issd_menu_close(void);
 bool issd_menu_is_open(void);
 

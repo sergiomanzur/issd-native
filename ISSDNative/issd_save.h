@@ -47,6 +47,20 @@ typedef struct {
 typedef bool (*IssdSnapshotSaveFn)(const char *path);
 typedef bool (*IssdSnapshotLoadFn)(const char *path);
 void issd_save_set_snapshot_backends(IssdSnapshotSaveFn save_fn, IssdSnapshotLoadFn load_fn);
+/* Pure validation of a raw snapshot payload; must not mutate guest/host state. */
+void issd_save_set_snapshot_validator(bool (*validator)(const void *, size_t));
+/* Call after a successful restore, once guest state has been reconciled. */
+void issd_save_set_load_callback(void (*callback)(void));
+bool issd_save_set_directory(const char *directory);
+void issd_save_set_context(const uint8_t *base, size_t base_size,
+                           const uint8_t *effective, size_t effective_size,
+                           uint32_t gameplay_flags);
+bool issd_save_campaign(const char *label);
+bool issd_save_continue(void);
+bool issd_save_continue_info(char *out_info, size_t max_len);
+const char *issd_save_error(void);
+bool issd_save_is_legacy(int slot_index);
+bool issd_load_from_slot_confirmed(int slot_index, bool allow_legacy);
 
 bool issd_save_init(void);
 bool issd_save_to_slot(int slot_index, const char *label);

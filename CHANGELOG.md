@@ -1,5 +1,31 @@
 # Changelog
 
+## Gameplay tweaks (2026-10-01)
+
+- Added a Gameplay Tweaks overlay page with independent, persistent,
+  default-off goalkeeper and player AI switches, usable together without restart.
+- Added bounded goalkeeper shot-plane positioning and formation/role/active
+  substitute positioning adjustments at native and interpreted AI decisions.
+- Preserved human controller ownership, original movement and save animations.
+- Included the enabled combination in campaign/manual-save compatibility and
+  retail password eligibility. Added policy, menu, live-match and replay checks.
+
+## Unreleased
+
+- Native Continue Campaign with checked snapshots, context-specific autosaves, and two recoverable backup generations.
+- Verified Cup group/knockout and World Series setup/result/completion checkpoints, with team metadata and no duplicate saves after Continue.
+- Native 64-symbol password entry/export using the cartridge's original packing, checksum, and restore routines; accepted imports autosave once settled. Unmodified retail gameplay is required.
+- Atomic save publication, bounded snapshot validation, and transactional restoration that leaves the running game unchanged on failure.
+- Compatibility identity from applied ROM/gameplay data; presentation settings remain compatible. New manual states share integrity/context protection; legacy raw states require explicit confirmation.
+- Stable per-user save roots plus `--save-dir`, explicit headless `--continue`, and `--allow-legacy-save` options.
+- Native CPU/APU timing serialization and corrected completed-frame capture restore exact advancing replay in title, classic live play, and widescreen live play regression tests.
+- Local multiplayer for up to four SDL2 gamepads, including the original game's port-two multitap detection and input protocol.
+- Stable player slots, connection/disconnection notifications, and automatic pause when a gamepad disconnects during live play.
+- Frame-based gamepad sampling prevents stuck or cancelled controls when sticks, D-pad, buttons, and triggers overlap. Held overlay controls are consumed until released; unfocused windows send no gameplay input.
+- Save format v8 preserves multitap state; older v4–v7 snapshots remain supported.
+- Deterministic input scripts accept optional P1–P4 labels for multiplayer regression tests.
+- In-process mod reapplication synchronizes the active cartridge image before resetting execution caches and save compatibility identity.
+
 ## v0.1.1b
 
 ### Highlights

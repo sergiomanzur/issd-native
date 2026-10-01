@@ -72,6 +72,8 @@ typedef struct {
     bool skip_intro;
     bool fast_menus;
     bool debug_unhooked_code;
+    bool gameplay_goalkeeper_ai;
+    bool gameplay_player_ai;
 
     /* Name of the active mod pack, empty for vanilla. Stored by name rather
      * than index so adding or removing a pack cannot silently select a

@@ -31,6 +31,12 @@ extern "C" {
 /* Optional game hook for title-specific WRAM window tracking. The interpreter
  * updates g_interp816_cur_pc before each opcode; AOT writes leave it at zero. */
 typedef void (*CpuStageWindowStoreHook)(uint32_t ram_off, uint32_t pc24);
+/* Host gameplay policy at an existing generated basic-block boundary.
+ * Independent of diagnostic tracing; NULL keeps the production fast path. */
+struct CpuState;
+typedef void (*CpuNativeBlockHook)(struct CpuState *cpu, uint32_t pc24);
+extern CpuNativeBlockHook g_cpu_native_block_hook;
+void cpu_set_native_block_hook(CpuNativeBlockHook hook);
 extern uint32_t g_interp816_cur_pc;
 void cpu_set_stage_window_store_hook(CpuStageWindowStoreHook hook);
 

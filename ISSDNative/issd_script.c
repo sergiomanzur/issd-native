@@ -8,10 +8,12 @@
 typedef struct {
     int      frame;
     uint32_t mask;
+    unsigned player;
 } Entry;
 
 static Entry s_entries[MAX_ENTRIES];
 static int   s_count;
+static uint8_t s_players;
 
 static const struct { const char *name; uint32_t bit; } kButtons[] = {
     { "SELECT", ISSD_BTN_SELECT },   /* longer names first so a prefix   */
@@ -44,6 +46,7 @@ static uint32_t parse_mask(char *names) {
 
 int issd_script_load(const char *path) {
     s_count = 0;
+    s_players = 0;
     if (!path || !path[0]) return 0;
 
     FILE *f = fopen(path, "r");
@@ -67,8 +70,19 @@ int issd_script_load(const char *path) {
             continue;
         }
         while (*end == ' ' || *end == '\t') end++;
+        unsigned player = 0;
+        if (*end == 'P') {
+            if (end[1] < '1' || end[1] > '4' || (end[2] != ' ' && end[2] != '\t')) {
+                fprintf(stderr, "[script] %s:%d: expected P1 through P4\n", path, lineno);
+                continue;
+            }
+            player = (unsigned)(end[1] - '1');
+            end += 3;
+        }
         s_entries[s_count].frame = (int)frame;
+        s_entries[s_count].player = player;
         s_entries[s_count].mask  = parse_mask(end);
+        s_players |= 1u << player;
         s_count++;
     }
     fclose(f);
@@ -90,8 +104,14 @@ int issd_script_load(const char *path) {
 bool issd_script_active(void) { return s_count > 0; }
 
 uint32_t issd_script_mask(uint32_t frame) {
+    return issd_script_mask_player(frame, 0);
+}
+
+uint8_t issd_script_players(void) { return s_players; }
+
+uint32_t issd_script_mask_player(uint32_t frame, unsigned player) {
     uint32_t mask = 0;
     for (int i = 0; i < s_count && s_entries[i].frame <= (int)frame; i++)
-        mask = s_entries[i].mask;
+        if (s_entries[i].player == player) mask = s_entries[i].mask;
     return mask;
 }

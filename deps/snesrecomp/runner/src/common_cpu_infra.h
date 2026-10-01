@@ -98,6 +98,9 @@ typedef struct RtlGameInfo {
    * process-lifetime LLE / frame gates do not survive snes_free.
    * Per-title sticky state belongs here (not scattered in main.c). */
   void (*session_reset)(void);
+  /* Pure preflight for the optional extra chunk. Must not modify guest/host
+   * state. A false result rejects the whole load before deserialization. */
+  bool (*state_validate_extra)(const void *data, size_t size, uint32_t version);
 } RtlGameInfo;
 
 extern const RtlGameInfo *g_rtl_game_info;

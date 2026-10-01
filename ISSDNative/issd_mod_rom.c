@@ -838,6 +838,12 @@ void issd_mod_rom_set_image(uint8_t *rom, size_t rom_size) {
   if (s_pristine) memcpy(s_pristine, rom, rom_size);
 }
 
+bool issd_mod_copy_applied_rom(uint8_t *destination, size_t size) {
+  if (!destination || !s_live || size != s_size) return false;
+  if (destination != s_live) memcpy(destination, s_live, size);
+  return true;
+}
+
 int issd_mod_reapply(void) {
   if (!s_live || !s_pristine) return 0;
   /* Counts describe the stack as it is now, not as it was before the

@@ -55,6 +55,8 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->skip_intro = false;
     cfg->fast_menus = false;
     cfg->debug_unhooked_code = false;
+    cfg->gameplay_goalkeeper_ai = false;
+    cfg->gameplay_player_ai = false;
     cfg->active_mod_packs[0] = 0;
     cfg->hd_texture_packs[0] = 0;
     snprintf(cfg->mods_dir, sizeof(cfg->mods_dir), "%s", "mods");
@@ -166,6 +168,8 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     else if (strcmp(key, "skip_intro") == 0) cfg->skip_intro = (ival != 0);
     else if (strcmp(key, "fast_menus") == 0) cfg->fast_menus = (ival != 0);
     else if (strcmp(key, "debug_unhooked_code") == 0) cfg->debug_unhooked_code = (ival != 0);
+    else if (strcmp(key, "gameplay_goalkeeper_ai") == 0) cfg->gameplay_goalkeeper_ai = (ival != 0);
+    else if (strcmp(key, "gameplay_player_ai") == 0) cfg->gameplay_player_ai = (ival != 0);
     else if (strcmp(key, "active_mod_packs") == 0) { strncpy(cfg->active_mod_packs, value, sizeof(cfg->active_mod_packs)-1); cfg->active_mod_packs[sizeof(cfg->active_mod_packs)-1]=0; }
     else if (strcmp(key, "hd_texture_packs") == 0) { strncpy(cfg->hd_texture_packs, value, sizeof(cfg->hd_texture_packs)-1); cfg->hd_texture_packs[sizeof(cfg->hd_texture_packs)-1]=0; }
     /* Written by builds that only supported one pack of each kind. */
@@ -239,6 +243,8 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "skip_intro=%d\n", cfg->skip_intro ? 1 : 0);
     fprintf(f, "fast_menus=%d\n", cfg->fast_menus ? 1 : 0);
     fprintf(f, "debug_unhooked_code=%d\n", cfg->debug_unhooked_code ? 1 : 0);
+    fprintf(f, "gameplay_goalkeeper_ai=%d\n", cfg->gameplay_goalkeeper_ai ? 1 : 0);
+    fprintf(f, "gameplay_player_ai=%d\n", cfg->gameplay_player_ai ? 1 : 0);
     fprintf(f, "active_mod_packs=%s\n", cfg->active_mod_packs);
     fprintf(f, "hd_texture_packs=%s\n", cfg->hd_texture_packs);
     fprintf(f, "key_p1_up=%d\n", cfg->key_p1_up);

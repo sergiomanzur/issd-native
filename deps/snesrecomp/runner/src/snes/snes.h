@@ -30,6 +30,17 @@ struct Snes {
   uint8_t joypad2Index;
   uint16_t joypad1Latched;
   uint16_t joypad2Latched;
+  /* Outside the historic hPos..divideResult snapshot blob. v8 appends the
+   * multitap state explicitly so older snapshots remain readable. */
+  uint16_t input3_currentState;
+  uint16_t input4_currentState;
+  bool joypadMultitap;
+  uint8_t joypadConnected;
+  uint8_t joypadIo;
+  uint8_t joypadPair2Index;
+  uint16_t joypad3Latched;
+  uint16_t joypad4Latched;
+  uint16_t joypadAutoWords[4];
   bool disableRender;
 
   // ram data port ($2180-$2183)
@@ -81,6 +92,7 @@ uint16_t SwapInputBits(uint16_t x);
 bool snes_loadRom(Snes* snes, const uint8_t* data, int length);
 /* Savestate format version for snes_saveload layout (RTLS header). */
 void snes_saveload_set_version(uint32_t version);
+uint32_t snes_saveload_get_version(void);
 void snes_saveload(Snes *snes, SaveLoadInfo *sli);
 void snes_catchupApu(Snes *snes);
 void snes_advance_master_cycles(Snes *snes, uint32_t clocks);

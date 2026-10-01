@@ -13,6 +13,7 @@
  * File format, one entry per line, blank lines and # comments ignored:
  *
  *     <frame> <BUTTON>[,<BUTTON>...]
+ *     <frame> P2 <BUTTON>[,<BUTTON>...]   (P1 through P4)
  *     <frame> NONE
  *
  * Buttons are held from that frame until the next entry, so a tap is a line
@@ -49,6 +50,8 @@ bool issd_script_active(void);
 
 /* Button mask to apply on this frame. */
 uint32_t issd_script_mask(uint32_t frame);
+uint32_t issd_script_mask_player(uint32_t frame, unsigned player);
+uint8_t issd_script_players(void);
 
 #ifdef __cplusplus
 }

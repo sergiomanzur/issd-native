@@ -4,7 +4,8 @@
  *
  * Two ring buffers + per-event hooks, all gated on SNESRECOMP_TRACE.
  * Compile-out cleanly when the macro is unset (every helper is a no-op
- * inline so Release|x64 ships the same as before).
+ * inline). The optional native block policy callback remains available in
+ * release builds independently of tracing; its default is NULL.
  *
  * Goal: when cpu->DB or cpu->PB get poisoned, a `dump recent` from the
  * crash handler (or via debug-server cmd) tells us the EXACT prior
@@ -1313,7 +1314,9 @@ void cpu_trace_dump_wram(const char *tag, int scan_n);
 
 #else  /* SNESRECOMP_TRACE = 0 */
 
-static inline void cpu_trace_block(CpuState *cpu, uint32_t pc24)            { (void)cpu; (void)pc24; }
+static inline void cpu_trace_block(CpuState *cpu, uint32_t pc24) {
+    if (g_cpu_native_block_hook) g_cpu_native_block_hook(cpu, pc24);
+}
 static inline void cpu_trace_func_entry(CpuState *cpu, uint32_t pc24, const char *name) { (void)cpu; (void)pc24; (void)name; }
 static inline void cpu_trace_event(CpuState *cpu, uint32_t pc24, uint8_t et,
                                    uint8_t e0, uint16_t e1)                 { (void)cpu; (void)pc24; (void)et; (void)e0; (void)e1; }

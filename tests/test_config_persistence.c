@@ -10,6 +10,9 @@ int main(int argc, char **argv) {
 
     IssdConfig cfg;
     issd_config_init_defaults(&cfg);
+    if (cfg.gameplay_goalkeeper_ai || cfg.gameplay_player_ai) return 16;
+    cfg.gameplay_goalkeeper_ai = true;
+    cfg.gameplay_player_ai = true;
     cfg.aspect_ratio = ISSD_ASPECT_16_9;
     cfg.true_widescreen = true;
     cfg.internal_res = ISSD_RES_1X;
@@ -38,6 +41,7 @@ int main(int argc, char **argv) {
     if (!loaded.true_widescreen) return 13;
     if (loaded.internal_res != ISSD_RES_1X) return 14;
     if (loaded.master_volume != 70) return 15;
+    if (!loaded.gameplay_goalkeeper_ai || !loaded.gameplay_player_ai) return 17;
 
     puts("config persistence tests passed");
     return 0;

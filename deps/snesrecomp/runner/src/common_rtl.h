@@ -291,6 +291,8 @@ void RtlNetplayAudioReset(void);
 bool RtlUploadSpcImageFromDp(CpuState *cpu);
 bool RtlUploadSpcImageFromDpLive(CpuState *cpu);
 bool RtlRunFrame(uint32 inputs);
+/* Four local controllers without changing the legacy two-pad packed API. */
+bool RtlRunFrameControllers(const uint16_t inputs[4], uint8_t connected, bool multitap);
 void RtlReadSram();
 void RtlWriteSram();
 /* Save-directory root for SRAM + savestate slots. Default "saves". Netplay
@@ -306,9 +308,14 @@ void RtlSramFilePath(char *buf, size_t buflen);
 // forward save; RtlReadSram also calls it on boot as a fallback.
 void RtlMigrateLegacySram(const char *legacy_title);
 bool RtlSaveSnapshot(const char *filename);
+/* Reject unsupported, truncated or structurally invalid snapshots without
+ * modifying the live machine. Loads preflight before commit; failed commits
+ * restore guest/extra state without calling reconciliation hooks. */
 bool RtlLoadSnapshot(const char *filename);
 size_t RtlSaveSnapshotToMemory(void *data, size_t capacity);
 bool RtlLoadSnapshotFromMemory(const void *data, size_t size);
+/* Same structural preflight as load; no deserialization or reconciliation. */
+bool RtlValidateSnapshotFromMemory(const void *data, size_t size);
 
 void RtlApuWrite(uint16 adr, uint8 val);
 /* Execute a synchronous SNES CPU -> SPC port echo handshake. Generated code

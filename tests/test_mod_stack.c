@@ -21,6 +21,13 @@ uint8_t g_ram[0x20000];
 bool issd_save_to_slot(int s, const char *l) { (void)s; (void)l; return true; }
 bool issd_load_from_slot(int s) { (void)s; return true; }
 bool issd_save_get_info(int s, char *o, size_t n) { (void)s; snprintf(o, n, "Empty"); return false; }
+bool issd_save_continue_info(char *o, size_t n) { snprintf(o, n, "No checkpoint"); return false; }
+bool issd_save_continue(void) { return false; }
+const char *issd_save_error(void) { return "No checkpoint"; }
+bool issd_save_is_legacy(int s) { (void)s; return false; }
+bool issd_load_from_slot_confirmed(int s, bool allow) { (void)allow; return issd_load_from_slot(s); }
+void issd_touch_set_pad_visible(bool visible) { (void)visible; }
+void issd_request_quit(void) { }
 static int g_restarts;
 void issd_restart_application(void) { g_restarts++; }
 
@@ -317,6 +324,19 @@ int main(void) {
         for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++)
             assert(fb[i] == 0 && "a missing photograph draws nothing");
     }
+
+    /* An in-process restart must synchronize the CPU's separate ROM copy.
+     * Removing a pack must remove its old bytes before save context changes. */
+    static uint8_t cpu_rom[sizeof rom];
+    assert(issd_mod_copy_applied_rom(cpu_rom, sizeof(cpu_rom)));
+    assert(memcmp(cpu_rom, rom, sizeof rom) == 0);
+    issd_mod_enable_from_list("");
+    issd_mod_reapply();
+    assert(memcmp(cpu_rom, rom, sizeof rom) != 0);
+    assert(!issd_mod_copy_applied_rom(cpu_rom, sizeof(cpu_rom) - 1));
+    assert(memcmp(cpu_rom, rom, sizeof rom) != 0);
+    assert(issd_mod_copy_applied_rom(cpu_rom, sizeof(cpu_rom)));
+    assert(memcmp(cpu_rom, rom, sizeof rom) == 0);
 
     puts("mod stack tests passed");
     return 0;

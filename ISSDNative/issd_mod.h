@@ -268,6 +268,9 @@ void        issd_mod_rom_set_image(uint8_t *rom, size_t rom_size);
 /* Restore the pristine image and apply whichever pack is active. Rosters are
  * read when a match loads, so a change takes effect from the next match. */
 int         issd_mod_reapply(void);
+/* Synchronize a runner-owned cartridge copy after an in-process reapply.
+ * Reject a missing image or size mismatch without changing the destination. */
+bool        issd_mod_copy_applied_rom(uint8_t *destination, size_t size);
 
 #ifdef __cplusplus
 }

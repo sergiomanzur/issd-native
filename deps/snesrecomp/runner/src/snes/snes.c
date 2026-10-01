@@ -49,6 +49,7 @@ Snes* snes_init(uint8_t *ram) {
   snes->cart = cart_init(snes);
   snes->input1_currentState = 0;
   snes->input2_currentState = 0;
+  snes->joypadIo = 0xff;
   return snes;
 }
 
@@ -63,10 +64,14 @@ void snes_free(Snes* snes) {
 
 /* RTLS v5 and earlier serialized beamMasterLast between vPos and
  * apuCatchupCycles (+8 bytes). v6+ keeps it host-only (before hPos). */
-static uint32_t s_saveload_version = 7;
+static uint32_t s_saveload_version = 8;
 
 void snes_saveload_set_version(uint32_t version) {
-  s_saveload_version = version ? version : 7;
+  s_saveload_version = version ? version : 8;
+}
+
+uint32_t snes_saveload_get_version(void) {
+  return s_saveload_version;
 }
 
 void snes_saveload(Snes *snes, SaveLoadInfo *sli) {
@@ -109,6 +114,23 @@ void snes_saveload(Snes *snes, SaveLoadInfo *sli) {
     snes->joypad1Latched = snes->joypad2Latched = 0;
   }
 
+  if (s_saveload_version >= 8) {
+    sli->func(sli, &snes->joypadMultitap, sizeof(snes->joypadMultitap));
+    sli->func(sli, &snes->joypadConnected, sizeof(snes->joypadConnected));
+    sli->func(sli, &snes->joypadIo, sizeof(snes->joypadIo));
+    sli->func(sli, &snes->joypadPair2Index, sizeof(snes->joypadPair2Index));
+    sli->func(sli, &snes->joypad3Latched, sizeof(snes->joypad3Latched));
+    sli->func(sli, &snes->joypad4Latched, sizeof(snes->joypad4Latched));
+    sli->func(sli, snes->joypadAutoWords, sizeof(snes->joypadAutoWords));
+  } else {
+    /* Older files did not have a multitap. Keep the host's device policy;
+     * rebuild transient reads from the next frame's live inputs. */
+    snes->joypadIo = 0xff;
+    snes->joypadPair2Index = 0;
+    snes->joypad3Latched = snes->joypad4Latched = 0;
+    memset(snes->joypadAutoWords, 0, sizeof(snes->joypadAutoWords));
+  }
+
   snes->cpu->e = 0;
 }
 
@@ -137,6 +159,10 @@ void snes_reset(Snes* snes, bool hard) {
   snes->joypadStrobe = false;
   snes->joypad1Index = snes->joypad2Index = 0;
   snes->joypad1Latched = snes->joypad2Latched = 0;
+  snes->joypad3Latched = snes->joypad4Latched = 0;
+  snes->joypadPair2Index = 0;
+  snes->joypadIo = 0xff;
+  memset(snes->joypadAutoWords, 0, sizeof(snes->joypadAutoWords));
   snes->ppuLatch = false;
   snes->multiplyA = 0xff;
   snes->multiplyResult = 0xfe01;
@@ -289,8 +315,10 @@ static void snes_advance_beam(Snes *snes, uint32_t clocks, bool check_irq) {
      * for roughly 4224 master clocks.  The input registers are already backed
      * by the current controller snapshot; this timer supplies the missing
      * architectural start/busy/complete handshake. */
-    if (snes->autoJoyRead && v == 225u && h == 0u)
+    if (snes->autoJoyRead && v == 225u && h == 0u) {
       snes->autoJoyTimer = 4224;
+      joypad_auto_poll(snes);
+    }
     if (snes->autoJoyTimer) {
       snes->autoJoyTimer = span >= snes->autoJoyTimer
                          ? 0 : (uint16_t)(snes->autoJoyTimer - span);
@@ -396,18 +424,14 @@ uint8_t snes_readReg(Snes* snes, uint16_t adr) {
       /* $4016 bit 0 latches both pads; reads shift B through R, then 1s. */
       return joypad_read_serial(snes, adr - 0x4016);
     case 0x4218:
-      return joypad_auto_read_reg(snes->input1_currentState, adr);
     case 0x4219:
-      return joypad_auto_read_reg(snes->input1_currentState, adr);
     case 0x421a:
-      return joypad_auto_read_reg(snes->input2_currentState, adr);
     case 0x421b:
-      return joypad_auto_read_reg(snes->input2_currentState, adr);
     case 0x421c:
     case 0x421e:
     case 0x421d:
     case 0x421f:
-      return 0;
+      return joypad_read_auto(snes, adr);
 
     default: {
       return 0;
@@ -441,6 +465,7 @@ void snes_writeReg(Snes* snes, uint16_t adr, uint8_t val) {
       break;
     }
     case 0x4201: {
+      joypad_write_io(snes, val);
       if(!(val & 0x80) && snes->ppuLatch) {
         // latch the ppu
         ppu_read(g_ppu, 0x37);

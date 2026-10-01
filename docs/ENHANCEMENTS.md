@@ -1,6 +1,8 @@
 # ISSD Native — Enhancements & Modern Features
 
-This document outlines the modern enhancements, Quality of Life (QoL) features, and presentation capabilities introduced in **ISSD Native**.
+This document combines implemented enhancements and older design proposals.
+Entries outside the save and gameplay tweaks sections are not a certification of current
+behavior; use [the README](../README.md) for implementation status.
 
 ---
 
@@ -31,13 +33,22 @@ This document outlines the modern enhancements, Quality of Life (QoL) features, 
 
 ## 3. Modern Save Management
 
-- **Save Slots:** Multiple independent save slots for tournament campaigns, international leagues, scenarios, and custom tournaments.
-- **Autosave:** Automatically persists match outcomes, standings, and unlocked options after every match.
-- **Password Bridge:** Bi-directional converter capable of:
-  - Reading original SNES password strings to import tournament states.
-  - Exporting current native campaign progress as valid SNES passwords for cross-platform compatibility.
+- **Save states:** Quicksave and eight numbered manual slots with integrity and applied gameplay compatibility checks. Legacy raw files require confirmation.
+- **Continue and autosave:** Cup/World Series checkpoints at verified setup, committed result, completion, and accepted password-import transitions. Two previous valid generations provide recovery.
+- **Password bridge:** Native import/export for all six original Cup/World Series formats, using the cartridge's packing, checksum, and restore routines. Requires unmodified retail gameplay and settled eligible screens.
+
+See [campaign saves](CAMPAIGN_SAVES.md) and [password interoperability](PASSWORD_BRIDGE.md) for controls, limitations, storage, and verification.
 
 ---
+
+## Gameplay tweaks (implemented)
+
+The overlay now has **Gameplay Tweaks** with independent, persistent goalkeeper
+and formation/substitution-aware player AI switches. Both are off by default,
+can be combined, and apply immediately. Bounded target adjustments run in both
+execution tiers and exclude human-controlled actors. Their enabled combination
+is checked by saves and retail-password eligibility. See
+[the gameplay tweaks guide](GAMEPLAY_TWEAKS.md) for scope and validation.
 
 ## 4. Quality of Life (QoL) Features
 

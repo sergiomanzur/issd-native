@@ -10,7 +10,8 @@ def test_savestate_round_trips_video_memory(tmp_path):
     compile_c(
         exe,
         repo,
-        [repo / "tests/test_savestate_video_native.c", repo / "ISSDNative/issd_save.c"],
+        [repo / "tests/test_savestate_video_native.c", repo / "ISSDNative/issd_save.c",
+         repo / "deps/snesrecomp/runner/src/sha256.c"],
         [
             repo / "ISSDNative",
             repo / "deps/snesrecomp/runner/src",

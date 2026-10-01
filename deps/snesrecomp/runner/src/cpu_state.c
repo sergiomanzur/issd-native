@@ -37,6 +37,10 @@
 extern Snes *g_snes;
 
 CpuState g_cpu;
+CpuNativeBlockHook g_cpu_native_block_hook;
+void cpu_set_native_block_hook(CpuNativeBlockHook hook) {
+    g_cpu_native_block_hook = hook;
+}
 static CpuStageWindowStoreHook g_stage_window_store_hook;
 
 void cpu_set_stage_window_store_hook(CpuStageWindowStoreHook hook) {

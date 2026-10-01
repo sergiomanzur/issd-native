@@ -1,4 +1,5 @@
 #include "issd_menu.h"
+#include "issd_password_ui.h"
 #include "issd_config.h"
 #include "issd_save.h"
 #include "issd_mod.h"
@@ -123,16 +124,46 @@ const uint8_t g_issd_font8x8[96][8] = {
 };
 
 #ifdef ISSD_ANDROID
-#define MENU_ITEM_PICK_ROM 15
-#define MENU_ITEM_PICK_MODS_FOLDER 16
-#define MENU_ITEM_RESTART 17
-#define MENU_ITEM_QUIT 18
-#define MENU_TOTAL_ITEMS 19
+#define MENU_ITEM_PICK_ROM 18
+#define MENU_ITEM_PICK_MODS_FOLDER 19
+#define MENU_ITEM_RESTART 20
+#define MENU_ITEM_QUIT 21
+#define MENU_TOTAL_ITEMS 22
 #else
-#define MENU_ITEM_RESTART 15
-#define MENU_ITEM_QUIT 16
-#define MENU_TOTAL_ITEMS 17
+#define MENU_ITEM_RESTART 18
+#define MENU_ITEM_QUIT 19
+#define MENU_TOTAL_ITEMS 20
 #endif
+
+#define MENU_ITEM_CONTINUE 15
+#define MENU_ITEM_PASSWORD 16
+#define MENU_ITEM_GAMEPLAY 17
+static int s_legacy_confirm_slot = -2;
+static bool s_continue_dirty = true, s_continue_available;
+static char s_continue_info[128];
+static bool s_slot_dirty = true, s_slot_available;
+static int s_slot_index = -2;
+static char s_slot_info[64];
+static void (*s_prepare_save_context)(void);
+
+void issd_menu_set_save_context_callback(void (*callback)(void)) {
+    s_prepare_save_context = callback;
+}
+
+void issd_menu_refresh_continue(void) { s_continue_dirty = s_slot_dirty = true; }
+
+static void refresh_slot_info(void) {
+    if (!s_slot_dirty && s_slot_index == g_overlay_menu.current_slot) return;
+    s_slot_index = g_overlay_menu.current_slot;
+    s_slot_available = issd_save_get_info(s_slot_index, s_slot_info, sizeof(s_slot_info));
+    s_slot_dirty = false;
+}
+
+static void refresh_continue_info(void) {
+    if (!s_continue_dirty) return;
+    s_continue_available = issd_save_continue_info(s_continue_info, sizeof(s_continue_info));
+    s_continue_dirty = false;
+}
 
 /* The mod list is one row per pack, roster packs first, then tile packs,
  * then the actions. Everything is addressed by row index so the same
@@ -261,6 +292,7 @@ void issd_menu_toggle(void) {
     g_overlay_menu.is_open = !g_overlay_menu.is_open;
     if (!g_overlay_menu.is_open) g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
     if (g_overlay_menu.is_open) {
+        issd_menu_refresh_continue();
         issd_touch_set_pad_visible(true);
         printf("[Overlay] Modern Menu opened.\n");
     } else {
@@ -270,15 +302,44 @@ void issd_menu_toggle(void) {
 
 void issd_menu_open(void) {
     g_overlay_menu.is_open = true;
+    issd_menu_refresh_continue();
     issd_touch_set_pad_visible(true);
+}
+
+static void FillBox(uint32_t *fb, int fb_w, int fb_h, int x, int y, int w, int h, uint32_t color) {
+    for (int py = y; py < y + h; py++) {
+        if (py < 0 || py >= fb_h) continue;
+        for (int px = x; px < x + w; px++) {
+            if (px >= 0 && px < fb_w) fb[py * fb_w + px] = color;
+        }
+    }
+}
+
+void issd_menu_offer_continue(void) {
+    char info[128];
+    if (!issd_save_continue_info(info, sizeof(info))) return;
+    issd_menu_open();
+    g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
+    g_overlay_menu.current_item = MENU_ITEM_CONTINUE;
 }
 
 void issd_menu_close(void) {
     g_overlay_menu.is_open = false;
+    s_legacy_confirm_slot = -2;
 }
 
 bool issd_menu_is_open(void) {
     return g_overlay_menu.is_open;
+}
+
+static void password_ui_result(IssdPasswordUiResult result) {
+    if (result == ISSD_PASSWORD_UI_BACK) {
+        g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
+        g_overlay_menu.current_item = MENU_ITEM_PASSWORD;
+    } else if (result == ISSD_PASSWORD_UI_IMPORTED) {
+        issd_menu_notify("Password accepted; restoring campaign", 180);
+        issd_menu_close();
+    }
 }
 
 /* Internal resolution only reaches the screen through the CRT filter, which
@@ -311,15 +372,39 @@ static void mods_step(int direction) {
     if (g_overlay_menu.scroll < 0) g_overlay_menu.scroll = 0;
 }
 
+static void gameplay_select(void) {
+    int row = g_overlay_menu.current_item;
+    if (row == 2) {
+        g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
+        g_overlay_menu.current_item = MENU_ITEM_GAMEPLAY;
+        return;
+    }
+    if (row == 0) g_issd_config.gameplay_goalkeeper_ai = !g_issd_config.gameplay_goalkeeper_ai;
+    if (row == 1) g_issd_config.gameplay_player_ai = !g_issd_config.gameplay_player_ai;
+    if (s_prepare_save_context) s_prepare_save_context();
+    issd_menu_refresh_continue();
+    issd_config_save(&g_issd_config, NULL);
+}
+
 bool issd_menu_navigate_up(void) {
+    s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_up(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
+        g_overlay_menu.current_item = (g_overlay_menu.current_item + 2) % 3; return true;
+    }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(-1); return true; }
     g_overlay_menu.current_item = (g_overlay_menu.current_item - 1 + MENU_TOTAL_ITEMS) % MENU_TOTAL_ITEMS;
     return true;
 }
 
 bool issd_menu_navigate_down(void) {
+    s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_down(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
+        g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % 3; return true;
+    }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(1); return true; }
     g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % MENU_TOTAL_ITEMS;
     return true;
@@ -329,7 +414,13 @@ static const int s_fps_presets[] = { 60, 120, 144, 165, 240, 0 };
 #define TOTAL_FPS_PRESETS 6
 
 bool issd_menu_navigate_left(void) {
+    s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_left(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
+    if (g_overlay_menu.current_item == MENU_ITEM_GAMEPLAY && g_overlay_menu.page == ISSD_MENU_PAGE_MAIN) {
+        g_overlay_menu.page = ISSD_MENU_PAGE_GAMEPLAY; g_overlay_menu.current_item = 0; return true;
+    }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
         mods_toggle_row(g_overlay_menu.current_item);
         return true;
@@ -398,7 +489,13 @@ bool issd_menu_navigate_left(void) {
 }
 
 bool issd_menu_navigate_right(void) {
+    s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_right(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
+    if (g_overlay_menu.current_item == MENU_ITEM_GAMEPLAY && g_overlay_menu.page == ISSD_MENU_PAGE_MAIN) {
+        g_overlay_menu.page = ISSD_MENU_PAGE_GAMEPLAY; g_overlay_menu.current_item = 0; return true;
+    }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
         mods_toggle_row(g_overlay_menu.current_item);
         return true;
@@ -467,7 +564,13 @@ bool issd_menu_navigate_right(void) {
 }
 
 bool issd_menu_confirm(void) {
+    if (s_prepare_save_context) s_prepare_save_context();
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
+        password_ui_result(issd_password_ui_confirm());
+        return true;
+    }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
         const int row = g_overlay_menu.current_item;
         if (row == mods_row_back()) {
@@ -489,6 +592,14 @@ bool issd_menu_confirm(void) {
         case 2: /* Mods page */
             mods_open();
             break;
+        case MENU_ITEM_PASSWORD:
+            issd_password_ui_open();
+            g_overlay_menu.page = ISSD_MENU_PAGE_PASSWORD;
+            break;
+        case MENU_ITEM_GAMEPLAY:
+            g_overlay_menu.page = ISSD_MENU_PAGE_GAMEPLAY;
+            g_overlay_menu.current_item = 0;
+            break;
         case 1: /* Next Schema */
         case 3: /* Aspect */
         case 4: /* True Widescreen */
@@ -500,28 +611,44 @@ bool issd_menu_confirm(void) {
             break;
         case 9: { /* Save State */
             if (issd_save_to_slot(g_overlay_menu.current_slot, NULL)) {
+                issd_menu_refresh_continue();
                 snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message),
                          "State Saved: Slot %d", g_overlay_menu.current_slot + 1);
                 issd_menu_notify(g_overlay_menu.status_message, 120);
             } else {
-                snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message), "Save Failed!");
-                issd_menu_notify("Save State Failed!", 120);
+                issd_menu_notify(issd_save_error(), 300);
             }
-            g_overlay_menu.status_timer = 120;
             break;
         }
         case 10: { /* Load State */
-            if (issd_load_from_slot(g_overlay_menu.current_slot)) {
+            bool allow_legacy = s_legacy_confirm_slot == g_overlay_menu.current_slot;
+            if (issd_save_is_legacy(g_overlay_menu.current_slot) && !allow_legacy) {
+                s_legacy_confirm_slot = g_overlay_menu.current_slot;
+                issd_menu_notify("Legacy save: mods unchecked. Confirm again.", 300);
+                break;
+            }
+            s_legacy_confirm_slot = -2;
+            if (issd_load_from_slot_confirmed(g_overlay_menu.current_slot, allow_legacy)) {
                 snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message),
                          "State Loaded: Slot %d", g_overlay_menu.current_slot + 1);
                 issd_menu_notify(g_overlay_menu.status_message, 120);
                 issd_menu_close();
             } else {
                 snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message),
-                         "Slot %d is Empty!", g_overlay_menu.current_slot + 1);
-                issd_menu_notify(g_overlay_menu.status_message, 120);
+                         "%s", issd_save_error());
+                issd_menu_notify(g_overlay_menu.status_message, 300);
             }
-            g_overlay_menu.status_timer = 120;
+            break;
+        }
+        case MENU_ITEM_CONTINUE: {
+            if (issd_save_continue()) {
+                const char *message = issd_save_error();
+                issd_menu_notify(message[0] ? message : "Campaign continued", 180);
+                issd_menu_close();
+            } else {
+                issd_menu_refresh_continue();
+                issd_menu_notify(issd_save_error(), 300);
+            }
             break;
         }
         case 11: /* Volume */
@@ -560,6 +687,15 @@ bool issd_menu_confirm(void) {
 
 bool issd_menu_cancel(void) {
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
+        g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
+        g_overlay_menu.current_item = MENU_ITEM_GAMEPLAY;
+        return true;
+    }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
+        password_ui_result(issd_password_ui_cancel());
+        return true;
+    }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
         g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
         g_overlay_menu.current_item = 2;
@@ -571,6 +707,11 @@ bool issd_menu_cancel(void) {
 
 bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
+        if (s_prepare_save_context) s_prepare_save_context();
+        password_ui_result(issd_password_ui_click(fb_x, fb_y, width, height));
+        return true;
+    }
 
     int box_w = 240;
     int box_h = 220;
@@ -585,6 +726,16 @@ bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
         return true;
     }
 
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
+        for (int row = 0; row < 3; row++) {
+            int y = box_y + 28 + row * 24;
+            if (fb_y >= y && fb_y < y + 24) {
+                g_overlay_menu.current_item = row; gameplay_select(); return true;
+            }
+        }
+        if (fb_y >= box_y + box_h - 22) issd_menu_cancel();
+        return true;
+    }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
         int rows = mods_row_count();
         int first = g_overlay_menu.scroll;
@@ -606,7 +757,7 @@ bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
 
     /* Main Menu Page */
     int start_y = box_y + 14;
-    int row_h = MENU_TOTAL_ITEMS > 17 ? 10 : 11;
+    int row_h = MENU_TOTAL_ITEMS > 20 ? 8 : (MENU_TOTAL_ITEMS > 18 ? 9 : (MENU_TOTAL_ITEMS > 17 ? 10 : 11));
     for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {
         int item_y = start_y + i * row_h;
         if (fb_y >= item_y && fb_y < item_y + row_h) {
@@ -698,6 +849,10 @@ static void issd_menu_render_mods(uint32_t *fb, int width, int height,
 
 void issd_menu_render(uint32_t *fb, int width, int height) {
     if (!g_overlay_menu.is_open || !fb) return;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
+        issd_password_ui_render(fb, width, height, g_issd_font8x8);
+        return;
+    }
 
     /* 1. Darken background (translucent alpha blend) */
     for (int i = 0; i < width * height; i++) {
@@ -717,7 +872,30 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     if (box_y < 0) box_y = 0;
 
     DrawBox(fb, width, height, box_x, box_y, box_w, box_h, 0xFF00E5FF);
-    DrawBox(fb, width, height, box_x + 1, box_y + 1, box_w - 2, box_h - 2, 0xFF002244);
+    /* Paused frames reuse the framebuffer. Clear the whole panel so changing
+     * pages or ON/OFF labels cannot leave text from previous renders behind. */
+    FillBox(fb, width, height, box_x + 1, box_y + 1, box_w - 2, box_h - 2, 0xFF002244);
+
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
+        DrawString(fb, width, height, box_x + 48, box_y + 4, "GAMEPLAY TWEAKS", 0xFFFFD700);
+        char rows[3][29];
+        snprintf(rows[0], sizeof rows[0], "Goalkeeper AI: <%s>", g_issd_config.gameplay_goalkeeper_ai ? "ON" : "OFF");
+        snprintf(rows[1], sizeof rows[1], "Player AI:     <%s>", g_issd_config.gameplay_player_ai ? "ON" : "OFF");
+        snprintf(rows[2], sizeof rows[2], "Back");
+        for (int row = 0; row < 3; row++) {
+            int y = box_y + 28 + row * 24;
+            uint32_t color = row == g_overlay_menu.current_item ? 0xFF00FF66 : 0xFFE0E0E0;
+            if (row == g_overlay_menu.current_item) DrawChar(fb, width, height, box_x + 4, y, '>', color);
+            DrawString(fb, width, height, box_x + 14, y, rows[row], color);
+        }
+        const char *help = g_overlay_menu.current_item == 0 ? "Tracks angled shots sooner" : "Formation and substitute AI";
+        DrawString(fb, width, height, box_x + 8, box_y + 112, help, 0xFFB0B0B0);
+        DrawString(fb, width, height, box_x + 8, box_y + 136, "Combine any tweaks freely", 0xFFB0B0B0);
+        DrawString(fb, width, height, box_x + 8, box_y + 148, "Changes apply immediately", 0xFFB0B0B0);
+        DrawString(fb, width, height, box_x + 8, box_y + 172, "Saves require matching tweaks", 0xFFFFAA00);
+        DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, "A/< >:Toggle  ESC:Back", 0xFF888888);
+        return;
+    }
 
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) {
         issd_menu_render_mods(fb, width, height, box_x, box_y, box_h);
@@ -768,27 +946,31 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[6], sizeof(items[6]), "Filter:     <%s>", filter_str);
     snprintf(items[7], sizeof(items[7]), "Target FPS: <%s>", fps_str);
     snprintf(items[8], sizeof(items[8]), "VSync:      <%s>", g_issd_config.vsync ? "ON" : "OFF");
-    char slot_info[64];
-    bool has_save = issd_save_get_info(g_overlay_menu.current_slot, slot_info, sizeof(slot_info));
+    refresh_slot_info();
     snprintf(items[9], sizeof(items[9]), "Save State: <Slot %d>", g_overlay_menu.current_slot + 1);
-    snprintf(items[10], sizeof(items[10]), "Load State: <Slot %d%s>", g_overlay_menu.current_slot + 1, has_save ? "" : " (Empty)");
+    snprintf(items[10], sizeof(items[10]), "Load State: <Slot %d%s>", g_overlay_menu.current_slot + 1, s_slot_available ? "" : " (---)");
     snprintf(items[11], sizeof(items[11]), "Volume:     <%d%%>", g_issd_config.master_volume);
     snprintf(items[12], sizeof(items[12]), "Engine:     <%s>", mode_str);
     snprintf(items[13], sizeof(items[13]), "Debug/JPN:  <%s>", g_issd_config.debug_unhooked_code ? "ENABLED" : "DISABLED");
     snprintf(items[14], sizeof(items[14]), "HD Tiles:   <%s>", issd_menu_hd_pack_label());
+    refresh_continue_info();
+    snprintf(items[MENU_ITEM_CONTINUE], sizeof(items[MENU_ITEM_CONTINUE]),
+             "%s", s_continue_available ? "Continue Campaign" : "Continue: unavailable");
+    snprintf(items[MENU_ITEM_PASSWORD], sizeof(items[MENU_ITEM_PASSWORD]), "Cartridge Passwords...");
+    snprintf(items[MENU_ITEM_GAMEPLAY], sizeof(items[MENU_ITEM_GAMEPLAY]), "Gameplay Tweaks...");
 #ifdef ISSD_ANDROID
     snprintf(items[MENU_ITEM_PICK_ROM], sizeof(items[MENU_ITEM_PICK_ROM]), "Choose ROM File...");
     snprintf(items[MENU_ITEM_PICK_MODS_FOLDER], sizeof(items[MENU_ITEM_PICK_MODS_FOLDER]), "Choose Mods Folder...");
 #endif
     snprintf(items[MENU_ITEM_RESTART], sizeof(items[MENU_ITEM_RESTART]), "Save & Restart (applies mods)");
 #ifdef ISSD_ANDROID
-    snprintf(items[MENU_ITEM_QUIT], sizeof(items[MENU_ITEM_QUIT]), "Save & Quit");
+    snprintf(items[MENU_ITEM_QUIT], sizeof(items[MENU_ITEM_QUIT]), "Quit (last checkpoint kept)");
 #else
-    snprintf(items[MENU_ITEM_QUIT], sizeof(items[MENU_ITEM_QUIT]), "Save & Quit to Desktop");
+    snprintf(items[MENU_ITEM_QUIT], sizeof(items[MENU_ITEM_QUIT]), "Quit to Desktop (checkpoint kept)");
 #endif
 
     int start_y = box_y + 14;
-    int row_h = MENU_TOTAL_ITEMS > 17 ? 10 : 11;
+    int row_h = MENU_TOTAL_ITEMS > 20 ? 8 : (MENU_TOTAL_ITEMS > 18 ? 9 : (MENU_TOTAL_ITEMS > 17 ? 10 : 11));
     for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {
         uint32_t color = (i == g_overlay_menu.current_item) ? 0xFF00FF66 : 0xFFE0E0E0;
         int item_y = start_y + i * row_h;
@@ -801,7 +983,30 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     /* 4. Footer info / Status Message */
     if (g_overlay_menu.status_timer > 0) {
         g_overlay_menu.status_timer--;
-        DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, g_overlay_menu.status_message, 0xFFFFAA00);
+        char first[29], second[29];
+        snprintf(first, sizeof(first), "%.28s", g_overlay_menu.status_message);
+        size_t length = strlen(g_overlay_menu.status_message);
+        snprintf(second, sizeof(second), "%.28s", length > 28 ? g_overlay_menu.status_message + 28 : "");
+        DrawString(fb, width, height, box_x + 8, box_y + box_h - 22, first, 0xFFFFAA00);
+        DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, second, 0xFFFFAA00);
+    } else if (g_overlay_menu.current_item == MENU_ITEM_CONTINUE && s_continue_available) {
+        char label[29];
+        const char *when = strrchr(s_continue_info, '(');
+        size_t label_len = when ? (size_t)(when - s_continue_info) : strlen(s_continue_info);
+        if (label_len > sizeof(label) - 1) label_len = sizeof(label) - 1;
+        memcpy(label, s_continue_info, label_len);
+        label[label_len] = 0;
+        DrawString(fb, width, height, box_x + 8, box_y + box_h - 22, label, 0xFFB0B0B0);
+        DrawString(fb, width, height, box_x + 8, box_y + box_h - 11,
+                   when ? when : "A: Continue campaign", 0xFF888888);
+    } else if (g_overlay_menu.current_item == MENU_ITEM_CONTINUE ||
+               g_overlay_menu.current_item == 9 || g_overlay_menu.current_item == 10) {
+        const char *info = g_overlay_menu.current_item == MENU_ITEM_CONTINUE ? s_continue_info : s_slot_info;
+        char first[29], second[29];
+        snprintf(first, sizeof(first), "%.28s", info);
+        snprintf(second, sizeof(second), "%.28s", strlen(info) > 28 ? info + 28 : "");
+        DrawString(fb, width, height, box_x + 8, box_y + box_h - 22, first, 0xFFB0B0B0);
+        DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, second, 0xFF888888);
     } else {
         DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, "A:Select  < >:Change  ESC:Back", 0xFF888888);
     }
@@ -816,6 +1021,10 @@ static int  s_notice_frames;
 void issd_menu_notify(const char *message, int frames) {
     if (!message) return;
     snprintf(s_notice, sizeof s_notice, "%s", message);
+    if (g_overlay_menu.is_open) {
+        snprintf(g_overlay_menu.status_message, sizeof(g_overlay_menu.status_message), "%s", s_notice);
+        g_overlay_menu.status_timer = frames;
+    }
     s_notice_frames = frames;
 }
 

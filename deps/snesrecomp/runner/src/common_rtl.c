@@ -14,6 +14,7 @@
 #include "util.h"
 #include "config.h"
 #include "snes/snes.h"
+#include "snes/joypad.h"
 #include "snes/apu.h"
 #include "snes/cart.h"
 #include "snes/cx4.h"
@@ -186,9 +187,12 @@ static uint64_t fp_fnv1a(const uint8_t *p, size_t n) {
  * v6: beamMasterLast removed from the snes_saveload region (host-only
  *     timing anchor). v5 files still load via an 8-byte compat skip.
  * v7: manual joypad latch/shift state appended after the existing SNES blob.
- *     Older files initialize that transient serial state to idle. */
-#define RTL_SAV_VERSION 7u
+ *     Older files initialize that transient serial state to idle.
+ * v8: multitap selection, pair counters, extra latches and auto-read words. */
+#define RTL_SAV_VERSION 8u
 #define RTL_SAV_VERSION_MIN 4u
+/* Independent of any lengths stored in an untrusted save. */
+#define RTL_SAV_MAX_SIZE (16u * 1024u * 1024u)
 
 typedef struct FileSli {
   SaveLoadInfo base;
@@ -234,6 +238,91 @@ static void memory_sli_func(SaveLoadInfo *sli, void *data, size_t n) {
     return;
   }
   memory->position += n;
+}
+
+/* Walk the fixed guest layout without writing any destination. snes_saveload
+ * also applies legacy joypad defaults and forces cpu->e, so walk copies of
+ * those two containers. Peripheral walkers only write through func(). */
+static void snapshot_preflight_func(SaveLoadInfo *sli, void *data, size_t n) {
+  MemorySli *memory = (MemorySli *)sli;
+  if (memory->error || memory->position > memory->capacity ||
+      n > memory->capacity - memory->position) {
+    memory->error = true;
+    return;
+  }
+  (void)data;
+  memory->position += n;
+}
+
+static bool snapshot_preflight_version(const void *data, size_t size, uint32 version) {
+  MemorySli probe = {{&snapshot_preflight_func}, (uint8 *)data,
+                     size, sizeof(uint32) * 2, false, false};
+  Snes staged = *g_snes;
+  Cpu staged_cpu = *g_snes->cpu;
+  staged.cpu = &staged_cpu;
+  /* Locate PPU's fixed header using the preceding production walkers. */
+  MemorySli prefix = {{&memory_sli_func}, NULL, 0, sizeof(uint32) * 2, true, false};
+  cpu_saveload(&staged_cpu, &prefix.base);
+  apu_saveload(staged.apu, &prefix.base);
+  dma_saveload(staged.dma, &prefix.base);
+  const uint32 ppu_header[2] = {0x30555050u, PPU_SAVESTATE_REGS_SIZE + PPU_SAVESTATE_MEM_SIZE};
+  if (prefix.error || prefix.position > size || sizeof(ppu_header) > size - prefix.position ||
+      memcmp((const uint8 *)data + prefix.position, ppu_header, sizeof(ppu_header)))
+    return false;
+  snes_saveload_set_version(version);
+  snes_saveload(&staged, &probe.base);
+  if (probe.error) return false;
+  if (probe.position == size) return true; /* Legacy guest-only snapshots. */
+  if (version < 5 || !g_rtl_game_info || !g_rtl_game_info->state_load_extra)
+    return false;
+  if (g_rtl_game_info->state_validate_extra)
+    return g_rtl_game_info->state_validate_extra(
+        (const uint8 *)data + probe.position, size - probe.position, version);
+  /* Preserve older fixed-layout extension hooks. Sizing their save walker
+   * keeps short reads away from the load hook, which can mutate host state. */
+  if (!g_rtl_game_info->state_save_extra) return false;
+  MemorySli extra = {{&memory_sli_func}, NULL, 0, 0, true, false};
+  g_rtl_game_info->state_save_extra(&extra.base);
+  return !extra.error && extra.position == size - probe.position;
+}
+
+static bool snapshot_preflight(const void *data, size_t size, uint32 version) {
+  uint32 previous_version = snes_saveload_get_version();
+  bool valid = snapshot_preflight_version(data, size, version);
+  snes_saveload_set_version(previous_version);
+  return valid;
+}
+
+/* Size this backup from the live, trusted layout rather than the incoming
+ * payload. Do not use the public save API here: the caller holds the APU
+ * lock, and the guest save walker forces cpu->e even when saving. */
+static uint8 *snapshot_capture_rollback_version(size_t *size) {
+  Snes staged = *g_snes;
+  Cpu staged_cpu = *g_snes->cpu;
+  staged.cpu = &staged_cpu;
+  MemorySli backup = {{&memory_sli_func}, NULL, 0, 0, true, false};
+  snes_saveload_set_version(RTL_SAV_VERSION);
+  snes_saveload(&staged, &backup.base);
+  if (g_rtl_game_info && g_rtl_game_info->state_save_extra)
+    g_rtl_game_info->state_save_extra(&backup.base);
+  if (backup.error || backup.position > RTL_SAV_MAX_SIZE) return NULL;
+  backup.data = (uint8 *)malloc(backup.position);
+  if (!backup.data) return NULL;
+  backup.capacity = backup.position;
+  backup.position = 0;
+  snes_saveload(&staged, &backup.base);
+  if (g_rtl_game_info && g_rtl_game_info->state_save_extra)
+    g_rtl_game_info->state_save_extra(&backup.base);
+  if (backup.error) { free(backup.data); return NULL; }
+  *size = backup.position;
+  return backup.data;
+}
+
+static uint8 *snapshot_capture_rollback(size_t *size) {
+  uint32 previous_version = snes_saveload_get_version();
+  uint8 *data = snapshot_capture_rollback_version(size);
+  snes_saveload_set_version(previous_version);
+  return data;
 }
 
 void RtlReset(int mode) {
@@ -430,6 +519,11 @@ static void recomp_dspout_capture(void) {
 }
 
 bool RtlRunFrame(uint32 inputs) {
+  const uint16_t pads[4] = {inputs & 0xfff, (inputs >> 12) & 0xfff, 0, 0};
+  return RtlRunFrameControllers(pads, 3, false);
+}
+
+bool RtlRunFrameControllers(const uint16_t inputs[4], uint8_t connected, bool multitap) {
 #ifdef SNES_COSIM
   /* Co-sim (dev/diagnostics only): connect the coordinator once, before the
    * first frame executes. Boot ran deterministically already; the co-sim
@@ -445,15 +539,7 @@ bool RtlRunFrame(uint32 inputs) {
     }
   }
 #endif
-  // Avoid up/down and left/right from being pressed at the same time
-  if ((inputs & 0x30) == 0x30) inputs ^= 0x30;
-  if ((inputs & 0xc0) == 0xc0) inputs ^= 0xc0;
-  // Player2
-  if ((inputs & 0x30000) == 0x30000) inputs ^= 0x30000;
-  if ((inputs & 0xc0000) == 0xc0000) inputs ^= 0xc0000;
-
-  g_snes->input1_currentState = inputs & 0xfff;
-  g_snes->input2_currentState = (inputs >> 12) & 0xfff;
+  joypad_set_inputs(g_snes, inputs, connected, multitap);
 
   /* Establish the guest timestamp origin before any frame code can touch an
    * APU port. Host turbo changes how quickly frames arrive, not their guest
@@ -598,45 +684,25 @@ bool RtlSaveSnapshot(const char *filename) {
 
 bool RtlLoadSnapshot(const char *filename) {
   FILE *f = fopen(filename, "rb");
-  if (!f)
-    return false;
-  uint32 hdr[2];
-  if (fread(hdr, sizeof(hdr), 1, f) != 1
-      || hdr[0] != RTL_SAV_MAGIC
-      || hdr[1] < RTL_SAV_VERSION_MIN || hdr[1] > RTL_SAV_VERSION) {
-    printf("Save file %s: bad magic/version (legacy StateRecorder format no longer supported)\n", filename);
-    fclose(f);
-    return false;
-  }
-  RtlApuLock();
-  FileSli fs = { { &file_sli_func }, f, false, false };
-  snes_saveload_set_version(hdr[1]);
-  snes_saveload(g_snes, &fs.base);
-  /* v5+: an optional game-specific chunk follows the guest blob. Only call
-   * the loader when trailing bytes remain so older v5 snapshots created by
-   * games without an extra chunk remain readable. */
-  if (hdr[1] >= 5 && g_rtl_game_info && g_rtl_game_info->state_load_extra) {
-    long pos = ftell(f);
-    if (pos >= 0 && fseek(f, 0, SEEK_END) == 0) {
-      long end = ftell(f);
-      if (fseek(f, pos, SEEK_SET) == 0 && end > pos)
-        g_rtl_game_info->state_load_extra(&fs.base, hdr[1]);
+  if (!f) return false;
+  bool ok = false;
+  uint8 *data = NULL;
+  if (fseek(f, 0, SEEK_END) == 0) {
+    long length = ftell(f);
+    if (length >= (long)(sizeof(uint32) * 2) &&
+        length <= (long)RTL_SAV_MAX_SIZE && fseek(f, 0, SEEK_SET) == 0) {
+      data = (uint8 *)malloc((size_t)length);
+      if (data && fread(data, 1, (size_t)length, f) == (size_t)length &&
+          fgetc(f) == EOF && !ferror(f))
+        ok = true;
+      if (fclose(f) != 0) ok = false;
+      f = NULL;
+      if (ok) ok = RtlLoadSnapshotFromMemory(data, (size_t)length);
     }
   }
-  RtlApuUnlock();
-  fclose(f);
-  if (fs.error) {
-    printf("Save read error: %s\n", filename);
-    return false;
-  }
-  g_snes->beamMasterLast = g_cpu.master_cycles;
-  PpuResetWidescreenOamHistory(g_snes->ppu);
-  /* Post-load reconciliation: host-side execution state (fibers, HLE
-   * scheduler bookkeeping) cannot live in the guest snapshot; give the
-   * game one hook to rebuild it against the freshly restored WRAM. */
-  if (g_rtl_game_info && g_rtl_game_info->on_state_loaded)
-    g_rtl_game_info->on_state_loaded(hdr[1]);
-  return true;
+  if (f) fclose(f);
+  free(data);
+  return ok;
 }
 
 size_t RtlSaveSnapshotToMemory(void *data, size_t capacity) {
@@ -654,8 +720,20 @@ size_t RtlSaveSnapshotToMemory(void *data, size_t capacity) {
   return memory.error ? 0 : memory.position;
 }
 
+bool RtlValidateSnapshotFromMemory(const void *data, size_t size) {
+  if (!data || size < sizeof(uint32) * 2 || size > RTL_SAV_MAX_SIZE) return false;
+  uint32 hdr[2];
+  memcpy(hdr, data, sizeof hdr);
+  if (hdr[0] != RTL_SAV_MAGIC || hdr[1] < RTL_SAV_VERSION_MIN || hdr[1] > RTL_SAV_VERSION)
+    return false;
+  RtlApuLock();
+  bool valid = snapshot_preflight(data, size, hdr[1]);
+  RtlApuUnlock();
+  return valid;
+}
+
 bool RtlLoadSnapshotFromMemory(const void *data, size_t size) {
-  if (!data || size < sizeof(uint32) * 2) return false;
+  if (!data || size < sizeof(uint32) * 2 || size > RTL_SAV_MAX_SIZE) return false;
   uint32 hdr[2];
   memcpy(hdr, data, sizeof hdr);
   if (hdr[0] != RTL_SAV_MAGIC || hdr[1] < RTL_SAV_VERSION_MIN ||
@@ -666,6 +744,19 @@ bool RtlLoadSnapshotFromMemory(const void *data, size_t size) {
     { &memory_sli_func }, (uint8 *)data, size, sizeof hdr, false, false
   };
   RtlApuLock();
+  if (!snapshot_preflight(data, size, hdr[1])) {
+    RtlApuUnlock();
+    return false;
+  }
+  const Snes previous_snes = *g_snes;
+  const uint32 previous_save_version = snes_saveload_get_version();
+  const Cpu previous_cpu = *g_snes->cpu;
+  const CpuState previous_active_cpu = g_cpu;
+  const int previous_frame = snes_frame_counter;
+  const uint32 previous_audio_recovery = g_snes->apu->dsp->outputRecoveryRemaining;
+  size_t rollback_size;
+  uint8 *rollback = snapshot_capture_rollback(&rollback_size);
+  if (!rollback) { RtlApuUnlock(); return false; }
   snes_saveload_set_version(hdr[1]);
   snes_saveload(g_snes, &memory.base);
   /* Match file load: only consume a game chunk when trailing bytes remain.
@@ -675,6 +766,24 @@ bool RtlLoadSnapshotFromMemory(const void *data, size_t size) {
   if (hdr[1] >= 5 && g_rtl_game_info && g_rtl_game_info->state_load_extra &&
       memory.position < size && !memory.error)
     g_rtl_game_info->state_load_extra(&memory.base, hdr[1]);
+  if (memory.position != size) memory.error = true;
+  if (memory.error) {
+    MemorySli restore = {{&memory_sli_func}, rollback, rollback_size, 0, false, false};
+    snes_saveload_set_version(RTL_SAV_VERSION);
+    snes_saveload(g_snes, &restore.base);
+    if (g_rtl_game_info && g_rtl_game_info->state_load_extra &&
+        restore.position < rollback_size)
+      g_rtl_game_info->state_load_extra(&restore.base, RTL_SAV_VERSION);
+    /* Undo the walkers' nonserialized normalization and PCM continuity reset
+     * too. Reconciliation/presentation hooks must never observe this attempt. */
+    *g_snes = previous_snes;
+    *g_snes->cpu = previous_cpu;
+    g_cpu = previous_active_cpu;
+    snes_frame_counter = previous_frame;
+    g_snes->apu->dsp->outputRecoveryRemaining = previous_audio_recovery;
+    snes_saveload_set_version(previous_save_version);
+  }
+  free(rollback);
   RtlApuUnlock();
   if (memory.error) return false;
   g_snes->beamMasterLast = g_cpu.master_cycles;

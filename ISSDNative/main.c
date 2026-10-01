@@ -12,6 +12,7 @@
 
 #include "types.h"
 #include "snes/snes.h"
+#include "snes/cart.h"
 #include "snes/ppu.h"
 #include "snes/apu.h"
 #include "snes/dsp.h"
@@ -22,13 +23,20 @@
 #include "spc_player.h"
 #include "issd_bridge.h"
 #include "issd_config.h"
+#include "issd_gameplay.h"
 #include "issd_save.h"
+#include "issd_campaign.h"
+#include "issd_snapshot.h"
 #include "issd_mod.h"
 #include "issd_menu.h"
+#include "issd_password_ui.h"
+#include "issd_password.h"
 #include "widescreen.h"
 #include "issd_widescreen.h"
 #include "issd_hd.h"
 #include "issd_touch.h"
+#include "issd_input.h"
+#include "snes/joypad.h"
 #include "issd_script.h"
 #include "issd_android.h"
 #include "launcher_picker.h"
@@ -142,12 +150,24 @@ static const char *ResolveConfigPath(char *out, size_t out_size, const char *cli
 static int g_dump_first = -1, g_dump_last = -1;
 static int g_save_state_frame = -1;
 static int g_load_state_frame = -1;
+static const char *g_password_import_path;
+static const char *g_password_export_path;
+static int g_password_import_frame = 1;
 static uint32_t g_pixel_buffer[MAX_WS_WIDTH * SNES_HEIGHT];
 static uint32_t g_pad1_state = 0;
-static uint32_t g_pad2_state = 0;
+static bool g_input_focused = true;
 static bool g_running = true;
 static bool g_restart_requested = false;
 static bool g_headless = false;
+static bool g_continue_requested = false;
+static bool g_allow_legacy_save = false;
+static bool g_frame_healthy = false;
+static bool g_touch_release_guard = false;
+static bool g_legacy_quick_confirm = false;
+static uint8_t *g_base_rom_data = NULL;
+static char g_applied_team_names[ISSD_ROM_TEAMS + ISSD_MAX_ADDED_TEAMS][64];
+static uint32_t g_save_gameplay_flags = UINT32_MAX;
+static char g_password_error[160];
 static int g_target_frames = -1;
 static const char *g_screenshot_path = NULL;
 static const char *g_dump_state_path = NULL;
@@ -191,6 +211,78 @@ void issd_restart_application(void) {
 }
 static const uint8_t *g_rom_data;
 static size_t g_rom_size;
+
+static void IssdCaptureAppliedTeamNames(void) {
+    for (unsigned i = 0; i < ISSD_ROM_TEAMS + ISSD_MAX_ADDED_TEAMS; ++i) {
+        const char *name = issd_mod_team_plate_name((int)i);
+        if (!name || !name[0]) name = issd_mod_rom_team_name((int)i);
+        snprintf(g_applied_team_names[i], sizeof(g_applied_team_names[i]), "%s", name ? name : "");
+    }
+}
+
+static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc);
+static void IssdConfigureGameplayHooks(void);
+static void IssdRefreshSaveContext(void) {
+    uint32_t flags = g_issd_config.debug_unhooked_code ? 1u : 0u;
+    if (g_issd_config.gameplay_goalkeeper_ai) flags |= 2u;
+    if (g_issd_config.gameplay_player_ai) flags |= 4u;
+    cpu_set_native_block_hook((flags & 6u) ? IssdGameplayNativeBlock : NULL);
+    if (g_base_rom_data && g_rom_data && flags != g_save_gameplay_flags) {
+        IssdConfigureGameplayHooks();
+        issd_save_set_context(g_base_rom_data, g_rom_size, g_rom_data, g_rom_size, flags);
+        issd_password_set_context(g_base_rom_data, g_rom_size, g_rom_data, g_rom_size, flags);
+        g_save_gameplay_flags = flags;
+        issd_campaign_reset();
+        issd_menu_refresh_continue();
+    }
+}
+
+static void IssdSaveLoaded(void) {
+    g_pad1_state = 0;
+    issd_input_block_held();
+    g_touch_release_guard = true;
+    g_legacy_quick_confirm = false;
+    issd_campaign_reset();
+    g_frame_healthy = false;
+}
+
+static bool IssdPasswordFail(const char *message) {
+    snprintf(g_password_error, sizeof(g_password_error), "%s", message && message[0] ?
+             message : "Passwords require unmodified retail gameplay");
+    return false;
+}
+
+static bool IssdPasswordExport(uint8_t *symbols, size_t *count) {
+    if (!issd_password_available()) return IssdPasswordFail(issd_password_error());
+    if (!g_frame_healthy || !issd_campaign_can_export_password(g_ram))
+        return IssdPasswordFail("Export at a settled campaign checkpoint");
+    if (!issd_password_encode(g_ram, symbols, *count, count))
+        return IssdPasswordFail(issd_password_error());
+    g_password_error[0] = 0;
+    return true;
+}
+
+static bool IssdPasswordImport(const uint8_t *symbols, size_t count) {
+    if (!g_frame_healthy) return IssdPasswordFail("Wait for the cartridge Password screen");
+    if (!issd_password_submit(g_ram, symbols, count))
+        return IssdPasswordFail(issd_password_error());
+    /* Only the verified original submit command has changed guest RAM.
+     * The next game frame restores and reaches the normal autosave predicate. */
+    IssdSaveLoaded();
+    issd_campaign_note_password_import();
+    g_password_error[0] = 0;
+    return true;
+}
+
+static const char *IssdPasswordError(void) { return g_password_error; }
+static char IssdPasswordAscii(uint8_t symbol) {
+    const char *label = issd_password_symbol_label(symbol);
+    if (label && strcmp(label, "DIV") == 0) return '/';
+    return label && label[0] && !label[1] && (unsigned char)label[0] < 127 ? label[0] : 0;
+}
+static const char *IssdPasswordSymbolName(uint8_t symbol) {
+    return issd_password_symbol_label(symbol);
+}
 
 #pragma pack(push, 1)
 typedef struct {
@@ -334,10 +426,89 @@ static void IssdDrawPpuFrame(void) {
     issd_hd_dump_frame(g_snes->ppu);
 }
 
+/* Equivalent policies at native and interpreted decision boundaries. No CPU
+ * registers, RNG, animation states or host time feed into these adjustments. */
+static uint64_t g_gameplay_gk_calls, g_gameplay_gk_changes;
+static uint64_t g_gameplay_player_calls, g_gameplay_player_changes;
+static uint64_t g_gameplay_native_calls, g_gameplay_lle_calls;
+
+static void IssdGameplayKeeper(CpuState *cpu) {
+    if (!g_issd_config.gameplay_goalkeeper_ai || g_watchdog_tripped) return;
+    g_gameplay_gk_calls++;
+    if (g_gameplay_gk_calls <= 12 && getenv("ISSD_GAMEPLAY_TRACE")) {
+        fprintf(stderr, "[GameplayKeeper] D=%04X modes=%u/%u BC=%04X special=%04X flags=%04X control=%04X ball=%04X target=%u/%u pos=%u/%u vel=%d/%d\n",
+                cpu->D, cpu_read16(cpu,0,0x32), cpu_read16(cpu,0,0x70), cpu_read16(cpu,0,0xbc),
+                cpu_read16(cpu,0,cpu->D+0x4c), cpu_read16(cpu,0,cpu->D+0x6e), cpu_read16(cpu,0,cpu->D+0x9e),
+                cpu_read16(cpu,0,0x11fa), cpu_read16(cpu,0,cpu->D+0x50), cpu_read16(cpu,0,cpu->D+0x52),
+                cpu_read16(cpu,0,0x42a), cpu_read16(cpu,0,0x42c), (int16_t)cpu_read16(cpu,0,0x424), (int16_t)cpu_read16(cpu,0,0x428));
+    }
+    if (issd_gameplay_goalkeeper(cpu->ram, cpu->D, true)) g_gameplay_gk_changes++;
+}
+static void IssdGameplayPlayer(CpuState *cpu) {
+    if (!g_issd_config.gameplay_player_ai || g_watchdog_tripped) return;
+    g_gameplay_player_calls++;
+    if (g_gameplay_player_calls <= 12 && getenv("ISSD_GAMEPLAY_TRACE")) {
+        fprintf(stderr, "[GameplayPlayer] D=%04X modes=%u/%u BC=%04X status=%04X flags=%04X team=%04X slot=%u target=%u/%u\n",
+                cpu->D, cpu_read16(cpu,0,0x32), cpu_read16(cpu,0,0x70), cpu_read16(cpu,0,0xbc),
+                cpu_read16(cpu,0,cpu->D+0x60), cpu_read16(cpu,0,cpu->D+0x6e),
+                cpu_read16(cpu,0,cpu->D+0x9a), cpu_read16(cpu,0,cpu->D+0x68),
+                cpu_read16(cpu,0,cpu->D+0x50), cpu_read16(cpu,0,cpu->D+0x52));
+    }
+    if (issd_gameplay_player(cpu->ram, cpu->D, true)) g_gameplay_player_changes++;
+}
+static void IssdGameplayDecision(CpuState *cpu, uint32_t pc, bool native) {
+    pc &= 0x7fffff;
+    if (pc != 0x04dede && pc != 0x04c638 && pc != 0x04c63d) return;
+    if (g_watchdog_tripped || (!g_issd_config.gameplay_goalkeeper_ai && !g_issd_config.gameplay_player_ai)) return;
+    /* Generated block hooks precede their yield checks. Defer policy writes
+     * until the resumed tier actually executes this block, exactly once. */
+    if (native && interp_bridge_lle_master_deadline_reached(cpu)) return;
+    if (pc == 0x04dede) {
+        if (!g_issd_config.gameplay_goalkeeper_ai) return;
+        if (native) g_gameplay_native_calls++; else g_gameplay_lle_calls++;
+        IssdGameplayKeeper(cpu);
+    } else if (pc == 0x04c638 || pc == 0x04c63d) {
+        if (!g_issd_config.gameplay_player_ai || cpu->D < 0x600 || cpu->D > 0x1a00 || (cpu->D & 0xff)) return;
+        /* Both engines are immediately before target stores here. C631 shares
+         * these blocks: qualify only C5CE's two original JSR callers using the
+         * guest hardware frame. No transient host scope survives a restore. */
+        uint16_t caller = cpu_read16(cpu, 0, (uint16_t)(cpu->S + 1));
+        if (caller != 0xbc40 && caller != 0xc497) return;
+        bool mirrored = pc == 0x04c63d;
+        uint16_t old_x = cpu_read16(cpu, 0, cpu->D + 0x50);
+        uint16_t old_y = cpu_read16(cpu, 0, cpu->D + 0x52);
+        uint16_t length = cpu_read16(cpu, 0, 0x12a2), width = cpu_read16(cpu, 0, 0x12a4);
+        cpu_write16(cpu, 0, cpu->D + 0x50, mirrored ? length - cpu->X : cpu->X);
+        cpu_write16(cpu, 0, cpu->D + 0x52, mirrored ? width - cpu->Y : cpu->Y);
+        if (native) g_gameplay_native_calls++; else g_gameplay_lle_calls++;
+        IssdGameplayPlayer(cpu);
+        uint16_t x = cpu_read16(cpu, 0, cpu->D + 0x50), y = cpu_read16(cpu, 0, cpu->D + 0x52);
+        cpu->X = mirrored ? length - x : x; cpu->Y = mirrored ? width - y : y;
+        /* Original stores publish the adjusted target; all other CPU registers
+         * and flags retain their original values. Positions never change here. */
+        cpu_write16(cpu, 0, cpu->D + 0x50, old_x); cpu_write16(cpu, 0, cpu->D + 0x52, old_y);
+    }
+}
+static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc) { IssdGameplayDecision(cpu, pc, true); }
+static void IssdGameplayInterpreted(CpuState *cpu, uint32_t pc) { IssdGameplayDecision(cpu, pc, false); }
+static void IssdConfigureGameplayHooks(void) {
+    /* This runner owns the gameplay opcode policy slots. Unregister disabled
+     * policies entirely so original execution avoids callback/sync overhead. */
+    cpu_set_native_block_hook((g_issd_config.gameplay_goalkeeper_ai || g_issd_config.gameplay_player_ai) ? IssdGameplayNativeBlock : NULL);
+    interp_bridge_set_pre_opcode_hook(0, NULL);
+    if (g_issd_config.gameplay_goalkeeper_ai)
+        interp_bridge_set_pre_opcode_hook(0x84DEDE, IssdGameplayInterpreted);
+    if (g_issd_config.gameplay_player_ai) {
+        interp_bridge_set_pre_opcode_hook(0x84C638, IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0x84C63D, IssdGameplayInterpreted);
+    }
+}
+
 static void IssdInitialize(void) {
     printf("[ISSD Native] Initializing ISSD Bridge and CPU state...\n");
     cpu_state_init(&g_cpu, g_ram);
     issd_bridge_init();
+    IssdConfigureGameplayHooks();
 }
 
 static void IssdBootReset(void) {
@@ -397,6 +568,8 @@ static void IssdBootReset(void) {
 }
 
 static void IssdRunFrame(void) {
+    /* This host enters NMI directly, after the hardware auto-read would finish. */
+    if (g_snes->autoJoyRead) joypad_auto_poll(g_snes);
     /* Push hardware interrupt frame (PB, PC_hi, PC_lo, P) for 65816 RTI compatibility */
     uint16_t return_pc = 0x80D4;
     cpu_mirrors_to_p(&g_cpu);
@@ -418,6 +591,10 @@ static void IssdRunFrame(void) {
     /* Execute 1 frame via NMI interrupt handler at $80:80E0 */
     interp_tier_dispatch_interrupt(&g_cpu, 0x8080E0);
 
+    /* A sanitized abandoned interrupt is not a valid campaign checkpoint. */
+    g_frame_healthy = !g_watchdog_tripped && g_cpu.S == 0x01AF &&
+                      g_ram[0x3c] == 0 && g_ram[0x3d] == 0;
+
     /* Frame health sanitization: If NMI bailed mid-flight, sanitize $3C so subsequent frames can run */
     if (g_ram[0x3c] != 0) {
         g_ram[0x3c] = 0;
@@ -432,6 +609,10 @@ static const RtlGameInfo kIssdGameInfo = {
     .initialize = IssdInitialize,
     .run_frame = IssdRunFrame,
     .draw_ppu_frame = IssdDrawPpuFrame,
+    .state_save_extra = issd_snapshot_save_extra,
+    .state_load_extra = issd_snapshot_load_extra,
+    .state_validate_extra = issd_snapshot_validate_extra,
+    .on_state_loaded = issd_snapshot_on_loaded,
     .save_name_prefix = "issd_save",
 };
 
@@ -636,7 +817,6 @@ static bool PromptForRomFile(char *out, size_t out_size) {
 #endif
 }
 
-static SDL_GameController *g_controller = NULL;
 static SDL_Window *g_window = NULL;
 static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int render_w, int render_h, SDL_Rect *out_rect);
 static int IssdWsExtraForAspect(void);
@@ -1046,173 +1226,97 @@ static void ToggleFullscreen(void) {
 }
 
 static void ProcessInputEvent(const SDL_Event *ev) {
+    /* A preceding event can change gameplay settings in this same batch. */
+    IssdRefreshSaveContext();
+    if (ev->type == SDL_TEXTINPUT && g_input_focused && issd_menu_is_open() &&
+        g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
+        issd_password_ui_text(ev->text.text);
+        return;
+    }
     if (ev->type == SDL_CONTROLLERDEVICEADDED) {
-        if (!g_controller) {
-            g_controller = SDL_GameControllerOpen(ev->cdevice.which);
-            if (g_controller) {
-                printf("[Input] GameController connected: %s\n", SDL_GameControllerName(g_controller));
-            }
+        int player = issd_input_add(ev->cdevice.which);
+        if (player >= 0) {
+            char message[64];
+            snprintf(message, sizeof(message), "Controller connected: Player %d", player + 1);
+            printf("[Input] %s\n", message);
+            issd_menu_notify(message, 180);
         }
     } else if (ev->type == SDL_CONTROLLERDEVICEREMOVED) {
-        if (g_controller) {
-            SDL_GameControllerClose(g_controller);
-            g_controller = NULL;
-            printf("[Input] GameController disconnected.\n");
+        int player = issd_input_remove(ev->cdevice.which);
+        if (player >= 0) {
+            char message[64];
+            snprintf(message, sizeof(message), "Player %d controller disconnected", player + 1);
+            printf("[Input] %s\n", message);
+            issd_menu_notify(message, 300);
+            /* Pause a live match so the remaining players cannot score while
+             * someone reconnects. Removing an unused fifth pad does nothing. */
+            if (g_ram[0x70] == 0x08) issd_menu_open();
+        }
+    } else if (ev->type == SDL_WINDOWEVENT) {
+        if (ev->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+            ev->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+            g_input_focused = ev->window.event == SDL_WINDOWEVENT_FOCUS_GAINED;
+            g_pad1_state = 0;
+            issd_input_set_focus(g_input_focused);
         }
     } else if (ev->type == SDL_CONTROLLERBUTTONDOWN || ev->type == SDL_CONTROLLERBUTTONUP) {
-        bool down = (ev->type == SDL_CONTROLLERBUTTONDOWN);
+        int player = issd_input_player(ev->cbutton.which);
+        if (player < 0 || !g_input_focused) return;
+        SDL_GameController *controller = issd_input_controller(player);
+        bool down = ev->type == SDL_CONTROLLERBUTTONDOWN;
         Uint8 btn = ev->cbutton.button;
-
-        /* Check for In-Game Menu Toggle via Gamepad Guide / Home or Back+Start */
         if (down) {
-            bool is_guide = (btn == SDL_CONTROLLER_BUTTON_GUIDE);
-            bool is_back_start = false;
-            if (g_controller) {
-                if (btn == SDL_CONTROLLER_BUTTON_START &&
-                    SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_BACK)) {
-                    is_back_start = true;
-                } else if (btn == SDL_CONTROLLER_BUTTON_BACK &&
-                           SDL_GameControllerGetButton(g_controller, SDL_CONTROLLER_BUTTON_START)) {
-                    is_back_start = true;
-                }
-            }
-            if (is_guide || is_back_start) {
+            bool chord = (btn == SDL_CONTROLLER_BUTTON_START &&
+                SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_BACK)) ||
+                (btn == SDL_CONTROLLER_BUTTON_BACK &&
+                SDL_GameControllerGetButton(controller, SDL_CONTROLLER_BUTTON_START));
+            if (btn == SDL_CONTROLLER_BUTTON_GUIDE || chord) {
+                issd_input_block_held();
+                g_pad1_state = 0;
                 issd_menu_toggle();
                 return;
             }
         }
-
-        if (issd_menu_is_open()) {
-            if (down) {
-                if (btn == SDL_CONTROLLER_BUTTON_DPAD_UP) issd_menu_navigate_up();
-                else if (btn == SDL_CONTROLLER_BUTTON_DPAD_DOWN) issd_menu_navigate_down();
-                else if (btn == SDL_CONTROLLER_BUTTON_DPAD_LEFT) issd_menu_navigate_left();
-                else if (btn == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) issd_menu_navigate_right();
-                else if (btn == SDL_CONTROLLER_BUTTON_A) issd_menu_confirm();
-                else if (btn == SDL_CONTROLLER_BUTTON_B || btn == SDL_CONTROLLER_BUTTON_BACK) issd_menu_cancel();
-            }
-            return;
+        if (issd_menu_is_open() && down) {
+            if (btn == SDL_CONTROLLER_BUTTON_DPAD_UP) issd_menu_navigate_up();
+            else if (btn == SDL_CONTROLLER_BUTTON_DPAD_DOWN) issd_menu_navigate_down();
+            else if (btn == SDL_CONTROLLER_BUTTON_DPAD_LEFT) issd_menu_navigate_left();
+            else if (btn == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) issd_menu_navigate_right();
+            else if (btn == SDL_CONTROLLER_BUTTON_A) issd_menu_confirm();
+            else if (btn == SDL_CONTROLLER_BUTTON_B || btn == SDL_CONTROLLER_BUTTON_BACK) issd_menu_cancel();
         }
-
-        /* Gameplay Controller Decoding according to active Schema */
-        IssdControlSchema schema = g_overlay_menu.control_schema;
-
-        if (btn == SDL_CONTROLLER_BUTTON_DPAD_UP) {
-            if (down) g_pad1_state |= (1 << 4); else g_pad1_state &= ~(1 << 4);
-        } else if (btn == SDL_CONTROLLER_BUTTON_DPAD_DOWN) {
-            if (down) g_pad1_state |= (1 << 5); else g_pad1_state &= ~(1 << 5);
-        } else if (btn == SDL_CONTROLLER_BUTTON_DPAD_LEFT) {
-            if (down) g_pad1_state |= (1 << 6); else g_pad1_state &= ~(1 << 6);
-        } else if (btn == SDL_CONTROLLER_BUTTON_DPAD_RIGHT) {
-            if (down) g_pad1_state |= (1 << 7); else g_pad1_state &= ~(1 << 7);
-        } else if (btn == SDL_CONTROLLER_BUTTON_START) {
-            if (down) g_pad1_state |= (1 << 3); else g_pad1_state &= ~(1 << 3); /* Start / Pause */
-        } else if (btn == SDL_CONTROLLER_BUTTON_BACK) {
-            if (down) g_pad1_state |= (1 << 2); else g_pad1_state &= ~(1 << 2); /* Select */
-        } else if (schema == ISSD_SCHEMA_FIFA) {
-            /* FIFA / EA FC Layout:
-               A (Bottom) = Ground Pass (SNES B: 1<<0)
-               B (Right)  = Shoot (SNES A: 1<<8)
-               X (Left)   = Long Pass / Cross (SNES Y: 1<<1)
-               Y (Top)    = Through Ball (SNES X: 1<<9)
-               RB         = Sprint Dash (SNES Y: 1<<1)
-               LB         = Player Switch / Tactics (SNES L: 1<<10)
-            */
-            if (btn == SDL_CONTROLLER_BUTTON_A) {
-                if (down) g_pad1_state |= (1 << 0); else g_pad1_state &= ~(1 << 0);
-            } else if (btn == SDL_CONTROLLER_BUTTON_B) {
-                if (down) g_pad1_state |= (1 << 8); else g_pad1_state &= ~(1 << 8);
-            } else if (btn == SDL_CONTROLLER_BUTTON_X) {
-                if (down) g_pad1_state |= (1 << 1); else g_pad1_state &= ~(1 << 1);
-            } else if (btn == SDL_CONTROLLER_BUTTON_Y) {
-                if (down) g_pad1_state |= (1 << 9); else g_pad1_state &= ~(1 << 9);
-            } else if (btn == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) {
-                if (down) g_pad1_state |= (1 << 1); else g_pad1_state &= ~(1 << 1);
-            } else if (btn == SDL_CONTROLLER_BUTTON_LEFTSHOULDER) {
-                if (down) g_pad1_state |= (1 << 10); else g_pad1_state &= ~(1 << 10);
-            }
-        } else if (schema == ISSD_SCHEMA_PES) {
-            /* PES / eFootball Layout:
-               A (Bottom) = Ground Pass (SNES B: 1<<0)
-               X (Left)   = Shoot (SNES A: 1<<8)
-               B (Right)  = Long Pass / Cross (SNES Y: 1<<1)
-               Y (Top)    = Through Ball (SNES X: 1<<9)
-               RB         = Sprint Dash (SNES Y: 1<<1)
-               LB         = Cursor Change (SNES L: 1<<10)
-            */
-            if (btn == SDL_CONTROLLER_BUTTON_A) {
-                if (down) g_pad1_state |= (1 << 0); else g_pad1_state &= ~(1 << 0);
-            } else if (btn == SDL_CONTROLLER_BUTTON_X) {
-                if (down) g_pad1_state |= (1 << 8); else g_pad1_state &= ~(1 << 8);
-            } else if (btn == SDL_CONTROLLER_BUTTON_B) {
-                if (down) g_pad1_state |= (1 << 1); else g_pad1_state &= ~(1 << 1);
-            } else if (btn == SDL_CONTROLLER_BUTTON_Y) {
-                if (down) g_pad1_state |= (1 << 9); else g_pad1_state &= ~(1 << 9);
-            } else if (btn == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) {
-                if (down) g_pad1_state |= (1 << 1); else g_pad1_state &= ~(1 << 1);
-            } else if (btn == SDL_CONTROLLER_BUTTON_LEFTSHOULDER) {
-                if (down) g_pad1_state |= (1 << 10); else g_pad1_state &= ~(1 << 10);
-            }
-        } else {
-            /* Classic ISSD / SNES Layout */
-            if (btn == SDL_CONTROLLER_BUTTON_A) {
-                if (down) g_pad1_state |= (1 << 0); else g_pad1_state &= ~(1 << 0);
-            } else if (btn == SDL_CONTROLLER_BUTTON_B) {
-                if (down) g_pad1_state |= (1 << 8); else g_pad1_state &= ~(1 << 8);
-            } else if (btn == SDL_CONTROLLER_BUTTON_X) {
-                if (down) g_pad1_state |= (1 << 1); else g_pad1_state &= ~(1 << 1);
-            } else if (btn == SDL_CONTROLLER_BUTTON_Y) {
-                if (down) g_pad1_state |= (1 << 9); else g_pad1_state &= ~(1 << 9);
-            } else if (btn == SDL_CONTROLLER_BUTTON_LEFTSHOULDER) {
-                if (down) g_pad1_state |= (1 << 10); else g_pad1_state &= ~(1 << 10);
-            } else if (btn == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) {
-                if (down) g_pad1_state |= (1 << 11); else g_pad1_state &= ~(1 << 11);
-            }
-        }
-    } else if (ev->type == SDL_CONTROLLERAXISMOTION) {
-        int16_t val = ev->caxis.value;
-        const int16_t deadzone = 12000;
-        if (ev->caxis.axis == SDL_CONTROLLER_AXIS_LEFTX) {
-            if (val < -deadzone) {
-                g_pad1_state |= (1 << 6);
-                g_pad1_state &= ~(1 << 7);
-            } else if (val > deadzone) {
-                g_pad1_state |= (1 << 7);
-                g_pad1_state &= ~(1 << 6);
-            } else {
-                g_pad1_state &= ~((1 << 6) | (1 << 7));
-            }
-        } else if (ev->caxis.axis == SDL_CONTROLLER_AXIS_LEFTY) {
-            if (val < -deadzone) {
-                g_pad1_state |= (1 << 4);
-                g_pad1_state &= ~(1 << 5);
-            } else if (val > deadzone) {
-                g_pad1_state |= (1 << 5);
-                g_pad1_state &= ~(1 << 4);
-            } else {
-                g_pad1_state &= ~((1 << 4) | (1 << 5));
-            }
-        } else if (ev->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERRIGHT) {
-            /* Right Trigger -> Sprint Dash in FIFA/PES modes */
-            if (val > deadzone) g_pad1_state |= (1 << 1);
-            else g_pad1_state &= ~(1 << 1);
-        } else if (ev->caxis.axis == SDL_CONTROLLER_AXIS_TRIGGERLEFT) {
-            /* Left Trigger -> Strategy Shift */
-            if (val > deadzone) g_pad1_state |= (1 << 11);
-            else g_pad1_state &= ~(1 << 11);
-        }
+        /* Gameplay is sampled from every pad at the simulation boundary.
+         * Event order cannot make aliases or independent sources cancel. */
     } else if (ev->type == SDL_KEYDOWN || ev->type == SDL_KEYUP) {
         bool down = (ev->type == SDL_KEYDOWN);
+        if (!g_input_focused || ev->key.repeat) return;
         SDL_Scancode code = ev->key.keysym.scancode;
+        if (down && code != SDL_SCANCODE_F6) g_legacy_quick_confirm = false;
 
         /* Check for In-Game Menu Toggle via Escape or F1 */
         if (down && (code == SDL_SCANCODE_ESCAPE || code == SDL_SCANCODE_F1)) {
+            if (code == SDL_SCANCODE_ESCAPE && issd_menu_is_open() &&
+                g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
+                issd_menu_cancel();
+                return;
+            }
             issd_menu_toggle();
             return;
         }
 
         /* When Menu Overlay is Open, Route Keyboard to Menu Navigation */
         if (issd_menu_is_open()) {
+            if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
+                if (down) {
+                    if (code == SDL_SCANCODE_UP) issd_menu_navigate_up();
+                    else if (code == SDL_SCANCODE_DOWN) issd_menu_navigate_down();
+                    else if (code == SDL_SCANCODE_LEFT) issd_menu_navigate_left();
+                    else if (code == SDL_SCANCODE_RIGHT) issd_menu_navigate_right();
+                    else if (code == SDL_SCANCODE_RETURN) issd_menu_confirm();
+                    else if (code == SDL_SCANCODE_BACKSPACE) issd_password_ui_backspace();
+                }
+                return;
+            }
             if (down) {
                 if (code == SDL_SCANCODE_UP || code == SDL_SCANCODE_W) issd_menu_navigate_up();
                 else if (code == SDL_SCANCODE_DOWN || code == SDL_SCANCODE_S) issd_menu_navigate_down();
@@ -1259,10 +1363,18 @@ static void ProcessInputEvent(const SDL_Event *ev) {
                 printf("[Video] Internal Resolution set to: %s\n", r_name);
                 return;
             } else if (code == SDL_SCANCODE_F5) {
-                issd_save_quick();
+                bool saved = issd_save_quick();
+                issd_menu_notify(saved ? "Quick saved" : issd_save_error(), 180);
                 return;
             } else if (code == SDL_SCANCODE_F6) {
-                issd_load_quick();
+                if (issd_save_is_legacy(-1) && !g_legacy_quick_confirm) {
+                    g_legacy_quick_confirm = true;
+                    issd_menu_notify("Legacy save: mods unchecked. Press F6 again.", 300);
+                } else {
+                    bool loaded = issd_load_from_slot_confirmed(-1, g_legacy_quick_confirm);
+                    g_legacy_quick_confirm = false;
+                    issd_menu_notify(loaded ? "Quick loaded" : issd_save_error(), 180);
+                }
                 return;
             } else if (code == SDL_SCANCODE_F7) {
                 /* Cycle Target FPS */
@@ -1295,9 +1407,18 @@ static void ProcessInputEvent(const SDL_Event *ev) {
                 int slot = code - SDL_SCANCODE_1;
                 const Uint8 *keys = SDL_GetKeyboardState(NULL);
                 if (keys[SDL_SCANCODE_LSHIFT] || keys[SDL_SCANCODE_RSHIFT]) {
-                    issd_save_to_slot(slot, NULL);
+                    bool saved = issd_save_to_slot(slot, NULL);
+                    issd_menu_notify(saved ? "State saved" : issd_save_error(), 180);
                 } else if (keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_RCTRL]) {
-                    issd_load_from_slot(slot);
+                    if (issd_save_is_legacy(slot)) {
+                        issd_menu_open();
+                        g_overlay_menu.current_item = 10; /* Load State */
+                        g_overlay_menu.current_slot = slot;
+                        issd_menu_confirm(); /* Present the explicit legacy warning. */
+                    } else {
+                        bool loaded = issd_load_from_slot(slot);
+                        issd_menu_notify(loaded ? "State loaded" : issd_save_error(), 180);
+                    }
                 }
                 return;
             }
@@ -1592,8 +1713,15 @@ int main(int argc, char **argv) {
     const char *cli_config_path = NULL;
     const char *cli_rom_path = NULL;
     const char *cli_mods_dir = NULL;
+    const char *cli_save_dir = NULL;
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--headless") == 0) {
+        if (strcmp(argv[i], "--continue") == 0) {
+            g_continue_requested = true;
+        } else if (strcmp(argv[i], "--allow-legacy-save") == 0) {
+            g_allow_legacy_save = true;
+        } else if (strcmp(argv[i], "--save-dir") == 0 && i + 1 < argc) {
+            cli_save_dir = argv[++i];
+        } else if (strcmp(argv[i], "--headless") == 0) {
             g_headless = true;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 g_target_frames = atoi(argv[++i]);
@@ -1612,6 +1740,13 @@ int main(int argc, char **argv) {
             g_save_state_frame = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--load-state") == 0 && i + 1 < argc) {
             g_load_state_frame = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--import-password-symbols") == 0 && i + 1 < argc) {
+            g_password_import_path = argv[++i];
+        } else if (strcmp(argv[i], "--import-password-at") == 0 && i + 1 < argc) {
+            g_password_import_frame = atoi(argv[++i]);
+            if (g_password_import_frame < 0) Die("Invalid password import frame");
+        } else if (strcmp(argv[i], "--export-password-symbols") == 0 && i + 1 < argc) {
+            g_password_export_path = argv[++i];
         } else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc) {
             g_script_path = argv[++i];
         } else if (strcmp(argv[i], "--hd-pack") == 0 && i + 1 < argc) {
@@ -1643,8 +1778,11 @@ int main(int argc, char **argv) {
     issd_config_set_default_path(config_path);
     issd_config_load(&g_issd_config, NULL);
 
-    issd_save_init();
+    if (cli_save_dir && !issd_save_set_directory(cli_save_dir))
+        Die(issd_save_error());
     issd_save_set_snapshot_backends(RtlSaveSnapshot, RtlLoadSnapshot);
+    issd_save_set_snapshot_validator(RtlValidateSnapshotFromMemory);
+    issd_save_set_load_callback(IssdSaveLoaded);
     issd_mod_init();
     const char *mods_dir = g_issd_config.mods_dir[0] ? g_issd_config.mods_dir : "mods";
     if (cli_mods_dir && cli_mods_dir[0]) {
@@ -1677,6 +1815,15 @@ int main(int argc, char **argv) {
         }
     }
     issd_menu_init();
+    issd_menu_set_save_context_callback(IssdRefreshSaveContext);
+    const IssdPasswordUiCallbacks password_callbacks = {
+        .import_symbols = IssdPasswordImport,
+        .export_symbols = IssdPasswordExport,
+        .error = IssdPasswordError,
+        .symbol_ascii = IssdPasswordAscii,
+        .symbol_name = IssdPasswordSymbolName,
+    };
+    issd_password_ui_set_callbacks(&password_callbacks);
 
     char rom_path_buffer[ISSD_CONFIG_ROM_PATH_MAX];
     rom_path_buffer[0] = '\0';
@@ -1732,6 +1879,9 @@ int main(int argc, char **argv) {
     printf("[Init] ROM read successfully (%zu bytes)\n", rom_size);
     g_rom_data = rom_data;
     g_rom_size = rom_size;
+    g_base_rom_data = malloc(rom_size);
+    if (!g_base_rom_data) Die("Unable to preserve base ROM for save compatibility");
+    memcpy(g_base_rom_data, rom_data, rom_size);
 
     /* Rosters are read from the cartridge image at runtime, so mods are
      * applied to it here: after the ROM is in memory, before the engine
@@ -1740,6 +1890,12 @@ int main(int argc, char **argv) {
     issd_mod_rom_set_image(rom_data, rom_size);
     issd_mod_enable_from_list(g_issd_config.active_mod_packs);
     issd_mod_reapply();
+    IssdCaptureAppliedTeamNames();
+    IssdRefreshSaveContext();
+    if (!issd_save_init()) {
+        fprintf(stderr, "[Save] %s\n", issd_save_error());
+        issd_menu_notify(issd_save_error(), 300);
+    }
 
     /* Mods take effect during a restart, which is exactly when nobody is
      * watching a console. Report the outcome on screen - and do it after
@@ -1759,6 +1915,8 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    if (!g_headless) issd_input_init();
+
     g_apu_mutex = SDL_CreateMutex();
     if (!g_apu_mutex) {
         fprintf(stderr, "[ERROR] SDL_CreateMutex failed: %s\n", SDL_GetError());
@@ -1774,8 +1932,18 @@ int main(int argc, char **argv) {
     }
     printf("[Init] SnesInit succeeded! Recompiled CPU and SNES hardware runtime online.\n");
 
+    {
+        const uint16_t pads[4] = {0, 0, 0, 0};
+        joypad_set_inputs(g_snes, pads, issd_input_connected() | 1u, true);
+    }
+
     /* Execute the SNES boot sequence from Reset vector ($80:8000) */
     IssdBootReset();
+
+    if (g_continue_requested && !issd_save_continue()) {
+        fprintf(stderr, "[Continue] No usable checkpoint\n");
+        Die(issd_save_error());
+    }
 
     SDL_Renderer *renderer = NULL;
     SDL_Texture *texture = NULL;
@@ -1871,6 +2039,7 @@ int main(int argc, char **argv) {
     }
 
     uint32_t frame_count = 0;
+    if (!g_headless && !g_continue_requested) issd_menu_offer_continue();
     IssdMatchState match_state;
     memset(&match_state, 0, sizeof(match_state));
 
@@ -1893,16 +2062,27 @@ int main(int argc, char **argv) {
         if (!g_headless) {
             SDL_Event ev;
             while (SDL_PollEvent(&ev)) {
+                bool menu_was_open = issd_menu_is_open();
                 if (ev.type == SDL_QUIT) {
                     g_running = false;
                 } else {
                     ProcessInputEvent(&ev);
                 }
+                if (menu_was_open != issd_menu_is_open()) {
+                    issd_input_block_held();
+                    g_pad1_state = 0;
+                }
             }
+            bool menu_was_open = issd_menu_is_open();
             PumpTouchState();
+            if (menu_was_open != issd_menu_is_open()) {
+                issd_input_block_held();
+                g_pad1_state = 0;
+            }
         }
 
         uint64_t now = SDL_GetPerformanceCounter();
+        IssdRefreshSaveContext();
         if (audio_dev && audio_paused != issd_menu_is_open()) {
             audio_paused = issd_menu_is_open();
             SDL_PauseAudioDevice(audio_dev, audio_paused);
@@ -1921,17 +2101,27 @@ int main(int argc, char **argv) {
             printf("[ISSD Native] Performing in-process soft reset...\n");
             issd_mod_enable_from_list(g_issd_config.active_mod_packs);
             issd_mod_reapply();
+            if (!g_snes || !g_snes->cart ||
+                !issd_mod_copy_applied_rom(g_snes->cart->rom, g_snes->cart->romSize))
+                Die("Cannot synchronize the applied cartridge image");
+            interp_bridge_reset_dynamic_cache();
+            IssdCaptureAppliedTeamNames();
+            g_save_gameplay_flags = UINT32_MAX;
+            IssdRefreshSaveContext();
             char summary[96];
             issd_mod_result_note_tiles(issd_hd_texture_count());
             issd_mod_result_summary(summary, sizeof(summary));
             issd_menu_notify(summary, 300);
             IssdBootReset();
+            issd_campaign_reset();
             frame_count = 0;
             continue;
         }
 
         if (g_headless || now >= next_sim_time) {
             if (issd_menu_is_open()) {
+                issd_input_block_held();
+                g_pad1_state = 0;
                 ProcessMenuTouchPad();
                 /* Paused: Render In-Game Menu Overlay */
                 issd_menu_render(g_pixel_buffer, cur_render_w, cur_render_h);
@@ -1942,9 +2132,7 @@ int main(int argc, char **argv) {
                 PpuBeginDrawing(g_snes->ppu, (uint8_t *)g_pixel_buffer, (size_t)cur_render_w * sizeof(uint32_t),
                     kPpuRenderFlags_NewRenderer | (g_ws_active ? kPpuRenderFlags_NoSpriteLimits : 0));
 
-                if (issd_script_active()) {
-                    g_pad1_state = issd_script_mask(frame_count);
-                } else if (g_auto_start_frame > 0) {
+                if (g_auto_start_frame > 0 && !(issd_script_players() & 1u)) {
                     g_pad1_state = 0;
                     if (frame_count >= (uint32_t)g_auto_start_frame) {
                         uint32_t phase = frame_count % 60;
@@ -1972,7 +2160,21 @@ int main(int argc, char **argv) {
                  * the restored WRAM and video memory drive this frame whole. */
                 if (g_load_state_frame >= 0 &&
                     frame_count == (uint32_t)g_load_state_frame) {
-                    if (!issd_load_quick()) Die("--load-state: no quicksave to restore");
+                    if (!issd_load_from_slot_confirmed(-1, g_allow_legacy_save))
+                        Die(issd_save_error());
+                }
+                if (g_password_import_path &&
+                    frame_count == (uint32_t)g_password_import_frame) {
+                    uint8_t symbols[ISSD_PASSWORD_MAX_SYMBOLS + 1];
+                    FILE *input = fopen(g_password_import_path, "rb");
+                    if (!input) Die("Cannot open password symbols file");
+                    size_t count = fread(symbols, 1, sizeof(symbols), input);
+                    bool failed = ferror(input) != 0;
+                    if (fclose(input)) failed = true;
+                    if (failed || !count || count > ISSD_PASSWORD_MAX_SYMBOLS)
+                        Die("Password symbols file must contain 1 to 60 raw symbol bytes");
+                    if (!IssdPasswordImport(symbols, count)) Die(IssdPasswordError());
+                    g_password_import_path = NULL;
                 }
 
                 /* Run 1 SNES frame */
@@ -1980,20 +2182,30 @@ int main(int argc, char **argv) {
                  * both drive player 1, which is what a handheld with both
                  * needs. */
                 uint32_t touch_bits = issd_touch_pad_mask();
-                uint32_t inputs = ((g_pad1_state | touch_bits) & 0xFFF)
-                                | ((g_pad2_state & 0xFFF) << 12);
+                if (g_touch_release_guard) {
+                    if (!touch_bits) g_touch_release_guard = false;
+                    touch_bits = 0;
+                }
+                uint16_t pads[4];
+                for (int player = 0; player < ISSD_LOCAL_PLAYERS; player++)
+                    pads[player] = issd_input_read(player, g_overlay_menu.control_schema);
+                pads[0] |= (g_input_focused ? g_pad1_state | touch_bits : 0) & 0xfff;
+                uint8_t connected = issd_input_connected() | 1u; /* keyboard/touch P1 */
+                if (issd_script_active()) {
+                    connected |= issd_script_players();
+                    for (int player = 0; player < ISSD_LOCAL_PLAYERS; player++)
+                        if (issd_script_players() & (1u << player))
+                            pads[player] = (uint16_t)issd_script_mask_player(frame_count, player);
+                }
                 uint64_t _rf_t0 = SDL_GetPerformanceCounter();
-                RtlRunFrame(inputs);
+                g_frame_healthy = false;
+                RtlRunFrameControllers(pads, connected, true);
                 uint64_t _rf_t1 = SDL_GetPerformanceCounter();
                 double _rf_sec = (double)(_rf_t1 - _rf_t0) / perf_freq;
                 if (_rf_sec > 0.05) {
                     fprintf(stderr, "[SlowFrame %u] took %.3fs\n", frame_count, _rf_sec);
                 }
 
-                if (g_save_state_frame >= 0 &&
-                    frame_count == (uint32_t)g_save_state_frame) {
-                    if (!issd_save_quick()) Die("--save-state: could not write quicksave");
-                }
                 if (g_dump_state_path && (g_cpu.S != 0x1af || cpu_read16(&g_cpu, 0, 0x3c))) {
                     static unsigned reports;
                     if (reports++ < 12)
@@ -2007,6 +2219,32 @@ int main(int argc, char **argv) {
 
                 /* Render SNES PPU scanlines */
                 IssdDrawPpuFrame();
+                g_frame_healthy = g_frame_healthy && !g_watchdog_tripped &&
+                                  g_cpu.S == 0x01AF && !g_ram[0x3c] && !g_ram[0x3d];
+                /* Bank N completed frames, after audio/drawing/IRQ work. A
+                 * load before frame20 followed by40 ticks reproduces frameN+40. */
+                if (g_save_state_frame >= 0 &&
+                    frame_count + 1 == (uint32_t)g_save_state_frame) {
+                    if (!issd_save_quick()) Die(issd_save_error());
+                }
+                const char *checkpoint = issd_campaign_tick(g_ram, g_frame_healthy);
+                if (checkpoint) {
+                    /* The cartridge uses even team-table offsets at $0DA0.
+                     * Freeze names when patches apply so pending mod edits
+                     * cannot rename metadata belonging to the running game. */
+                    unsigned raw_team = g_ram[0x0da0] | (unsigned)g_ram[0x0da1] << 8;
+                    char label[64];
+                    const char *short_checkpoint = strncmp(checkpoint, "International ", 14) == 0 ?
+                                                   checkpoint + 14 : checkpoint;
+                    const char *team = !(raw_team & 1) && raw_team / 2 < ISSD_ROM_TEAMS + ISSD_MAX_ADDED_TEAMS ?
+                                       g_applied_team_names[raw_team / 2] : "";
+                    snprintf(label, sizeof(label), "%s%s%.32s", short_checkpoint,
+                             team[0] ? ": " : "", team);
+                    if (issd_save_campaign(label))
+                        issd_menu_notify("Campaign autosaved", 120);
+                    else
+                        issd_menu_notify(issd_save_error(), 300);
+                }
                 /* Over the game, not inside the menu: the one thing the
                  * player has to see after a restart is whether the mods
                  * they restarted for actually applied. */
@@ -2191,6 +2429,18 @@ int main(int argc, char **argv) {
     issd_android_set_game_running(false);
 #endif
 
+    if (g_password_import_path) Die("Password import frame was not reached");
+    if (g_password_export_path) {
+        uint8_t symbols[ISSD_PASSWORD_MAX_SYMBOLS];
+        size_t count = sizeof(symbols);
+        if (!IssdPasswordExport(symbols, &count)) Die(IssdPasswordError());
+        FILE *output = fopen(g_password_export_path, "wb");
+        if (!output) Die("Cannot create password symbols file");
+        bool failed = fwrite(symbols, 1, count, output) != count;
+        if (fclose(output)) failed = true;
+        if (failed) Die("Cannot write password symbols file");
+    }
+
     if (g_screenshot_path) {
         int cur_ws_extra = IssdWsExtraForAspect();
         int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
@@ -2212,10 +2462,15 @@ int main(int argc, char **argv) {
         printf("[CPU] S=%04X PB=%02X NMI-busy=%04X\n", g_cpu.S, g_cpu.PB,
                cpu_read16(&g_cpu, 0, 0x3c));
         RecompStackBalDumpStderr(20);
+        printf("[Gameplay] goalkeeper=%llu/%llu player=%llu/%llu native=%llu interpreted=%llu (changes/calls)\n",
+               (unsigned long long)g_gameplay_gk_changes, (unsigned long long)g_gameplay_gk_calls,
+               (unsigned long long)g_gameplay_player_changes, (unsigned long long)g_gameplay_player_calls,
+               (unsigned long long)g_gameplay_native_calls, (unsigned long long)g_gameplay_lle_calls);
     }
     printf("[Shutdown] Executed %u frames total. Shutting down...\n", frame_count);
     issd_config_save(&g_issd_config, NULL);
 
+    issd_input_shutdown();
     if (!g_headless) {
         if (audio_dev) SDL_CloseAudioDevice(audio_dev);
         if (texture) SDL_DestroyTexture(texture);
@@ -2227,6 +2482,7 @@ int main(int argc, char **argv) {
 
     if (g_apu_mutex) SDL_DestroyMutex(g_apu_mutex);
     free(rom_data);
+    free(g_base_rom_data);
     printf("[Shutdown] Clean exit complete.\n");
     return 0;
 }
