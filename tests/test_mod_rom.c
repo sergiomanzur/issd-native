@@ -96,11 +96,33 @@ int main(void) {
     assert((rom[attr_at(0, 2) + 4] >> 4) == 6);        /* slot 2 is FW */
     assert((a[4] & 0x0F) == rating_nibble_for_50());   /* stamina still packed */
 
-    /* The appearance byte, whose halves keep their misleading names: the
-     * high nibble is the palette the sprite is drawn with, the low one is
-     * read by nothing but still has to come back the way it went in. */
+    /* The high appearance nibble selects the palette. Keepers retain it,
+     * but their hairstyle is normalized to the stock cartridge's zero.
+     * Nonzero styles allocate special hair actors at $83:CB2A. */
     assert((a[6] >> 4) == 1);
-    assert((a[6] & 0x0F) == 13);
+    assert((a[6] & 0x0F) == 0);
+
+    /* Pin both named and numeric position paths, and preserve every low
+     * nibble for outfield players so keeper normalization cannot silently
+     * become a blanket removal of authored appearance data. */
+    {
+        IssdModPlayer *player = &issd_mod_get_pack(fixture)->teams[0].players[1];
+        const char *positions[] = { "GK", "1", "MF", "6" };
+        for (unsigned i = 0; i < sizeof positions / sizeof positions[0]; i++) {
+            strcpy(player->position, positions[i]);
+            player->skin_tone = 1;
+            for (unsigned style = 0; style <= 15; style++) {
+                player->hair_style = (uint8_t)style;
+                assert(issd_mod_apply_to_rom(rom, sizeof(rom)) > 0);
+                assert((rom[attr_at(0, 1) + 6] >> 4) == 1);
+                assert((rom[attr_at(0, 1) + 6] & 0x0F) ==
+                       (i < 2 ? 0 : style));
+            }
+        }
+        strcpy(player->position, "MF");
+        player->skin_tone = 0;
+        player->hair_style = 0;
+    }
 
     /* --- the team shape, written through the pointer table ---
      *

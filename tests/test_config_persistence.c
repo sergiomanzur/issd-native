@@ -11,7 +11,37 @@ int main(int argc, char **argv) {
 
     IssdConfig cfg;
     issd_config_init_defaults(&cfg);
-    if (cfg.gameplay_goalkeeper_ai || cfg.gameplay_player_ai) return 16;
+    assert(!cfg.integer_scaling && cfg.output_resolution == 0 && cfg.overlay_scale == 0);
+    assert(!cfg.ball_outline && !cfg.ball_shadow && !cfg.player_markers && !cfg.player_names);
+    assert(cfg.radar_scale == 1);
+    assert(cfg.hud_scale == 1 && cfg.radar_position == 0 && cfg.radar_opacity == 75);
+    IssdConfig preset = cfg;
+    preset.output_resolution = 4;
+    preset.gameplay_bug_fixes = true;
+    preset.master_volume = 35;
+    strcpy(preset.active_mod_packs, "test roster");
+    for (int p = ISSD_VISUAL_ORIGINAL; p <= ISSD_VISUAL_ENHANCED; ++p) {
+        issd_config_visual_preset(&preset, p);
+        assert(issd_config_visual_preset_id(&preset) == p);
+        assert(preset.output_resolution == 4 && preset.gameplay_bug_fixes);
+        assert(preset.master_volume == 35 && !strcmp(preset.active_mod_packs, "test roster"));
+    }
+    assert(preset.radar_scale == 2 && preset.radar_position == 2 && preset.ball_outline);
+    preset.player_names = false;
+    assert(issd_config_visual_preset_id(&preset) == ISSD_VISUAL_CUSTOM);
+    IssdConfig unchanged = preset;
+    issd_config_visual_preset(&preset, ISSD_VISUAL_CUSTOM);
+    assert(!memcmp(&unchanged, &preset, sizeof(preset)));
+    cfg.integer_scaling = true;
+    cfg.output_resolution = 4;
+    cfg.overlay_scale = 3;
+    cfg.scaling_filter = ISSD_FILTER_SHARP;
+    cfg.ball_outline = cfg.ball_shadow = cfg.player_markers = cfg.player_names = true;
+    cfg.radar_scale = 3;
+    cfg.hud_scale = 3;
+    cfg.radar_position = 4;
+    cfg.radar_opacity = 50;
+    if (cfg.gameplay_goalkeeper_ai || cfg.gameplay_player_ai || cfg.gameplay_bug_fixes) return 16;
     for (int i = 0; i < ISSD_PROFILE_PLAYERS; i++) {
         assert(cfg.player_profiles[i].schema == 0);
         assert(cfg.player_profiles[i].stick_deadzone == 12000);
@@ -29,6 +59,7 @@ int main(int argc, char **argv) {
     cfg.touch_size[0] = 150;
     cfg.gameplay_goalkeeper_ai = true;
     cfg.gameplay_player_ai = true;
+    cfg.gameplay_bug_fixes = true;
     cfg.aspect_ratio = ISSD_ASPECT_16_9;
     cfg.true_widescreen = true;
     cfg.internal_res = ISSD_RES_1X;
@@ -51,13 +82,17 @@ int main(int argc, char **argv) {
 
     IssdConfig loaded;
     if (!issd_config_load(&loaded, argv[1])) return 9;
+    assert(loaded.integer_scaling && loaded.output_resolution == 4 && loaded.overlay_scale == 3);
+    assert(loaded.scaling_filter == ISSD_FILTER_SHARP && loaded.radar_scale == 3);
+    assert(loaded.hud_scale == 3 && loaded.radar_position == 4 && loaded.radar_opacity == 50);
+    assert(loaded.ball_outline && loaded.ball_shadow && loaded.player_markers && loaded.player_names);
     if (strcmp(loaded.rom_path, cfg.rom_path) != 0) return 10;
     if (strcmp(loaded.mods_dir, cfg.mods_dir) != 0) return 11;
     if (loaded.aspect_ratio != ISSD_ASPECT_16_9) return 12;
     if (!loaded.true_widescreen) return 13;
     if (loaded.internal_res != ISSD_RES_1X) return 14;
     if (loaded.master_volume != 70) return 15;
-    if (!loaded.gameplay_goalkeeper_ai || !loaded.gameplay_player_ai) return 17;
+    if (!loaded.gameplay_goalkeeper_ai || !loaded.gameplay_player_ai || !loaded.gameplay_bug_fixes) return 17;
     for (int i = 0; i < ISSD_PROFILE_PLAYERS; i++) {
         assert(loaded.player_profiles[i].schema == cfg.player_profiles[i].schema);
         assert(loaded.player_profiles[i].stick_deadzone == cfg.player_profiles[i].stick_deadzone);
@@ -70,7 +105,9 @@ int main(int argc, char **argv) {
 
     f = fopen(argv[1], "w");
     assert(f);
-    fputs("player_1_stick_deadzone=-999999999999999999999999999\n"
+    fputs("output_resolution=999\noverlay_scale=-4\nradar_scale=999\nscaling_filter=99\n"
+          "hud_scale=999\nradar_position=-3\nradar_opacity=-100\n"
+          "player_1_stick_deadzone=-999999999999999999999999999\n"
           "player_1_trigger_deadzone=999999999999999999999999999\n"
           "player_2_stick_deadzone=oops\n"
           "player_2_trigger_deadzone=8000junk\n"
@@ -86,6 +123,9 @@ int main(int argc, char **argv) {
           "touch_10_size=-999\ntouch_1_x=oops\n", f);
     fclose(f);
     assert(issd_config_load(&loaded, argv[1]));
+    assert(loaded.output_resolution == 4 && loaded.overlay_scale == 0 && loaded.radar_scale == 3);
+    assert(loaded.scaling_filter == ISSD_FILTER_SHARP);
+    assert(loaded.hud_scale == 3 && loaded.radar_position == 0 && loaded.radar_opacity == 25);
     assert(loaded.player_profiles[0].stick_deadzone == 0);
     assert(loaded.player_profiles[0].trigger_deadzone == 30000);
     assert(loaded.player_profiles[1].stick_deadzone == 12000);
@@ -102,13 +142,36 @@ int main(int argc, char **argv) {
     /* Old files without profile/touch keys retain the original CLASSIC mapping. */
     f = fopen(argv[1], "w");
     assert(f);
-    fputs("master_volume=55\nkey_p1_a=30\n", f);
+    fputs("master_volume=55\nkey_p1_a=30\nscaling_filter=2\ninteger_scaling=1\n", f);
     fclose(f);
     assert(issd_config_load(&loaded, argv[1]));
     assert(loaded.master_volume == 55 && loaded.key_p1_a == 30);
+    assert(loaded.scaling_filter == ISSD_FILTER_CRT && loaded.integer_scaling);
+    assert(loaded.output_resolution == 0 && loaded.overlay_scale == 0 && loaded.radar_scale == 1);
+    assert(!loaded.ball_outline && !loaded.ball_shadow && !loaded.player_markers && !loaded.player_names);
+    /* Malformed new settings do not overwrite defaults; old filter values
+     * remain stable across a fresh load and save. */
+    f = fopen(argv[1], "w");
+    assert(f);
+    fputs("output_resolution=oops\noverlay_scale=4junk\nradar_scale=oops\n"
+          "ball_outline=oops\nball_shadow=oops\nplayer_markers=oops\nplayer_names=oops\n"
+          "scaling_filter=oops\ninternal_res=99\naspect_ratio=-5\n", f);
+    fclose(f);
+    assert(issd_config_load(&loaded, argv[1]));
+    assert(loaded.output_resolution == 0 && loaded.overlay_scale == 0 && loaded.radar_scale == 1);
+    assert(!loaded.ball_outline && !loaded.ball_shadow && !loaded.player_markers && !loaded.player_names);
+    assert(loaded.scaling_filter == ISSD_FILTER_LINEAR && loaded.internal_res == ISSD_RES_8X_4K);
+    assert(loaded.aspect_ratio == ISSD_ASPECT_4_3);
+    for (int filter = 0; filter <= 2; ++filter) {
+        loaded.scaling_filter = (IssdScalingFilter)filter;
+        assert(issd_config_save(&loaded, argv[1]));
+        assert(issd_config_load(&loaded, argv[1]));
+        assert((int)loaded.scaling_filter == filter);
+    }
     assert(loaded.player_profiles[3].schema == 0 && loaded.player_profiles[3].stick_deadzone == 12000);
     assert(loaded.player_profiles[3].bindings[11] == ((UINT64_C(1) << 10) | (UINT64_C(1) << 36)));
 
+    assert(!loaded.gameplay_bug_fixes); /* old config preserves original behavior */
     puts("config persistence tests passed");
     return 0;
 }

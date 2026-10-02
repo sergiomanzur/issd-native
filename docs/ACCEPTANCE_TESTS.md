@@ -37,7 +37,9 @@ python -m pytest tests/test_local_multiplayer.py tests/test_control_profiles.py 
 | Save storage/transaction tests | Context/integrity validation, fallback backup selection, failed publication/load protection and snapshot rollback. | Real device power loss during storage flush or every filesystem behavior. |
 | Local multiplayer | Four SDL virtual controllers, mapping/slot/disconnect/reconnect behavior and original SNES serial reads. | Four physical controllers, Bluetooth reconnect latency, whole 2v2 match. |
 | Gameplay policy tests | Optional hooks run, bounded target changes, replay equality, current-lineup/condition semantics including seeded substituted lineup. | Original substitution menu execution or every real substitution during match/extra time. |
+| Original team-change inputs | First-team original formation and bench substitution commits, actor refresh, SELECT request cancellation and deterministic advancing save/reload with AI off/on. | Both-team menus, halftime/extra-time changes, original replacement limits, and the substituted human-team actor's optional AI decision. See [team-change checks](TEAM_CHANGES_ACCEPTANCE.md). |
 | Touch/config tests | Geometry, multi-touch, persistence, mapping, threshold, edit/reset semantics. | Android touch ergonomics, actual host focus or OS lifecycle. |
+| Exhibition shortcuts | Original-menu preconstructor witness, all four preset clocks/CPU levels, exact full-WRAM rematch/drill replay, favorite process restart and changed-AI rejection. Storage faults preserve prior favorite; UI/model regressions cover unsafe scenes, health and recapture rollback. | Every kit/weather/roster/controller combination, physical ergonomics or a certified goalkeeper/shooting balance patch. |
 
 Each guest launch is bounded to 120 seconds; phase fixtures run a bounded number
 of guest frames. Assertions fail on interpreter caps and wrong native callback,
@@ -183,6 +185,260 @@ still needs hardware acceptance against its exact release build.
 Keep outstanding items visible in release notes. Replace “pending” with a dated,
 linked execution record only after collecting evidence for that exact check.
 
+Exhibition shortcut tests use explicit original-menu input, not generic auto-start
+mashing. The pre-constructor boundary was witnessed at frame 1897 and kickoff
+at frame 3004 in the isolated default setup. Live match identity comes from
+the original backup at `$DE07`, because `$1648` is reused for player data.
+See [match shortcuts](MATCH_SHORTCUTS.md) for the balance reproduction protocol.
+
 Final integration on October 1: the project suite returned **174 passed, 2 failed, 1 skipped, 7 subtests passed** in 588.66 seconds. The two existing failures concern an appearance-nibble expectation and shipped-pack kit-sharing warnings. After the last host/menu input fixes, the focused suite returned **30 passed** in 125.74 seconds against the final Windows executable. Windows, Linux, and Android arm64-v8a/x86_64 compiled successfully, and the three new overlay pages were visually inspected. No Android device was attached for ADB acceptance; no physical-device result is implied by these checks.
 
 Fresh-start Cup acceptance also completed **1 passed in 266.03 seconds** against the final Windows build: all nine native matches, stages 0 through 9, championship ceremony/table, and Continue after each result and final completion. This test was added after the 174-pass full-suite run and verified separately. Its World Series variant is skipped by default and has not been executed; opt in with ISSD_RUN_FULL_WORLD=1 only for a dedicated 35-match run. The accelerated Cup pass does not replace the untouched or physical-device checklist above.
+
+Current exhibition integration verification (October 1): `python -m pytest tests -q --tb=short` returned **204 passed, 2 failed, 2 skipped, 7 subtests passed** in **890.47 seconds**. Both failures are the existing appearance-nibble expectation and shipped-pack kit-sharing warnings. All eight original-exhibition preset/shortcut cases and the fresh Cup passed. After the final paused-page error display change, the model/menu/mod-stack checks returned **3 passed**; a final Windows binary smoke independently saved/loaded a favorite across processes and retained Casual rules despite Classic selection. Final Windows, Linux and both Android ABI builds succeeded; menu pages were visually inspected. Physical controller/touch ergonomics and device acceptance remain unexecuted.
+
+Original-game bug-fix verification (October 1): the master switch covers six
+verified corrections, with the exact scope in [the bug-fix guide](ORIGINAL_BUG_FIXES.md).
+The final Windows artifact passed **16 focused tests in 63.86 seconds**, including
+actual cartridge opcodes, unchanged generated goal/restart routines, constructed
+native multiplayer ownership fixtures, full WRAM replay, context rejection and
+AI stacking. Windows, Linux and Android arm64-v8a/x86_64 builds succeeded.
+Both toggle states were visually inspected in the rendered overlay. Native
+fixtures establish the corrected mechanisms, not exhaustive natural playtests;
+stuck-post, substitution-camera and penalty-replay reports remain unverified.
+
+The final bug-fix integration suite, `python -m pytest tests -q --tb=short`,
+returned **217 passed, 2 failed, 3 skipped, 7 subtests passed** in **970.62 seconds**.
+The two failures remain `test_mod_rom_patching` (appearance-nibble expectation)
+and `test_shipped_packs_validate` (existing shared-kit warnings). All new bug-fix
+checks passed. The standard Windows executable was updated to the focused-tested
+final artifact after the suite completed. Version/release publishing is unchanged.
+
+The additional boot-replay skip was checked separately: the previous exhibition
+artifact and final bug-fix executable produced identical 240-frame guest WRAM
+(SHA-256 `c1d25fd82995526afb23cf5da82639ffa44ea7d24aa084baa18432e2da0f5abb`)
+and each rendered 42 colors. `test_loaded_state_resumes_identically` then passed
+in **4.32 seconds** on its own. The blank screenshot observed during the full
+run remains an intermittent acceptance limitation; no speculative runtime change
+was made. Final Windows executable SHA-256:
+`6418398c5d334489302687064ceeb39a9ceec032064fe6d6daf542a9110c4f80`.
+
+Graphics/readability verification (October 1): the integration suite returned
+**222 passed, 2 failed, 2 skipped, 7 subtests passed** in **934.13 seconds**.
+The failures remain the existing `test_mod_rom_patching` appearance-nibble
+expectation and `test_shipped_packs_validate` kit-sharing warnings. Final
+focused verification against the standard Windows executable returned
+**10 passed in 32.00 seconds**, after safe-area, retained-screenshot-stride and
+culled-player radar corrections. It covers config persistence, viewport fitting,
+sharp prescaling, overlay rendering/clicks/scrolling/notifications, clipping,
+descriptor animation, complete PPU transaction restoration and native rendering.
+
+The separate real-ROM viewport regression passed original, Authentic 320,
+16:10, 16:9 and 21:9 at frame 1200: all five produced identical guest WRAM,
+and widened images retained the exact original center pixels. The native
+readability comparison reached scene 6 / live submode 8 with toggles off/on,
+changed the resulting pixels, preserved guest WRAM and left the top HUD band
+unchanged. Unit coverage additionally retains radar players whose screen pose
+was culled. These checks do not certify every offscreen action or a full match.
+
+Real menu harness images were inspected at 1280x720 and 1920x1080, including
+main/Graphics/control pages and a 400x120 short layout. Extreme-inset 2x2
+surfaces were checked with buffer guards. Android safe insets use a UI-thread
+snapshot of cutout/visible-bar bounds minus space already consumed by SDL's
+surface; native mouse/touch mapping and notification placement share the same
+safe rectangle. Windows, Linux and both Android ABI builds succeeded; physical
+display/touch/cutout acceptance remains pending.
+
+Final graphics Windows executable SHA-256:
+`765645fec6de6d5594361acdb345baaa682b1aa92b4292137958ddbf984dd487`.
+
+### Graphics follow-up acceptance
+
+Current sources add visual presets/preview/reset, selected-label scaling,
+radar position/opacity, renderer-reset recovery and a 504x224 ultrawide view.
+The five real-ROM viewport comparisons passed at frames 600 and 1200, retaining
+identical guest WRAM and exact native-center pixels. Native fixtures cover all
+eight tile scroll phases, extreme supplemental sprite coordinates, immediate
+stats/pitch/submode cuts, cold descriptors, actor-slot reuse and transaction reset.
+These fixtures establish rendering mechanisms, not complete natural-match coverage.
+
+SDL software-renderer acceptance passed four output configurations: 320x240
+Nearest, 1280x720 Sharp/integer/16:9, 1920x1080 Sharp/ultrawide and 3840x2160
+Sharp/4:3. Each rendered a 60-frame cartridge replay and wrote actual dimensions
+and timing metrics. The renderer-reset harness compiles the actual host event
+guard and cleanup block, testing both SDL reset events and all texture caches;
+it does not emulate a physical GPU context loss. Preview images were inspected
+at 400x224 and 1920x1080. The native readability comparison and label/radar guards
+retain unchanged guest WRAM and the top native HUD band.
+
+Software-renderer reports are retained under `build/graphics-next-focused`.
+They ran concurrently with integration tests and are not hardware benchmarks:
+CPU presentation means were approximately 0.34, 3.58, 6.80 and 19.31 ms;
+total presentation means were 0.57, 5.58, 19.82 and 75.18 ms respectively.
+Use `--graphics-report report.json` on the target device to obtain its own
+measurements; VSync waiting can be included in the total.
+
+A separate 1200-frame graphical SDL software replay reached live scene 6 /
+submode 8 with Sharp, ball effects, 2x labels and a moved/translucent radar.
+It produced 1202 presentations at 1280x720 with a 398x224 native view and
+1592x896 intermediate. CPU presentation mean was 3.62 ms and total mean 10.87 ms;
+the 64.45 ms maximum under concurrent load prevents treating this as a stable
+60-FPS hardware acceptance claim. Artifacts: `build/graphics-next-live`.
+
+Physical acceptance remains unexecuted. No ADB device was attached. Record
+device, OS, display scale, output size, preset and report alongside each result:
+
+- Desktop: resize with the menu open, switch windowed/fullscreen, move between
+  monitors at 100%/125%/150%/200% DPI, and confirm sharp text and matching clicks.
+- Presets: exercise Original, Sharp, Enhanced, Custom and Reset; restart and
+  confirm persistence without changing gameplay/controls/mods/fullscreen/VSync.
+- Match: play widened views through both camera ends, goals/replays, substitutions,
+  half time, extra time and penalties. Confirm no stale actors, clipped labels
+  or corrupted stadium margins; unlearned offscreen actions can still hold.
+- Android: check cutouts and system bars in both landscape orientations, all menu
+  taps, touch controls and a background/resume cycle. Resume stays paused until
+  explicitly selected; confirm textures return if the graphics context is lost.
+- Performance: capture a live-match timing report with Sharp/readability enabled
+  on each target device; check responsiveness and pacing rather than assuming
+  software-renderer results transfer to a hardware renderer.
+
+The follow-up full integration suite returned **227 passed, 2 failed, 2 skipped,
+7 subtests passed** in **971.41 seconds**. The failures remain
+`test_mod_rom.py::test_mod_rom_patching` (existing appearance-nibble expectation)
+and `test_mods_valid.py::test_shipped_packs_validate` (shared-kit warnings).
+The final capture fix was verified separately: HD composition uses the captured
+frame's margin instead of a newly selected aspect while paused. Windows, Linux
+and Android arm64-v8a/x86_64 builds succeeded with the final source changes.
+Final Windows executable SHA-256:
+`f0d70842712cf807a39b84f0fffa507528ac31a3acb2e0c6ef202d6391334c9e`.
+Focused verification against that final executable returned **17 passed in
+68.07 seconds**, including the live graphical replay and paused-capture margin
+regression. Final log: `build/graphics-next-final-focused.log`.
+
+
+## Offscreen ROM animation and match graphics follow-up (2026-10-01)
+
+The renderer now decodes the authored bank-$82 animation direction, frame and
+duration tables for verified culled player handlers. It never writes guest
+animation fields. Live timer/state/direction changes take priority, unsupported
+handlers hold their native descriptor, and terminal durations/timers suppress
+learned-cycle fallback. Inactive records clear both decoder and pose history.
+
+Native fixtures compare scalar and table timing against an independent
+transcription of the original shared interpreter for 100 frames. A cold,
+stationary margin actor renders all four authored graphics steps and its terminal
+hold without cycle learning. Identical-snapshot actor reuse, state/direction
+changes, original-window handoff and malformed/truncated tables are covered.
+Every rendering transaction checks unchanged guest WRAM and restored VRAM/OAM.
+
+Fresh focused verification: **12 passed in 22.04 seconds** for the native graphics,
+menu, configuration, animation, readability, render-contract, renderer-reset and
+capture fixtures, plus **6 passed in 52.62 seconds** for real SDL/native graphics
+and display checks. Logs: `build/graphics-animation-unit.log` and
+`build/graphics-animation-display.log`. Windows, Linux and Android arm64-v8a/x86_64
+builds succeeded. Windows executable SHA-256:
+`c36f2946cf24acc8f9c712aaf265dea29dc8e1fba28e50b9b4f09fbc102d92f2`.
+Android APK SHA-256:
+`69c85bd39533b00b4ff9ea0263eb57dbc4768160cba7120fc793fd2a299abad2`.
+
+Five real-ROM widths (256/320/358/398/504) passed at frames 1200 and 3480 with
+byte-identical full WRAM and original center pixels. The 3480-frame case also
+checks actual pixels of the cold offscreen player. Artifacts:
+`build/graphics-animation-widescreen` and `build/graphics-animation-widescreen-3480`.
+The [match graphics acceptance guide](GRAPHICS_MATCH_ACCEPTANCE.md) records
+additional original Cup-final scenes and accelerated period-transition evidence.
+These are bounded graphics checks; untouched full-match play, goals, original
+substitutions, completed shootouts and physical Android/display acceptance remain
+unverified. The full project suite was not repeated for this follow-up; its two
+previously recorded mod-data failures remain unresolved.
+
+The updated executable passed the complete extended match graphics run: **3 tests
+in 213.68 seconds**, covering 11 scenes at 256/398/504 pixels with 13 consecutive
+or final captures per scene/width, full WRAM equality and exact center pixels.
+The tied fourth-period continuation reaches the original shootout first-kick
+scene (mode $0C, period 3); it does not prove shootout completion. Log and
+manifests: `build/visual-match-acceptance-final`. Widened live/replay/extra-time
+PNG margins were inspected; the dedicated shootout camera retains the native
+center with black borders.
+
+
+## Widened penalty camera follow-up (2026-10-01)
+
+The dedicated penalty layout now expands only BG2's tiled crowd, advertising and
+pitch. BG1's goal/net and BG3's HUD stay centered, with untouched native OAM and
+no VRAM/WRAM mutation or wider simulation activation. Original submodes $0C
+(shootout) and $11 (awarded penalty) share this layout; mismatched registers and
+other scenes retain their existing policy.
+
+Focused verification: **11 passed in 68.42 seconds**, including native penalty
+policy/guard fixtures, animation/widescreen regression, SDL output through 4K and
+paused capture geometry. Log: `build/graphics-penalty-focused.log`.
+The extended retail test passed **3 tests in 279.40 seconds**: 16 scenes across
+53 viewport runs and 1,197 captures. Five penalty stages compare original 256,
+16:10 358, 16:9 398 and 21:9 504 pixels. Actual B input resolves the human kick;
+original logic advances to the CPU's turn and then the third kick. Full final
+WRAM and all sampled native-center pixels match; both margins contain pitch
+scenery. The shot/camera stage captures every frame after the first. Details,
+logs and gaps: [match graphics guide](GRAPHICS_MATCH_ACCEPTANCE.md).
+
+Windows, Linux and Android arm64-v8a/x86_64 builds succeeded. Windows SHA-256:
+`16eaffbe8e5434246ec4033be0bdeca8349cd36475df6509cd5294b064a55511`.
+Android APK SHA-256:
+`9c4126bfefa54b277e0d6d810393f28c73c9dffa128cdb1db3a8ecb48d53e3fc`.
+Actual foul-to-penalty acceptance, completed shootouts and physical device checks
+remain pending. The prior two mod-data suite failures were not changed, and the
+full project suite was not repeated for this rendering-policy change.
+
+
+## Original team-management follow-up (2026-10-01)
+
+Original SELECT request/cancellation, first-team formation and bench substitution
+commits, actor attributes/roles/home positions, resumed live play and deterministic
+advancing save/reload now have input-driven native acceptance with AI off/on.
+The focused run passed **19 tests in 117.33 seconds**. Read-only player/keeper
+trace diagnostics additionally preserve CPU bus bookkeeping. Widescreen fallback
+now respects original auxiliary admission, preventing stale center-origin poses
+from being revived on management return; **3 graphics/animation regression tests
+passed in 4.94 seconds** after that final correction.
+
+The final visual run passed **1 test in 112.92 seconds**, covering nine stages,
+36 runs and 468 captures at 256/358/398/504 pixels. Full endpoint WRAM and sampled
+native-center pixels match; the actual visible replacement resolves to Bucario
+through the shipped name lookup. Windows, Linux and Android builds succeeded.
+Evidence, commands, binary hashes and remaining both-team/extra-time/limit/device
+cases are in [original team-change acceptance](TEAM_CHANGES_ACCEPTANCE.md).
+This does not certify the substituted human-team actor's optional AI decision
+or improved football balance. The full suite's two prior mod-data failures were
+not changed.
+
+
+## v0.3.0-beta.1 release gate (2026-10-02)
+
+The pre-release full suite exposed three failures (238 passed, 3 skipped): the
+stale goalkeeper appearance assertion, shared palette records in shipped packs,
+and lost widened-player animation across snapshot loads. All three were handled
+before publication. Keeper tests/documentation now reflect original graphics
+consumers; explicit kit overrides redirect both pointers into pack-specific
+isolated records; checked snapshots retain host animation and learned pose cycles.
+The prior 128-byte extension and guest-only v4-v8 snapshots remain readable.
+
+Affected save/campaign/match/mod/widescreen checks passed **59 tests in 216.09s**
+(`build/release-beta-final-unit-tests.log`). Native advancing replay, video restore,
+campaign integration, rematch/drill/favorite, original team management and visuals,
+and widescreen checks passed **27 tests, 1 skipped in 365.67s**
+(`build/release-beta-final-native-tests.log`). The skip is the absent optional
+penalty-area save fixture. These are focused reruns, not a new full-suite result.
+
+Review additionally hardened restored pose-coordinate arithmetic with 64-bit
+intermediates. Four serializer/transactional tests passed afterward in 5.56s;
+standalone extreme-coordinate tests also passed Clang undefined-behavior traps.
+The final Windows rebuild additionally passed **8 tests, 1 skipped in 26.01s**
+(`build/release-beta-published-replay-tests.log`), including byte-identical advancing
+classic/widescreen replay, animation/pose serializers and snapshot transactions.
+Windows, Linux and both Android ABIs build successfully. Final downloadable
+package hashes are supplied in the release's SHA256SUMS.txt. APK signature
+verification matches the previous beta certificate. Package checks exclude ROMs
+and saves and verify archive integrity, version metadata and Android ABIs.
+
+Physical device acceptance and the previously documented full-tournament,
+both-team/extra-time substitution and balance gaps remain pending.

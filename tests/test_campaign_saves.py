@@ -94,8 +94,10 @@ def test_context_histories_and_manual_compatibility(campaign_exe, tmp_path):
     assert run(campaign_exe, root, "continue").startswith("1 11 ")
     assert run(campaign_exe, root, "continue", context=5).startswith("1 22 ")
     assert run(campaign_exe, root, "continue", flags=1).startswith("0 99 ")
+    assert run(campaign_exe, root, "continue", flags=8).startswith("0 99 ")
     assert run(campaign_exe, root, "manual", 33).startswith("1 ")
     assert run(campaign_exe, root, "load", context=5).startswith("0 99 ")
+    assert run(campaign_exe, root, "load", flags=8).startswith("0 99 ")
     result = run(campaign_exe, root, "load")
     assert result.startswith("1 33 ")
     assert "callbacks=1" in result

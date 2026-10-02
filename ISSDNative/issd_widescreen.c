@@ -1,5 +1,6 @@
 #include "issd_widescreen.h"
 #include "issd_pose_history.h"
+#include "issd_animation.h"
 #include "snes/ppu.h"
 #include <string.h>
 
@@ -11,6 +12,7 @@ static struct {
   Ppu *owner;
   uint16_t vram[0x8000], oam[0x100];
   uint8_t high_oam[0x20];
+  uint8_t ram[0x20000];
 } frame;
 
 static uint16_t word(const uint8_t *p, unsigned a) {
@@ -56,6 +58,20 @@ bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram) {
          (ppu->bgmode & 0xf7) == 1 && ppu->bgXsc[0] == 3 &&
          ppu->bgXsc[1] == 0x13 && stride >= 0x80 &&
          stride <= 0x340 && (stride & 63) == 0;
+}
+
+/* Goal-facing penalties use their own static background layout, not the
+ * stadium world maps: BG1 is the one goal/net, BG2 wraps the authored crowd
+ * and grass, and BG3 holds the team/name/status panels. Match only this
+ * verified layout so pre-match cards and ordinary pitch scenes stay guarded. */
+static bool penalty_layout(const Ppu *ppu, const uint8_t *ram) {
+  unsigned mode = word(ram, 0x32);
+  unsigned submode = word(ram, 0x70);
+  return (mode == 3 || mode == 6) &&
+         (submode == 0x0c || submode == 0x11) &&
+         (ppu->bgmode & 0xf7) == 1 && ppu->bgXsc[0] == 1 &&
+         ppu->bgXsc[1] == 0x10 && ppu->bgXsc[2] == 9 &&
+         ppu->bgTileAdr == 0x4522;
 }
 
 /* Menus are pillarboxed unless they are one of the screens built the way the
@@ -187,13 +203,6 @@ static void fill_pitch(Ppu *ppu, const uint8_t *ram, int left, int right) {
   }
 }
 
-static bool rom_byte(const uint8_t *rom, size_t size, unsigned a, uint8_t *out) {
-  unsigned offset = ((a >> 16) & 0x7f) * 0x8000 + (a & 0x7fff);
-  if (!rom || offset >= size) return false;
-  *out = rom[offset];
-  return true;
-}
-
 static const uint8_t *rom_span(const uint8_t *rom, size_t size,
                                unsigned address, unsigned count) {
   unsigned offset = ((address >> 16) & 0x7f) * 0x8000 + (address & 0x7fff);
@@ -210,10 +219,20 @@ static const uint8_t *rom_span(const uint8_t *rom, size_t size,
  * Reproduce those uploads in the presentation transaction, including the
  * uniform/number tile selected by $84E77D. Each player owns its tile slots. */
 static uint16_t prepare_player(Ppu *ppu, const uint8_t *ram, unsigned object,
+                               uint16_t descriptor,
                                const uint8_t *rom, size_t rom_size) {
   const uint8_t *desc = rom_span(rom, rom_size,
-      0x820000 | word(ram, object + 0x14), 6);
+      0x820000 | descriptor, 6);
   if (!desc || !ram[object + 0x30]) return 0;
+  unsigned pose = word(desc, 0);
+  if (!pose) return 0;
+  if (pose & 0x8000) {
+    const uint8_t *geometry = rom_span(rom, rom_size, 0x880000 | pose, 1);
+    if (!geometry || !geometry[0] || geometry[0] > 64 ||
+        !rom_span(rom, rom_size, 0x880000 | pose, 1 + geometry[0] * 4)) return 0;
+  } else if (!ram[pose] || ram[pose] > 64 || pose + ram[pose] * 2 > 0xa000) {
+    return 0;
+  }
   unsigned source = desc[2] | desc[3] << 8 | desc[4] << 16;
   const uint8_t *rows[2];
   unsigned lengths[2];
@@ -325,6 +344,13 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
    * pose/graphics upload was culled. Zero-pose inactive records stay inactive. */
   for (unsigned object=0x400;object<0x1b00;object+=0x100) {
     unsigned pose = word(ram, object);
+    /* Inactive records never reach the drawing loop, but their animation
+     * evidence must still expire before this object slot is reused. */
+    if (object >= 0x500 && (!ram[object + 0x30] ||
+        !(word(ram, object + 0x14) & 0x8000))) {
+      issd_pose_history_observe(object, 0, 0, 0);
+      issd_animation_forget(object);
+    }
     if (!pose && !(object >= 0x500 && ram[object + 0x30] &&
                    (word(ram, object + 0x14) & 0x8000))) continue;
     bool exists=false;
@@ -351,10 +377,24 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     if (offset==0xd0 && base<0x800) continue;
     unsigned object = base + offset;
     if (!word(ram, object)) continue;
+    /* Widen horizontal visibility only. The original camera transform
+     * ($83D01E/$83D057) intentionally culls these auxiliary classes vertically,
+     * even if stale geometry would wrap into the top of the screen. */
+    unsigned y = word(ram, object + 12);
+    if ((base < 0x800 && (uint16_t)(y + 32) >= 0x140) ||
+        (base >= 0x800 && base < 0xa00 && y >= 0x140)) continue;
     bool exists=false;
     for (unsigned i=0;i<count;i++) {
       if (objects[i].object==object) { exists=true; break; }
     }
+    /* Missing center-origin auxiliary records may retain poses across menu
+     * return and buffered admission changes. Reconstruct only a genuine
+     * original horizontal cull, never expand the original vertical/admission
+     * behavior inside its existing viewport. Existing list entries still
+     * receive their horizontally clipped edge pieces below. */
+    unsigned x = word(ram, object + 8);
+    if ((base < 0x800 && (uint16_t)(x + 32) < 0x140) ||
+        (base >= 0x800 && base < 0xa00 && (uint16_t)(x + 64) < 0x180)) continue;
     if (!exists && count < 128) {
       objects[count].object=object;
       objects[count].missing_native_copy=true;
@@ -378,36 +418,47 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     unsigned pose = word(ram, object);
     int ox = (int16_t)word(ram, object + 8);
     int oy = (int16_t)word(ram, object + 12);
-    if (entry.missing_native_copy && object >= 0x500 && object < 0x1b00 &&
+    bool player = object >= 0x500 && object < 0x1b00 &&
         !(object & 255) && ram[object + 0x30] &&
-        (word(ram, object + 0x14) & 0x8000)) {
+        (word(ram, object + 0x14) & 0x8000);
+    uint16_t descriptor = word(ram, object + 0x14);
+    if (player) {
+      /* Learn complete descriptors, not geometry addresses: two animation
+       * steps may share a pose while using different graphics rows. */
+      issd_pose_history_observe_world(object, ox, oy,
+          ox + word(ram, 0x13a0), oy + word(ram, 0x13b0), descriptor);
+      if (!issd_animation_pose(object, ram, rom, rom_size,
+          issd_pose_history_live_window(ox, oy), &descriptor))
+        descriptor = issd_pose_history_pose(object, ox, oy, descriptor);
+    }
+    if (entry.missing_native_copy && player) {
       /* Player geometry fits within 64 pixels of its origin. Avoid uploading
        * invisible players, especially the shared type-8 detail tile. */
       if (ox + 64 <= -left_extra || ox - 64 >= 256 + right_extra) continue;
-      pose = prepare_player(ppu, ram, object, rom, rom_size);
+      pose = prepare_player(ppu, ram, object, descriptor, rom, rom_size);
       if (!pose) continue;
     }
-    /* Geometry and graphics now follow the same cartridge descriptor. A
-     * guessed history pose cannot safely use another animation's tile data. */
-    issd_pose_history_observe(object, ox, oy, (uint16_t)pose);
+    /* Geometry and graphics follow the same observed cartridge descriptor. */
     if (!pose) continue;
     bool packed = (pose & 0x8000) != 0;
     uint8_t parts;
+    const uint8_t *geometry = NULL;
     if (packed) {
-      if (!rom_byte(rom,rom_size,0x880000 | pose,&parts)) continue;
+      geometry = rom_span(rom, rom_size, 0x880000 | pose, 1);
+      if (!geometry) continue;
+      parts = geometry[0];
     } else {
       parts = ram[pose];
     }
     if (!parts || parts > 64) continue;
+    if (packed && !(geometry = rom_span(rom, rom_size,
+        0x880000 | pose, 1 + parts * 4))) continue;
     unsigned props = ram[object+3] | ((((ram[object+5] & 0x80 ?
       ram[object+5] : ram[0x7c]) & 0x30) | ram[object+4]) & 0xf0);
     for (unsigned part=0; part<parts; part++) {
       int dx, dy; unsigned tile, attr; bool large;
       if (packed) {
-        uint8_t data[4]; bool valid = true;
-        for (unsigned j=0;j<4;j++)
-          valid &= rom_byte(rom,rom_size,0x880000 | (pose+1+part*4+j), &data[j]);
-        if (!valid) continue;
+        const uint8_t *data = geometry + 1 + part * 4;
         dy = (int8_t)data[0]; dx = (int8_t)data[1]; tile=data[2]; attr=data[3];
         large = (attr & 0x10) != 0;
       } else {
@@ -458,10 +509,33 @@ done:
  * and slewed the whole reconstructed margin by a full page for one frame. */
 static uint8_t s_prev_ram[0x20000];
 static bool s_prev_ram_valid = false;
+static bool s_presented_ram_valid = false;
+static Ppu *s_snapshot_ppu;
+static int s_ws_extra = 0;
 
 void issd_widescreen_reset(void) {
+  if (frame.owner) issd_widescreen_end(frame.owner);
   s_prev_ram_valid = false;
+  s_presented_ram_valid = false;
+  s_snapshot_ppu = NULL;
+  s_ws_extra = 0;
   issd_pose_history_reset();
+  issd_animation_reset();
+}
+
+/* Rebase frame generation after a checked load without discarding the restored
+ * presentation animation. The saved frame has already latched current WRAM. */
+void issd_widescreen_rebase(Ppu *ppu, const uint8_t *ram) {
+  if (frame.owner) issd_widescreen_end(frame.owner);
+  s_presented_ram_valid = false;
+  s_snapshot_ppu = ppu;
+  s_ws_extra = 0;
+  s_prev_ram_valid = ram != NULL;
+  if (ram) memcpy(s_prev_ram, ram, sizeof(s_prev_ram));
+}
+
+const uint8_t *issd_widescreen_presented_ram(const uint8_t *current) {
+  return s_presented_ram_valid ? frame.ram : current;
 }
 
 static void remember_ram(const uint8_t *ram) {
@@ -470,18 +544,37 @@ static void remember_ram(const uint8_t *ram) {
   s_prev_ram_valid = true;
 }
 
-static int s_ws_extra = 0;
-
 bool Issd_IsWidescreenActive(void) {
   return s_ws_extra > 0;
 }
 
 bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
                           size_t rom_size, int extra) {
-  if (!ppu) { s_ws_extra = 0; remember_ram(ram); return false; }
   if (frame.owner) issd_widescreen_end(frame.owner);
+  if (!ppu || !ram) {
+    issd_widescreen_reset();
+    if (ppu) {
+      PpuSetExtraSpace(ppu, 0);
+      PpuWsSetOamLeftHints(ppu, NULL);
+      PpuWsSetOamRightHints(ppu, NULL);
+    }
+    return false;
+  }
+  bool is_pitch = issd_widescreen_pitch_layout(ppu, ram);
+  /* Never reconstruct a new scene using the preceding scene's objects or
+   * metatile allocation. Mode/submode cuts also cover replay and set pieces;
+   * an explicit reset covers loads which keep the same scene identifiers. */
+  if (s_prev_ram_valid && (s_snapshot_ppu != ppu ||
+      word(ram, 0x32) != word(s_prev_ram, 0x32) ||
+      word(ram, 0x70) != word(s_prev_ram, 0x70) ||
+      word(ram, 0x1ffcc) != word(s_prev_ram, 0x1ffcc) ||
+      is_pitch != issd_widescreen_pitch_layout(ppu, s_prev_ram)))
+    issd_widescreen_reset();
+  s_snapshot_ppu = ppu;
+  memcpy(frame.ram, s_prev_ram_valid ? s_prev_ram : ram, sizeof(frame.ram));
+  s_presented_ram_valid = true;
   if (extra < 0) extra=0;
-  if (extra > 95) extra=95;
+  if (extra > ISSD_WIDESCREEN_MAX_EXTRA) extra=ISSD_WIDESCREEN_MAX_EXTRA;
   PpuWsSetOamLeftHints(ppu,NULL); PpuWsSetOamRightHints(ppu,NULL);
   PpuSetWidescreenLayerClamp(ppu,0);
   PpuSetWidescreenLayerRepeat(ppu,0);
@@ -494,20 +587,7 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     remember_ram(ram);
     return false;
   }
-  static int s_inactive_frames = 0;
-  static bool s_was_pitch = false;
-  bool is_pitch = issd_widescreen_pitch_layout(ppu, ram);
-  if (is_pitch && !s_was_pitch) {
-    issd_widescreen_reset();
-  }
-  s_was_pitch = is_pitch;
-  if (is_pitch) {
-    s_inactive_frames = 0;
-  } else {
-    s_inactive_frames++;
-  }
-
-  if (!is_pitch && (s_inactive_frames >= 2 || s_ws_extra == 0)) {
+  if (!is_pitch) {
     s_ws_extra = 0;
     unsigned submode = word(ram, 0x70);
     bool is_pillarboxed = (submode == 0x0F || submode == 0x10 || submode == 0x12 || submode == 0x1C);
@@ -516,7 +596,14 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     } else {
       PpuSetExtraSpace(ppu, (uint16_t)extra);
       PpuSetExtraSideSpace(ppu, extra, extra, 0);
-      if (issd_widescreen_menu_layout(ppu, ram)) {
+      if (penalty_layout(ppu, ram)) {
+        /* BG2's native tilemap repeats the stands/grass seamlessly. Leave
+         * its per-scanline scroll and colour math intact, and never replay
+         * the goal, HUD or native OAM into the new side columns. No game
+         * memory transaction or wider simulation activation is needed. */
+        PpuSetWidescreenLayerMask(ppu, 2);
+        PpuSetWidescreenLayerClamp(ppu, 0x0d);
+      } else if (issd_widescreen_menu_layout(ppu, ram)) {
         PpuSetWidescreenLayerRepeat(ppu, 1u << 1);                     /* BG2 */
         PpuSetWidescreenLayerClamp(ppu, (1u<<0) | (1u<<2) | (1u<<3));  /* rest */
       } else {
@@ -542,7 +629,7 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   PpuSetWidescreenLayerClamp(ppu, 4);
   /* Reconstruct against the WRAM generation that produced the native OAM and
    * the currently latched scroll registers, not this frame's fresh one. */
-  const uint8_t *rec = s_prev_ram_valid ? s_prev_ram : ram;
+  const uint8_t *rec = frame.ram;
   fill_pitch(ppu, rec, extra, extra);
   fill_objects(ppu, rec, rom, rom_size, extra, extra);
   remember_ram(ram);

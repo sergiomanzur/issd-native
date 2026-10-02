@@ -23,7 +23,14 @@
 #include "spc_player.h"
 #include "issd_bridge.h"
 #include "issd_config.h"
+#include "issd_video.h"
+#include "issd_readability.h"
 #include "issd_gameplay.h"
+#include "issd_bugfix_keeper.h"
+#include "issd_bugfix_skills.h"
+#include "issd_bugfix_goal.h"
+#include "issd_bugfix_name.h"
+#include "issd_match.h"
 #include "issd_save.h"
 #include "issd_campaign.h"
 #include "issd_snapshot.h"
@@ -55,7 +62,7 @@
 #define DEFAULT_WINDOW_HEIGHT 672
 #define SNES_WIDTH    256
 #define SNES_HEIGHT   224
-#define MAX_WS_WIDTH  (SNES_WIDTH + 2 * kWsExtraMax) /* 256 + 190 = 446 */
+#define MAX_WS_WIDTH  (SNES_WIDTH + 2 * kWsExtraMax)
 
 /* Global SNESRecomp widescreen symbols */
 bool g_ws_active = true;
@@ -151,6 +158,8 @@ static const char *ResolveConfigPath(char *out, size_t out_size, const char *cli
 static int g_dump_first = -1, g_dump_last = -1;
 static int g_save_state_frame = -1;
 static int g_load_state_frame = -1;
+static struct { uint32_t frame; const char *name; } g_match_actions[16];
+static unsigned g_match_action_count;
 static const char *g_password_import_path;
 static const char *g_password_export_path;
 static int g_password_import_frame = 1;
@@ -173,6 +182,8 @@ static uint32_t g_save_gameplay_flags = UINT32_MAX;
 static char g_password_error[160];
 static int g_target_frames = -1;
 static const char *g_screenshot_path = NULL;
+static const char *g_graphics_report_path = NULL;
+static bool g_renderer_reset_pending;
 static const char *g_dump_state_path = NULL;
 
 void issd_request_quit(void) {
@@ -225,28 +236,70 @@ static void IssdCaptureAppliedTeamNames(void) {
 
 static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc);
 static void IssdConfigureGameplayHooks(void);
+static void IssdResetMenuInput(void);
 static void IssdRefreshSaveContext(void) {
     uint32_t flags = g_issd_config.debug_unhooked_code ? 1u : 0u;
     if (g_issd_config.gameplay_goalkeeper_ai) flags |= 2u;
     if (g_issd_config.gameplay_player_ai) flags |= 4u;
-    cpu_set_native_block_hook((flags & 6u) ? IssdGameplayNativeBlock : NULL);
+    if (g_issd_config.gameplay_bug_fixes) flags |= 8u;
+    cpu_set_native_block_hook((flags & 14u) ? IssdGameplayNativeBlock : NULL);
     if (g_base_rom_data && g_rom_data && flags != g_save_gameplay_flags) {
         IssdConfigureGameplayHooks();
+        issd_bugfix_keeper_begin_loop();
         issd_save_set_context(g_base_rom_data, g_rom_size, g_rom_data, g_rom_size, flags);
         issd_password_set_context(g_base_rom_data, g_rom_size, g_rom_data, g_rom_size, flags);
         g_save_gameplay_flags = flags;
+        issd_match_reset();
         issd_campaign_reset();
         issd_menu_refresh_continue();
     }
 }
 
 static void IssdSaveLoaded(void) {
+    issd_bugfix_keeper_begin_loop();
     g_pad1_state = 0;
     issd_input_block_held();
     g_touch_release_guard = true;
     g_legacy_quick_confirm = false;
     issd_campaign_reset();
     g_frame_healthy = false;
+}
+
+static void IssdExternalSaveLoaded(void) {
+    issd_match_reset();
+    IssdSaveLoaded();
+    IssdResetMenuInput();
+}
+
+static bool IssdMatchRestore(const void *data, size_t size) {
+    if (!RtlLoadSnapshotFromMemory(data, size)) return false;
+    IssdSaveLoaded();
+    IssdResetMenuInput();
+    return true;
+}
+
+static bool IssdMatchAction(const char *name) {
+    if (!strcmp(name, "rematch")) return issd_match_rematch();
+    if (!strcmp(name, "mark-drill")) return issd_match_mark_drill(g_frame_healthy);
+    if (!strcmp(name, "restart-drill")) return issd_match_restart_drill();
+    if (!strcmp(name, "save-favorite")) return issd_match_save_favorite();
+    if (!strcmp(name, "play-favorite")) return issd_match_play_favorite();
+    if (!strcmp(name, "start-rules")) return issd_match_start_rules();
+    return false;
+}
+
+static void IssdParseMatchAction(const char *value) {
+    char *end;
+    unsigned long long frame = strtoull(value, &end, 10);
+    if (value[0] < '0' || value[0] > '9' || frame > UINT32_MAX || *end != ':' || g_match_action_count >= 16)
+        Die("Invalid --match-action; expected FRAME:ACTION (maximum 16)");
+    const char *name = end + 1;
+    const char *names[] = {"rematch","mark-drill","restart-drill","save-favorite","play-favorite","start-rules"};
+    bool valid = false;
+    for (unsigned i = 0; i < sizeof names/sizeof names[0]; ++i) if (!strcmp(name,names[i])) valid = true;
+    if (!valid) Die("Unknown --match-action action");
+    g_match_actions[g_match_action_count].frame = (uint32_t)frame;
+    g_match_actions[g_match_action_count++].name = name;
 }
 
 static bool IssdPasswordFail(const char *message) {
@@ -272,6 +325,7 @@ static bool IssdPasswordImport(const uint8_t *symbols, size_t count) {
     /* Only the verified original submit command has changed guest RAM.
      * The next game frame restores and reaches the normal autosave predicate. */
     IssdSaveLoaded();
+    issd_match_reset();
     issd_campaign_note_password_import();
     g_password_error[0] = 0;
     return true;
@@ -425,6 +479,9 @@ static void IssdDrawPpuFrame(void) {
         ppu_runLine(g_snes->ppu, line);
     }
     ppu_handleVblank(g_snes->ppu);
+    issd_readability_render(g_pixel_buffer, SNES_WIDTH + 2 * (g_ws_active ? g_ws_extra : 0),
+                            SNES_HEIGHT, g_ws_active ? g_ws_extra : 0,
+                            issd_widescreen_presented_ram(g_ram), &g_issd_config);
     issd_widescreen_end(g_snes->ppu);
     issd_hd_dump_frame(g_snes->ppu);
 }
@@ -435,37 +492,122 @@ static uint64_t g_gameplay_gk_calls, g_gameplay_gk_changes;
 static uint64_t g_gameplay_player_calls, g_gameplay_player_changes;
 static uint64_t g_gameplay_native_calls, g_gameplay_lle_calls;
 
+/* Diagnostics inspect WRAM without changing CPU open-bus/cart bookkeeping. */
+static unsigned IssdGameplayRamWord(const uint8_t *ram, unsigned a) {
+    return ram[a] | (unsigned)ram[a + 1] << 8;
+}
+
 static void IssdGameplayKeeper(CpuState *cpu) {
     if (!g_issd_config.gameplay_goalkeeper_ai || g_watchdog_tripped) return;
     g_gameplay_gk_calls++;
     if (g_gameplay_gk_calls <= 12 && getenv("ISSD_GAMEPLAY_TRACE")) {
         fprintf(stderr, "[GameplayKeeper] D=%04X modes=%u/%u BC=%04X special=%04X flags=%04X control=%04X ball=%04X target=%u/%u pos=%u/%u vel=%d/%d\n",
-                cpu->D, cpu_read16(cpu,0,0x32), cpu_read16(cpu,0,0x70), cpu_read16(cpu,0,0xbc),
-                cpu_read16(cpu,0,cpu->D+0x4c), cpu_read16(cpu,0,cpu->D+0x6e), cpu_read16(cpu,0,cpu->D+0x9e),
-                cpu_read16(cpu,0,0x11fa), cpu_read16(cpu,0,cpu->D+0x50), cpu_read16(cpu,0,cpu->D+0x52),
-                cpu_read16(cpu,0,0x42a), cpu_read16(cpu,0,0x42c), (int16_t)cpu_read16(cpu,0,0x424), (int16_t)cpu_read16(cpu,0,0x428));
+                cpu->D, IssdGameplayRamWord(cpu->ram,0x32), IssdGameplayRamWord(cpu->ram,0x70), IssdGameplayRamWord(cpu->ram,0xbc),
+                IssdGameplayRamWord(cpu->ram,cpu->D+0x4c), IssdGameplayRamWord(cpu->ram,cpu->D+0x6e), IssdGameplayRamWord(cpu->ram,cpu->D+0x9e),
+                IssdGameplayRamWord(cpu->ram,0x11fa), IssdGameplayRamWord(cpu->ram,cpu->D+0x50), IssdGameplayRamWord(cpu->ram,cpu->D+0x52),
+                IssdGameplayRamWord(cpu->ram,0x42a), IssdGameplayRamWord(cpu->ram,0x42c), (int16_t)IssdGameplayRamWord(cpu->ram,0x424), (int16_t)IssdGameplayRamWord(cpu->ram,0x428));
     }
     if (issd_gameplay_goalkeeper(cpu->ram, cpu->D, true)) g_gameplay_gk_changes++;
 }
 static void IssdGameplayPlayer(CpuState *cpu) {
     if (!g_issd_config.gameplay_player_ai || g_watchdog_tripped) return;
     g_gameplay_player_calls++;
-    if (g_gameplay_player_calls <= 12 && getenv("ISSD_GAMEPLAY_TRACE")) {
-        fprintf(stderr, "[GameplayPlayer] D=%04X modes=%u/%u BC=%04X status=%04X flags=%04X team=%04X slot=%u target=%u/%u\n",
-                cpu->D, cpu_read16(cpu,0,0x32), cpu_read16(cpu,0,0x70), cpu_read16(cpu,0,0xbc),
-                cpu_read16(cpu,0,cpu->D+0x60), cpu_read16(cpu,0,cpu->D+0x6e),
-                cpu_read16(cpu,0,cpu->D+0x9a), cpu_read16(cpu,0,cpu->D+0x68),
-                cpu_read16(cpu,0,cpu->D+0x50), cpu_read16(cpu,0,cpu->D+0x52));
+    /* Diagnostic counters never feed gameplay or snapshots. Keep the first
+     * twelve calls, then observe at most two changed decisions per actor. */
+    static uint8_t trace_samples[22];
+    bool tracing = getenv("ISSD_GAMEPLAY_TRACE") != NULL;
+    unsigned sample = cpu->D >= 0x500 && cpu->D <= 0x1a00 && !(cpu->D & 255)
+        ? (cpu->D - 0x500) / 0x100 : 22;
+    bool trace = tracing && (g_gameplay_player_calls <= 12 ||
+                            (sample < 22 && trace_samples[sample] < 2));
+    unsigned before_x = 0, before_y = 0;
+    if (trace) {
+        before_x = IssdGameplayRamWord(cpu->ram, cpu->D + 0x50);
+        before_y = IssdGameplayRamWord(cpu->ram, cpu->D + 0x52);
     }
-    if (issd_gameplay_player(cpu->ram, cpu->D, true)) g_gameplay_player_changes++;
+    bool changed = issd_gameplay_player(cpu->ram, cpu->D, true);
+    if (changed) g_gameplay_player_changes++;
+    trace = trace && (g_gameplay_player_calls <= 12 || changed);
+    if (trace) {
+        if (changed && sample < 22 && trace_samples[sample] < 2) trace_samples[sample]++;
+        unsigned team = IssdGameplayRamWord(cpu->ram, cpu->D + 0x9a);
+        unsigned slot = IssdGameplayRamWord(cpu->ram, cpu->D + 0x68);
+        int roster = -1, formation = -1, condition = -1, role = -1;
+        if ((team == 0xd00 || team == 0xe00) && slot <= 10) {
+            unsigned lineup = team == 0xd00 ? 0x3f90 : 0x3fa4;
+            unsigned entry = cpu->ram[lineup + slot];
+            formation = cpu->ram[team + 0xa6];
+            if (!(entry & 0x20) && (entry & 31) < 20) {
+                roster = entry & 31;
+                unsigned stats = (team == 0xd00 ? 0x3e00 : 0x3ec8) + (unsigned)roster * 10;
+                condition = cpu->ram[stats + 8];
+            }
+            if (slot && formation < 16)
+                role = cpu->ram[(team == 0xd00 ? 0xd280 : 0xd320) + (unsigned)formation * 10 + slot - 1];
+        }
+        /* Existing bounded, opt-in diagnostic: observe the actual decision
+         * inputs and output without adding state or altering the policy. */
+        fprintf(stderr, "[GameplayPlayer] D=%04X modes=%u/%u BC=%04X status=%04X flags=%04X team=%04X slot=%u target=%u/%u updated=%u/%u applied=%u roster=%d formation=%d condition=%d role=%d speed=%u inverse=%u skill=%u\n",
+                cpu->D, IssdGameplayRamWord(cpu->ram,0x32), IssdGameplayRamWord(cpu->ram,0x70), IssdGameplayRamWord(cpu->ram,0xbc),
+                IssdGameplayRamWord(cpu->ram,cpu->D+0x60), IssdGameplayRamWord(cpu->ram,cpu->D+0x6e), team, slot,
+                before_x, before_y, IssdGameplayRamWord(cpu->ram,cpu->D+0x50), IssdGameplayRamWord(cpu->ram,cpu->D+0x52),
+                (unsigned)changed, roster, formation, condition, role,
+                cpu->ram[cpu->D+0x62], cpu->ram[cpu->D+0x66], cpu->ram[cpu->D+0x67]);
+    }
+}
+static uint64_t g_bugfix_keeper_changes, g_bugfix_skills_changes;
+static uint64_t g_bugfix_goal_changes, g_bugfix_score_changes, g_bugfix_restart_changes, g_bugfix_name_changes;
+static bool IssdBugFixDecision(CpuState *cpu, uint32_t pc, bool native) {
+    switch (pc) {
+        case 0x0ab3fe:
+            /* This supported ROM entry is LLE-only. Skip the nonexistent
+             * fourth caret upload using its original RTS and return frame. */
+            if (!native && issd_bugfix_name_skip_caret(cpu->ram, cpu->D, true)) {
+                interp_bridge_pre_opcode_redirect(0x8ab3fd);
+                g_bugfix_name_changes++;
+            }
+            return true;
+        case 0x048048:
+            issd_bugfix_keeper_begin_loop();
+            return true;
+        case 0x0485d1:
+            /* The original LDX keeper state has set N. Reuse its BPL skip
+             * for a keeper that already moved in this controller loop. */
+            if (cpu->_flag_N && issd_bugfix_keeper_skip_movement(cpu->ram, cpu->D, true)) {
+                cpu->_flag_N = 0; cpu->P &= (uint8_t)~0x80;
+                g_bugfix_keeper_changes++;
+            }
+            return true;
+        case 0x06b12c:
+            if (issd_bugfix_skills(cpu->ram, cpu->D, true)) g_bugfix_skills_changes++;
+            return true;
+        case 0x038dab:
+            /* Preserve the original goal rejection; add a crossing witness
+             * only to an otherwise accepted award. BCS owns the rejection. */
+            if (!cpu->_flag_C && issd_bugfix_goal_reject(cpu->ram, true)) {
+                cpu->_flag_C = 1; cpu->P |= 1;
+                g_bugfix_goal_changes++;
+            }
+            return true;
+        case 0x24dbf6:
+            if (issd_bugfix_goal_restart(cpu->ram, true)) g_bugfix_restart_changes++;
+            return true;
+        case 0x06dbbe:
+            if (issd_bugfix_goal_score(cpu->ram, cpu_read16(cpu, 0, 0x14d2), true)) g_bugfix_score_changes++;
+            return true;
+        default: return false;
+    }
 }
 static void IssdGameplayDecision(CpuState *cpu, uint32_t pc, bool native) {
     pc &= 0x7fffff;
-    if (pc != 0x04dede && pc != 0x04c638 && pc != 0x04c63d) return;
-    if (g_watchdog_tripped || (!g_issd_config.gameplay_goalkeeper_ai && !g_issd_config.gameplay_player_ai)) return;
+    if (pc != 0x04dede && pc != 0x04c638 && pc != 0x04c63d &&
+        pc != 0x048048 && pc != 0x0485d1 && pc != 0x06b12c &&
+        pc != 0x038dab && pc != 0x06dbbe && pc != 0x24dbf6 && pc != 0x0ab3fe) return;
+    if (g_watchdog_tripped || (!g_issd_config.gameplay_goalkeeper_ai && !g_issd_config.gameplay_player_ai && !g_issd_config.gameplay_bug_fixes)) return;
     /* Generated block hooks precede their yield checks. Defer policy writes
      * until the resumed tier actually executes this block, exactly once. */
     if (native && interp_bridge_lle_master_deadline_reached(cpu)) return;
+    if (g_issd_config.gameplay_bug_fixes && IssdBugFixDecision(cpu, pc, native)) return;
     if (pc == 0x04dede) {
         if (!g_issd_config.gameplay_goalkeeper_ai) return;
         if (native) g_gameplay_native_calls++; else g_gameplay_lle_calls++;
@@ -497,8 +639,17 @@ static void IssdGameplayInterpreted(CpuState *cpu, uint32_t pc) { IssdGameplayDe
 static void IssdConfigureGameplayHooks(void) {
     /* This runner owns the gameplay opcode policy slots. Unregister disabled
      * policies entirely so original execution avoids callback/sync overhead. */
-    cpu_set_native_block_hook((g_issd_config.gameplay_goalkeeper_ai || g_issd_config.gameplay_player_ai) ? IssdGameplayNativeBlock : NULL);
+    cpu_set_native_block_hook((g_issd_config.gameplay_goalkeeper_ai || g_issd_config.gameplay_player_ai || g_issd_config.gameplay_bug_fixes) ? IssdGameplayNativeBlock : NULL);
     interp_bridge_set_pre_opcode_hook(0, NULL);
+    if (g_issd_config.gameplay_bug_fixes) {
+        interp_bridge_set_pre_opcode_hook(0x848048, IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0x8485D1, IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0x86B12C, IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0x838DAB, IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0x86DBBE, IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0xA4DBF6, IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0x8AB3FE, IssdGameplayInterpreted);
+    }
     if (g_issd_config.gameplay_goalkeeper_ai)
         interp_bridge_set_pre_opcode_hook(0x84DEDE, IssdGameplayInterpreted);
     if (g_issd_config.gameplay_player_ai) {
@@ -515,6 +666,7 @@ static void IssdInitialize(void) {
 }
 
 static void IssdBootReset(void) {
+    issd_bugfix_keeper_begin_loop();
     printf("[ISSD Native] Executing Reset Vector ($80:8000)...\n");
     static const uint32_t stop_pcs[] = { 0x8080D4, 0x0080D4 };
     int ok = interp_bridge_resume_task(&g_cpu, 0x808000, g_cpu.S, stop_pcs, 2);
@@ -821,6 +973,7 @@ static bool PromptForRomFile(char *out, size_t out_size) {
 }
 
 static SDL_Window *g_window = NULL;
+static SDL_Renderer *g_renderer = NULL;
 static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int render_w, int render_h, SDL_Rect *out_rect);
 static int IssdWsExtraForAspect(void);
 
@@ -859,18 +1012,10 @@ static void PumpTouchState(void) {
     int tap_x = 0, tap_y = 0;
     if (issd_touch_take_screen_tap(&tap_x, &tap_y)) {
         if (issd_menu_is_open()) {
-            int cur_ws_extra = IssdWsExtraForAspect();
-            int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
-            int cur_render_h = SNES_HEIGHT;
-            SDL_Rect dst_rect;
-            CalculateViewport(win_w, win_h, g_issd_config.aspect_ratio, cur_render_w, cur_render_h, &dst_rect);
-            if (dst_rect.w > 0 && dst_rect.h > 0 &&
-                tap_x >= dst_rect.x && tap_x < dst_rect.x + dst_rect.w &&
-                tap_y >= dst_rect.y && tap_y < dst_rect.y + dst_rect.h) {
-                int fb_x = (tap_x - dst_rect.x) * cur_render_w / dst_rect.w;
-                int fb_y = (tap_y - dst_rect.y) * cur_render_h / dst_rect.h;
-                issd_menu_handle_click(fb_x, fb_y, cur_render_w, cur_render_h);
-            }
+            int output_w=win_w, output_h=win_h;
+            if (g_renderer) SDL_GetRendererOutputSize(g_renderer, &output_w, &output_h);
+            if (win_w>0 && win_h>0)
+                issd_menu_handle_display_click(tap_x*output_w/win_w, tap_y*output_h/win_h, output_w, output_h);
         }
     }
 }
@@ -1306,6 +1451,10 @@ static bool IssdHandleLifecycleEvent(Uint32 type) {
 }
 
 static void ProcessInputEvent(const SDL_Event *ev) {
+    if (ev->type == SDL_RENDER_DEVICE_RESET || ev->type == SDL_RENDER_TARGETS_RESET) {
+        g_renderer_reset_pending = true;
+        return;
+    }
     if (IssdHandleLifecycleEvent(ev->type)) return;
     /* A preceding event can change gameplay settings in this same batch. */
     IssdRefreshSaveContext();
@@ -1433,7 +1582,7 @@ static void ProcessInputEvent(const SDL_Event *ev) {
                 return;
             } else if (code == SDL_SCANCODE_F3) {
                 /* Cycle Aspect Ratio */
-                g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio + 1) % 6);
+                g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio + 1) % ISSD_ASPECT_COUNT);
                 const char *a_name = (g_issd_config.aspect_ratio == ISSD_ASPECT_4_3) ? "4:3 CRT" :
                                      (g_issd_config.aspect_ratio == ISSD_ASPECT_8_7) ? "8:7 PIXEL" :
                                      (g_issd_config.aspect_ratio == ISSD_ASPECT_16_9) ? "16:9 WIDE" :
@@ -1442,19 +1591,15 @@ static void ProcessInputEvent(const SDL_Event *ev) {
                 printf("[Video] Aspect Ratio set to: %s\n", a_name);
                 return;
             } else if (code == SDL_SCANCODE_F4) {
-                /* Cycle Internal Resolution (1x up to 8x 4K) */
+                /* Cycle the intermediate surface scale. */
                 if (!issd_menu_internal_res_applies()) {
-                    printf("[Video] Internal Resolution applies to the CRT filter only "
+                    printf("[Video] Intermediate scale applies to CRT, sharp scaling or HD tiles "
                            "(F8 to select it); Nearest and Linear scale the logical "
                            "buffer directly.\n");
                     return;
                 }
                 g_issd_config.internal_res = (IssdInternalResolution)((g_issd_config.internal_res + 1) % 6);
-                const char *r_name = (g_issd_config.internal_res == ISSD_RES_1X) ? "1X (256x224)" :
-                                     (g_issd_config.internal_res == ISSD_RES_2X) ? "2X (512x448)" :
-                                     (g_issd_config.internal_res == ISSD_RES_3X) ? "3X (720p HD)" :
-                                     (g_issd_config.internal_res == ISSD_RES_4X) ? "4X (1080p FHD)" :
-                                     (g_issd_config.internal_res == ISSD_RES_6X) ? "6X (1440p QHD)" : "8X (4K UHD)";
+                const char *r_name = issd_video_internal_label(g_issd_config.internal_res);
                 printf("[Video] Internal Resolution set to: %s\n", r_name);
                 return;
             } else if (code == SDL_SCANCODE_F5) {
@@ -1484,9 +1629,10 @@ static void ProcessInputEvent(const SDL_Event *ev) {
                 return;
             } else if (code == SDL_SCANCODE_F8) {
                 /* Cycle Scaling Filter */
-                g_issd_config.scaling_filter = (IssdScalingFilter)((g_issd_config.scaling_filter + 1) % 3);
+                g_issd_config.scaling_filter = (IssdScalingFilter)((g_issd_config.scaling_filter + 1) % 4);
                 const char *f_name = (g_issd_config.scaling_filter == ISSD_FILTER_NEAREST) ? "NEAREST (SHARP)" :
-                                     (g_issd_config.scaling_filter == ISSD_FILTER_LINEAR) ? "LINEAR (SMOOTH)" : "CRT SCANLINES";
+                                     (g_issd_config.scaling_filter == ISSD_FILTER_LINEAR) ? "LINEAR (SMOOTH)" :
+                                     (g_issd_config.scaling_filter == ISSD_FILTER_SHARP) ? "SHARP BILINEAR" : "CRT SCANLINES";
                 printf("[Video] Scaling Filter set to: %s\n", f_name);
                 return;
             } else if (code == SDL_SCANCODE_F11) {
@@ -1560,42 +1706,24 @@ static void ProcessInputEvent(const SDL_Event *ev) {
         if (issd_menu_is_open() && ev->button.button == SDL_BUTTON_LEFT) {
             int win_w = 0, win_h = 0;
             SDL_GetWindowSize(g_window, &win_w, &win_h);
-            int cur_ws_extra = IssdWsExtraForAspect();
-            int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
-            int cur_render_h = SNES_HEIGHT;
-            SDL_Rect dst_rect;
-            CalculateViewport(win_w, win_h, g_issd_config.aspect_ratio, cur_render_w, cur_render_h, &dst_rect);
-            int mx = ev->button.x;
-            int my = ev->button.y;
-            if (dst_rect.w > 0 && dst_rect.h > 0 &&
-                mx >= dst_rect.x && mx < dst_rect.x + dst_rect.w &&
-                my >= dst_rect.y && my < dst_rect.y + dst_rect.h) {
-                int fb_x = (mx - dst_rect.x) * cur_render_w / dst_rect.w;
-                int fb_y = (my - dst_rect.y) * cur_render_h / dst_rect.h;
-                issd_menu_handle_click(fb_x, fb_y, cur_render_w, cur_render_h);
-            }
+            int output_w=win_w, output_h=win_h;
+            if (g_renderer) SDL_GetRendererOutputSize(g_renderer, &output_w, &output_h);
+            if (win_w>0 && win_h>0)
+                issd_menu_handle_display_click(ev->button.x*output_w/win_w,
+                    ev->button.y*output_h/win_h, output_w, output_h);
         }
     }
 }
 
 
 #define MAX_INTERNAL_SCALE 8
-#define MAX_INTERNAL_WIDTH  (MAX_WS_WIDTH * MAX_INTERNAL_SCALE)   /* 446 * 8 = 3568 */
+#define MAX_INTERNAL_WIDTH  (MAX_WS_WIDTH * MAX_INTERNAL_SCALE)
 #define MAX_INTERNAL_HEIGHT (SNES_HEIGHT * MAX_INTERNAL_SCALE)    /* 224 * 8 = 1792 */
 
 static uint32_t g_hi_pixel_buffer[MAX_INTERNAL_WIDTH * MAX_INTERNAL_HEIGHT];
 
 static void GetInternalResolutionDimensions(IssdInternalResolution res, int base_w, int base_h, int *out_w, int *out_h) {
-    int scale = 1;
-    switch (res) {
-        case ISSD_RES_1X: scale = 1; break;
-        case ISSD_RES_2X: scale = 2; break;
-        case ISSD_RES_3X: scale = 3; break;
-        case ISSD_RES_4X: scale = 4; break;
-        case ISSD_RES_6X: scale = 6; break;
-        case ISSD_RES_8X_4K: scale = 8; break;
-        default: scale = 1; break;
-    }
+    int scale = issd_video_internal_scale(res);
     if (out_w) *out_w = base_w * scale;
     if (out_h) *out_h = base_h * scale;
 }
@@ -1653,7 +1781,7 @@ static bool SaveFrame(const char *path, const uint32_t *native, int w, int h) {
                        ISSD_FILTER_NEAREST);
     issd_hd_composite(g_snes ? g_snes->ppu : NULL, native, w, h,
                       g_hi_pixel_buffer, scale,
-                      g_ws_active ? g_ws_extra : 0);
+                      (w - SNES_WIDTH) / 2);
     return SaveBmp(path, g_hi_pixel_buffer, w * scale, h * scale);
 }
 
@@ -1665,70 +1793,16 @@ static int IssdWsExtraForAspect(void) {
         case ISSD_ASPECT_AUTHENTIC: return 32; /* 320x224, no frozen edge players */
         case ISSD_ASPECT_16_10:     return 51; /* 358x224 */
         case ISSD_ASPECT_16_9:      return 71; /* 398x224 */
-        case ISSD_ASPECT_21_9:      return 95; /* 446x224 */
+        case ISSD_ASPECT_21_9:      return ISSD_WIDESCREEN_MAX_EXTRA;
         default:                    return 0;
     }
 }
 
 static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int render_w, int render_h, SDL_Rect *out_rect) {
     if (!out_rect) return;
-    if (win_w <= 0 || win_h <= 0) {
-        out_rect->x = 0; out_rect->y = 0;
-        out_rect->w = win_w; out_rect->h = win_h;
-        return;
-    }
-
-    if (aspect == ISSD_ASPECT_INTEGER) {
-        int scale_x = win_w / render_w;
-        int scale_y = win_h / render_h;
-        int scale = (scale_x < scale_y) ? scale_x : scale_y;
-        if (scale < 1) scale = 1;
-        out_rect->w = render_w * scale;
-        out_rect->h = render_h * scale;
-        out_rect->x = (win_w - out_rect->w) / 2;
-        out_rect->y = (win_h - out_rect->h) / 2;
-        return;
-    }
-
-    float target_aspect;
-    switch (aspect) {
-        case ISSD_ASPECT_8_7:
-            target_aspect = 8.0f / 7.0f; /* 1.142857: 1:1 pixel aspect */
-            break;
-        case ISSD_ASPECT_16_9:
-            target_aspect = 16.0f / 9.0f;
-            break;
-        case ISSD_ASPECT_16_10:
-            target_aspect = 16.0f / 10.0f;
-            break;
-        case ISSD_ASPECT_21_9:
-            target_aspect = 21.0f / 9.0f;
-            break;
-        case ISSD_ASPECT_4_3:
-        default:
-            target_aspect = 4.0f / 3.0f; /* 1.333333 */
-            break;
-    }
-
-    /* When True Widescreen is active and buffer is expanded, adhere to render buffer aspect */
-    if (g_issd_config.true_widescreen && render_w > SNES_WIDTH) {
-        target_aspect = (float)render_w / (float)render_h;
-    }
-
-    float win_aspect = (float)win_w / (float)win_h;
-    if (win_aspect > target_aspect) {
-        /* Window is wider than target aspect ratio (Pillarbox on left/right) */
-        out_rect->h = win_h;
-        out_rect->w = (int)(win_h * target_aspect + 0.5f);
-        out_rect->x = (win_w - out_rect->w) / 2;
-        out_rect->y = 0;
-    } else {
-        /* Window is taller than target aspect ratio (Letterbox on top/bottom) */
-        out_rect->w = win_w;
-        out_rect->h = (int)(win_w / target_aspect + 0.5f);
-        out_rect->x = 0;
-        out_rect->y = (win_h - out_rect->h) / 2;
-    }
+    IssdVideoRect rect=issd_video_viewport(win_w,win_h,render_w,render_h,
+        aspect,g_issd_config.true_widescreen,g_issd_config.integer_scaling);
+    *out_rect=(SDL_Rect){rect.x,rect.y,rect.w,rect.h};
 }
 
 static uint16_t s_last_menu_touch_mask = 0;
@@ -1827,10 +1901,15 @@ int main(int argc, char **argv) {
             g_target_frames = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
             g_screenshot_path = argv[++i];
+        } else if (strcmp(argv[i], "--graphics-report") == 0 && i + 1 < argc) {
+            g_graphics_report_path = argv[++i];
         } else if (strcmp(argv[i], "--dump-state") == 0 && i + 1 < argc) {
             g_dump_state_path = argv[++i];
         } else if (strcmp(argv[i], "--auto-start") == 0 && i + 1 < argc) {
             g_auto_start_frame = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--match-action") == 0) {
+            if (i + 1 >= argc) Die("Missing --match-action value");
+            IssdParseMatchAction(argv[++i]);
         } else if (strcmp(argv[i], "--save-state") == 0 && i + 1 < argc) {
             g_save_state_frame = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--load-state") == 0 && i + 1 < argc) {
@@ -1879,7 +1958,8 @@ int main(int argc, char **argv) {
         Die(issd_save_error());
     issd_save_set_snapshot_backends(RtlSaveSnapshot, RtlLoadSnapshot);
     issd_save_set_snapshot_validator(RtlValidateSnapshotFromMemory);
-    issd_save_set_load_callback(IssdSaveLoaded);
+    issd_save_set_load_callback(IssdExternalSaveLoaded);
+    issd_match_init(g_ram, &g_issd_config, RtlSaveSnapshotToMemory, IssdMatchRestore);
     issd_mod_init();
     const char *mods_dir = g_issd_config.mods_dir[0] ? g_issd_config.mods_dir : "mods";
     if (cli_mods_dir && cli_mods_dir[0]) {
@@ -2038,6 +2118,7 @@ int main(int argc, char **argv) {
 
     /* Execute the SNES boot sequence from Reset vector ($80:8000) */
     IssdBootReset();
+    issd_match_tick(g_frame_healthy); /* boot/title admission for persisted favorites */
 
     if (g_continue_requested && !issd_save_continue()) {
         fprintf(stderr, "[Continue] No usable checkpoint\n");
@@ -2047,8 +2128,17 @@ int main(int argc, char **argv) {
     SDL_Renderer *renderer = NULL;
     SDL_Texture *texture = NULL;
     SDL_Texture *source_texture = NULL;
+    SDL_Texture *menu_texture = NULL;
+    uint32_t *menu_pixels = NULL;
+    int menu_width=0,menu_height=0;
+    int applied_output=g_issd_config.output_resolution;
+    bool applied_fullscreen=g_issd_config.fullscreen;
+    int framebuffer_width=SNES_WIDTH+2*IssdWsExtraForAspect();
     int source_width = 0, source_height = 0;
     int cur_tex_w = 0, cur_tex_h = 0;
+    uint64_t present_count=0, present_cpu_ticks=0, present_ticks=0, present_max_ticks=0;
+    unsigned renderer_resets=0;
+    int report_output_w=0,report_output_h=0,report_native_w=0,report_intermediate_w=0,report_intermediate_h=0;
     IssdScalingFilter cur_filter = g_issd_config.scaling_filter;
     SDL_AudioDeviceID audio_dev = 0;
 
@@ -2058,13 +2148,16 @@ int main(int argc, char **argv) {
             return 1;
         }
 
-        Uint32 win_flags = SDL_WINDOW_RESIZABLE;
+        Uint32 win_flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
         if (g_issd_config.fullscreen) {
             win_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
         }
 
         int win_w = (g_issd_config.window_width > 0) ? g_issd_config.window_width : DEFAULT_WINDOW_WIDTH;
         int win_h = (g_issd_config.window_height > 0) ? g_issd_config.window_height : DEFAULT_WINDOW_HEIGHT;
+#ifndef ISSD_ANDROID
+        issd_video_output_dimensions(g_issd_config.output_resolution,win_w,win_h,&win_w,&win_h);
+#endif
 
         g_window = SDL_CreateWindow(
             "ISSD Native — International Superstar Soccer Deluxe",
@@ -2086,6 +2179,9 @@ int main(int argc, char **argv) {
         if (!renderer) {
             renderer = SDL_CreateRenderer(g_window, -1, 0);
         }
+
+        if (!renderer) Die(SDL_GetError());
+        g_renderer=renderer;
 
         int cur_ws_extra = IssdWsExtraForAspect();
         g_ws_extra = cur_ws_extra;
@@ -2191,6 +2287,17 @@ int main(int argc, char **argv) {
             SDL_Delay(20);
             continue;
         }
+        /* Android graphics contexts and desktop GPU devices can be reset while
+         * paused. Streaming textures must be recreated and fully re-uploaded. */
+        if (g_renderer_reset_pending && renderer) {
+            if (texture) SDL_DestroyTexture(texture);
+            if (source_texture) SDL_DestroyTexture(source_texture);
+            if (menu_texture) SDL_DestroyTexture(menu_texture);
+            texture=source_texture=menu_texture=NULL;
+            cur_tex_w=cur_tex_h=source_width=source_height=menu_width=menu_height=0;
+            g_renderer_reset_pending=false;
+            renderer_resets++;
+        }
         if (renderer && applied_vsync != (int)g_issd_config.vsync) {
             if (SDL_RenderSetVSync(renderer, g_issd_config.vsync ? 1 : 0) != 0) {
                 SDL_RendererInfo info;
@@ -2213,6 +2320,21 @@ int main(int argc, char **argv) {
         int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
         int cur_render_h = SNES_HEIGHT;
 
+#ifndef ISSD_ANDROID
+        if (g_window && (applied_output!=g_issd_config.output_resolution ||
+                          applied_fullscreen!=g_issd_config.fullscreen)) {
+            if (!g_issd_config.fullscreen) {
+                int width=g_issd_config.window_width,height=g_issd_config.window_height;
+                issd_video_output_dimensions(g_issd_config.output_resolution,width,height,&width,&height);
+                SDL_SetWindowSize(g_window,width,height);
+            }
+            applied_output=g_issd_config.output_resolution;
+            applied_fullscreen=g_issd_config.fullscreen;
+        }
+#else
+        (void)applied_output; (void)applied_fullscreen;
+#endif
+
         /* Simulation Tick: Paced deterministically at 60 Hz */
         bool frame_simulated = false;
         if (g_restart_requested) {
@@ -2233,6 +2355,7 @@ int main(int argc, char **argv) {
             issd_menu_notify(summary, 300);
             IssdBootReset();
             issd_campaign_reset();
+            issd_match_reset();
             frame_count = 0;
             continue;
         }
@@ -2248,7 +2371,7 @@ int main(int argc, char **argv) {
                 g_pad1_state = 0;
                 ProcessMenuTouchPad();
                 /* Paused: Render In-Game Menu Overlay */
-                issd_menu_render(g_pixel_buffer, cur_render_w, cur_render_h);
+                if (g_headless) issd_menu_render(g_pixel_buffer, cur_render_w, cur_render_h);
                 frame_simulated = true;
             } else {
                 if (!g_headless) g_pad1_state = IssdKeyboardRead();
@@ -2302,6 +2425,13 @@ int main(int argc, char **argv) {
                     g_password_import_path = NULL;
                 }
 
+                for (unsigned action = 0; action < g_match_action_count; ++action) {
+                    if (g_match_actions[action].frame != frame_count) continue;
+                    IssdRefreshSaveContext();
+                    if (!IssdMatchAction(g_match_actions[action].name)) Die(issd_match_error());
+                    fprintf(stderr, "[MatchAction] frame=%u action=%s\n", frame_count, g_match_actions[action].name);
+                }
+
                 /* Run 1 SNES frame */
                 /* Touch is additive: a physical pad and the on-screen pad
                  * both drive player 1, which is what a handheld with both
@@ -2343,8 +2473,13 @@ int main(int argc, char **argv) {
 
                 /* Render SNES PPU scanlines */
                 IssdDrawPpuFrame();
+                framebuffer_width=cur_render_w;
                 g_frame_healthy = g_frame_healthy && !g_watchdog_tripped &&
                                   g_cpu.S == 0x01AF && !g_ram[0x3c] && !g_ram[0x3d];
+                int match_capture = issd_match_tick(g_frame_healthy);
+                if (match_capture)
+                    fprintf(stderr, "[Match] %s frame=%u\n",
+                            match_capture == ISSD_MATCH_CAPTURE_SETUP ? "setup" : "kickoff", frame_count);
                 /* Bank N completed frames, after audio/drawing/IRQ work. A
                  * load before frame20 followed by40 ticks reproduces frameN+40. */
                 if (g_save_state_frame >= 0 &&
@@ -2372,7 +2507,7 @@ int main(int argc, char **argv) {
                 /* Over the game, not inside the menu: the one thing the
                  * player has to see after a restart is whether the mods
                  * they restarted for actually applied. */
-                issd_menu_render_notification(g_pixel_buffer, cur_render_w,
+                if (g_headless) issd_menu_render_notification(g_pixel_buffer, cur_render_w,
                                               cur_render_h);
                 issd_menu_render_stadium_plate(g_pixel_buffer, cur_render_w,
                                               cur_render_h,
@@ -2431,6 +2566,7 @@ int main(int argc, char **argv) {
                 }
             }
 
+            if (!g_headless) issd_menu_tick_notification();
             next_sim_time += sim_interval;
             if (now > next_sim_time && (now - next_sim_time) > sim_interval * 4) {
                 next_sim_time = now;
@@ -2446,14 +2582,29 @@ int main(int argc, char **argv) {
             if (frame_simulated || issd_presentation_due(now, next_sim_time, last_present_time,
                                       next_render_time, render_interval,
                                       sim_interval * 4)) {
+                uint64_t present_begin = g_graphics_report_path ? SDL_GetPerformanceCounter() : 0;
+                /* While paused, retain the last frame's actual pixel stride.
+                 * A changed field of view is drawn on the next simulation tick. */
+                int cur_render_w=framebuffer_width;
                 /* Check if internal resolution or filter hint changed. Nearest
                  * and linear present the logical SNES/widescreen buffer
                  * directly; the selected filter is applied by SDL while copying
                  * to the window. CRT keeps a scaled texture because scanline
                  * darkening is generated into that buffer. */
+                int win_w=0,win_h=0;
+                SDL_GetRendererOutputSize(renderer,&win_w,&win_h);
+                if (win_w<=0 || win_h<=0) continue;
+                SDL_Rect dst_rect;
+                CalculateViewport(win_w,win_h,g_issd_config.aspect_ratio,cur_render_w,cur_render_h,&dst_rect);
                 int target_tex_w = cur_render_w, target_tex_h = cur_render_h;
                 if (g_issd_config.scaling_filter == ISSD_FILTER_CRT || issd_hd_active()) {
                     GetInternalResolutionDimensions(g_issd_config.internal_res, cur_render_w, cur_render_h, &target_tex_w, &target_tex_h);
+                }
+                if (g_issd_config.scaling_filter==ISSD_FILTER_SHARP) {
+                    int scale=issd_video_sharp_prescale(cur_render_w,cur_render_h,dst_rect.w,dst_rect.h);
+                    int selected=issd_video_internal_scale(g_issd_config.internal_res);
+                    if (selected>scale) scale=selected;
+                    target_tex_w=cur_render_w*scale; target_tex_h=cur_render_h*scale;
                 }
 
                 if (target_tex_w != cur_tex_w || target_tex_h != cur_tex_h || cur_filter != g_issd_config.scaling_filter) {
@@ -2462,7 +2613,7 @@ int main(int argc, char **argv) {
                     cur_tex_h = target_tex_h;
                     cur_filter = g_issd_config.scaling_filter;
 
-                    const char *filter_hint = (cur_filter == ISSD_FILTER_LINEAR) ? "1" : "0";
+                    const char *filter_hint = (cur_filter == ISSD_FILTER_LINEAR || cur_filter == ISSD_FILTER_SHARP) ? "1" : "0";
                     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, filter_hint);
 
                     if (cur_filter == ISSD_FILTER_CRT) {
@@ -2479,11 +2630,12 @@ int main(int argc, char **argv) {
                  * a pack forces the scaled-texture path even when the
                  * filter would otherwise hand SDL the native frame. */
                 SDL_Texture *present_texture = NULL;
-                if (cur_filter == ISSD_FILTER_CRT || issd_hd_active()) {
+                if (cur_filter == ISSD_FILTER_CRT || cur_filter == ISSD_FILTER_SHARP || issd_hd_active()) {
                     if (!texture) {
                         texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                             SDL_TEXTUREACCESS_STREAMING, cur_tex_w, cur_tex_h);
                     }
+                    if (!texture) Die(SDL_GetError());
                     UpscaleFrameBuffer(g_hi_pixel_buffer, cur_tex_w, cur_tex_h,
                                    g_pixel_buffer, cur_render_w, cur_render_h,
                                    g_issd_config.scaling_filter);
@@ -2492,7 +2644,7 @@ int main(int argc, char **argv) {
                                           cur_render_w, cur_render_h,
                                           g_hi_pixel_buffer,
                                           cur_tex_w / cur_render_w,
-                                          g_ws_active ? g_ws_extra : 0);
+                                          (cur_render_w-SNES_WIDTH)/2);
                     SDL_UpdateTexture(texture, NULL, g_hi_pixel_buffer, cur_tex_w * sizeof(uint32_t));
                     present_texture = texture;
                 } else {
@@ -2507,19 +2659,71 @@ int main(int argc, char **argv) {
                     present_texture = source_texture;
                 }
 
-                /* Calculate non-stretched viewport according to window size and chosen aspect ratio */
-                int win_w = 0, win_h = 0;
-                SDL_GetWindowSize(g_window, &win_w, &win_h);
-                SDL_Rect dst_rect;
-                CalculateViewport(win_w, win_h, g_issd_config.aspect_ratio, cur_render_w, cur_render_h, &dst_rect);
+                /* Calculate and expose the actual physical presentation dimensions. */
+                issd_menu_set_display_metrics(win_w,win_h,cur_render_w,cur_render_h);
+                issd_menu_set_intermediate_metrics(cur_tex_w,cur_tex_h);
+#if SDL_VERSION_ATLEAST(2,0,12)
+                SDL_SetTextureScaleMode(present_texture,
+                    (cur_filter==ISSD_FILTER_LINEAR || cur_filter==ISSD_FILTER_SHARP) ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
+#endif
 
                 /* Clear borders to solid black (pillarbox / letterbox) */
                 SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                 SDL_RenderClear(renderer);
                 SDL_RenderCopy(renderer, present_texture, NULL, &dst_rect);
-                RenderTouchOverlay(renderer);
+                /* Touch layout uses window coordinates; draw at that coordinate
+                 * scale while the game and menu use physical output pixels. */
+                int logical_w=0,logical_h=0;
+                SDL_GetWindowSize(g_window,&logical_w,&logical_h);
+                if (logical_w>0 && logical_h>0) {
+                    int left=0,top=0,right=0,bottom=0;
+                    issd_android_safe_insets(&left,&top,&right,&bottom);
+                    issd_menu_set_safe_insets(
+                        (int)(((int64_t)left*win_w+logical_w-1)/logical_w),
+                        (int)(((int64_t)top*win_h+logical_h-1)/logical_h),
+                        (int)(((int64_t)right*win_w+logical_w-1)/logical_w),
+                        (int)(((int64_t)bottom*win_h+logical_h-1)/logical_h));
+                    SDL_RenderSetScale(renderer,(float)win_w/logical_w,(float)win_h/logical_h);
+                    RenderTouchOverlay(renderer);
+                    SDL_RenderSetScale(renderer,1.0f,1.0f);
+                }
+                if (issd_menu_is_open() || issd_menu_has_notification()) {
+                    if (menu_width!=win_w || menu_height!=win_h) {
+                        if (menu_texture) SDL_DestroyTexture(menu_texture);
+                        free(menu_pixels); menu_pixels=NULL; menu_texture=NULL;
+                        menu_width=win_w; menu_height=win_h;
+                        if ((size_t)win_w*win_h<=UINT32_MAX/sizeof(uint32_t)) {
+                            menu_pixels=malloc((size_t)win_w*win_h*sizeof(uint32_t));
+                            menu_texture=SDL_CreateTexture(renderer,SDL_PIXELFORMAT_ARGB8888,
+                                SDL_TEXTUREACCESS_STREAMING,win_w,win_h);
+                        }
+                        if (menu_texture) {
+                            SDL_SetTextureBlendMode(menu_texture,SDL_BLENDMODE_BLEND);
+#if SDL_VERSION_ATLEAST(2,0,12)
+                            SDL_SetTextureScaleMode(menu_texture,SDL_ScaleModeNearest);
+#endif
+                        }
+                    }
+                    if (menu_texture && menu_pixels) {
+                        issd_menu_render_display(menu_pixels,win_w,win_h);
+                        issd_menu_render_notification_display(menu_pixels,win_w,win_h);
+                        SDL_UpdateTexture(menu_texture,NULL,menu_pixels,win_w*sizeof(uint32_t));
+                        SDL_RenderCopy(renderer,menu_texture,NULL,NULL);
+                    }
+                }
+                uint64_t present_cpu_end = g_graphics_report_path ? SDL_GetPerformanceCounter() : 0;
                 SDL_RenderPresent(renderer);
                 last_present_time = SDL_GetPerformanceCounter();
+                if (g_graphics_report_path) {
+                    uint64_t elapsed=last_present_time-present_begin;
+                    present_cpu_ticks+=present_cpu_end-present_begin;
+                    present_ticks+=elapsed;
+                    if (elapsed>present_max_ticks) present_max_ticks=elapsed;
+                    present_count++;
+                    report_output_w=win_w; report_output_h=win_h;
+                    report_native_w=cur_render_w;
+                    report_intermediate_w=cur_tex_w; report_intermediate_h=cur_tex_h;
+                }
 
                 if (render_interval > 0) {
                     next_render_time += render_interval;
@@ -2553,6 +2757,25 @@ int main(int argc, char **argv) {
     issd_android_set_game_running(false);
 #endif
 
+    if (g_graphics_report_path) {
+        FILE *report=fopen(g_graphics_report_path,"w");
+        if (!report) Die("Cannot create graphics report");
+        double ms=1000.0/(double)SDL_GetPerformanceFrequency();
+        double divisor=present_count ? (double)present_count : 1.0;
+        fprintf(report,"{\n  \"simulation_frames\": %u,\n  \"presentations\": %llu,\n"
+            "  \"output_width\": %d,\n  \"output_height\": %d,\n  \"native_width\": %d,\n"
+            "  \"intermediate_width\": %d,\n  \"intermediate_height\": %d,\n"
+            "  \"filter\": %d,\n  \"renderer_resets\": %u,\n"
+            "  \"cpu_present_mean_ms\": %.6f,\n  \"present_mean_ms\": %.6f,\n"
+            "  \"present_max_ms\": %.6f\n}\n",
+            frame_count,(unsigned long long)present_count,report_output_w,report_output_h,
+            report_native_w,report_intermediate_w,report_intermediate_h,
+            (int)g_issd_config.scaling_filter,renderer_resets,present_cpu_ticks*ms/divisor,
+            present_ticks*ms/divisor,present_max_ticks*ms);
+        bool failed=ferror(report)!=0;
+        if (fclose(report) || failed) Die("Cannot write graphics report");
+    }
+
     if (g_password_import_path) Die("Password import frame was not reached");
     if (g_password_export_path) {
         uint8_t symbols[ISSD_PASSWORD_MAX_SYMBOLS];
@@ -2566,8 +2789,7 @@ int main(int argc, char **argv) {
     }
 
     if (g_screenshot_path) {
-        int cur_ws_extra = IssdWsExtraForAspect();
-        int cur_render_w = SNES_WIDTH + 2 * cur_ws_extra;
+        int cur_render_w = framebuffer_width;
         if (SaveFrame(g_screenshot_path, g_pixel_buffer, cur_render_w, SNES_HEIGHT)) {
             printf("[Screenshot] Saved frame buffer to: %s (%dx%d)\n", g_screenshot_path, cur_render_w, SNES_HEIGHT);
         } else {
@@ -2586,6 +2808,10 @@ int main(int argc, char **argv) {
         printf("[CPU] S=%04X PB=%02X NMI-busy=%04X\n", g_cpu.S, g_cpu.PB,
                cpu_read16(&g_cpu, 0, 0x3c));
         RecompStackBalDumpStderr(20);
+        printf("[BugFixes] keeper=%llu skills=%llu goal=%llu score=%llu restart=%llu name=%llu\n",
+               (unsigned long long)g_bugfix_keeper_changes, (unsigned long long)g_bugfix_skills_changes,
+               (unsigned long long)g_bugfix_goal_changes, (unsigned long long)g_bugfix_score_changes,
+               (unsigned long long)g_bugfix_restart_changes, (unsigned long long)g_bugfix_name_changes);
         printf("[Gameplay] goalkeeper=%llu/%llu player=%llu/%llu native=%llu interpreted=%llu (changes/calls)\n",
                (unsigned long long)g_gameplay_gk_changes, (unsigned long long)g_gameplay_gk_calls,
                (unsigned long long)g_gameplay_player_changes, (unsigned long long)g_gameplay_player_calls,
@@ -2599,6 +2825,9 @@ int main(int argc, char **argv) {
         if (audio_dev) SDL_CloseAudioDevice(audio_dev);
         if (texture) SDL_DestroyTexture(texture);
         if (source_texture) SDL_DestroyTexture(source_texture);
+        if (menu_texture) SDL_DestroyTexture(menu_texture);
+        free(menu_pixels);
+        g_renderer=NULL;
         if (renderer) SDL_DestroyRenderer(renderer);
         if (g_window) SDL_DestroyWindow(g_window);
         SDL_Quit();

@@ -24,6 +24,9 @@ bool issd_save_get_info(int s, char *o, size_t n) { (void)s; snprintf(o, n, "Emp
 bool issd_save_continue_info(char *o, size_t n) { snprintf(o, n, "No checkpoint"); return false; }
 bool issd_save_continue(void) { return false; }
 const char *issd_save_error(void) { return "No checkpoint"; }
+bool issd_save_match_favorite(const void *p,size_t n,const char *l) { (void)p;(void)n;(void)l; return false; }
+bool issd_save_read_match_favorite(void **p,size_t *n) { *p=NULL; *n=0; return false; }
+bool issd_save_match_favorite_info(char *o,size_t n) { snprintf(o,n,"No favorite"); return false; }
 bool issd_save_is_legacy(int s) { (void)s; return false; }
 bool issd_load_from_slot_confirmed(int s, bool allow) { (void)allow; return issd_load_from_slot(s); }
 void issd_touch_set_pad_visible(bool visible) { (void)visible; }

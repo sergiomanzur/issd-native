@@ -34,6 +34,42 @@ const char *issd_config_get_default_path(void) {
     return s_default_config_path;
 }
 
+void issd_config_visual_preset(IssdConfig *cfg, int preset) {
+    if (!cfg || preset < ISSD_VISUAL_ORIGINAL || preset > ISSD_VISUAL_ENHANCED) return;
+    bool enhanced = preset == ISSD_VISUAL_ENHANCED;
+    cfg->aspect_ratio = enhanced ? ISSD_ASPECT_16_9 : ISSD_ASPECT_4_3;
+    cfg->true_widescreen = true;
+    cfg->scaling_filter = preset == ISSD_VISUAL_ORIGINAL ? ISSD_FILTER_NEAREST : ISSD_FILTER_SHARP;
+    cfg->internal_res = ISSD_RES_1X;
+    cfg->integer_scaling = false;
+    cfg->scanlines = false;
+    cfg->ball_outline = cfg->ball_shadow = cfg->player_markers = cfg->player_names = enhanced;
+    cfg->radar_scale = enhanced ? 2 : 1;
+    cfg->hud_scale = 1;
+    cfg->radar_position = enhanced ? 2 : 0;
+    cfg->radar_opacity = 75;
+}
+
+int issd_config_visual_preset_id(const IssdConfig *cfg) {
+    if (!cfg) return ISSD_VISUAL_CUSTOM;
+    for (int p = ISSD_VISUAL_ORIGINAL; p <= ISSD_VISUAL_ENHANCED; ++p) {
+        IssdConfig expected = *cfg;
+        issd_config_visual_preset(&expected, p);
+        if (cfg->aspect_ratio == expected.aspect_ratio &&
+            cfg->true_widescreen == expected.true_widescreen &&
+            cfg->scaling_filter == expected.scaling_filter &&
+            cfg->internal_res == expected.internal_res &&
+            cfg->integer_scaling == expected.integer_scaling &&
+            cfg->scanlines == expected.scanlines &&
+            cfg->ball_outline == expected.ball_outline && cfg->ball_shadow == expected.ball_shadow &&
+            cfg->player_markers == expected.player_markers && cfg->player_names == expected.player_names &&
+            cfg->radar_scale == expected.radar_scale && cfg->hud_scale == expected.hud_scale &&
+            cfg->radar_position == expected.radar_position && cfg->radar_opacity == expected.radar_opacity)
+            return p;
+    }
+    return ISSD_VISUAL_CUSTOM;
+}
+
 /* Steam Deck's panel is 1280x800, so the 16:10 preset is its exact native
  * aspect. Steam exports SteamDeck=1 to launched titles; SteamOS alone is
  * not enough because a desktop SteamOS install can be any resolution.
@@ -63,6 +99,10 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->internal_res = ISSD_RES_4X;
     cfg->scaling_filter = ISSD_FILTER_LINEAR;
     cfg->true_widescreen = true;
+    cfg->radar_scale = 1;
+    cfg->hud_scale = 1;
+    cfg->radar_position = 0;
+    cfg->radar_opacity = 75;
 
     cfg->audio_freq = 48000;
     cfg->master_volume = 100;
@@ -75,6 +115,9 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->debug_unhooked_code = false;
     cfg->gameplay_goalkeeper_ai = false;
     cfg->gameplay_player_ai = false;
+    cfg->gameplay_bug_fixes = false;
+    cfg->match_preset = ISSD_MATCH_ORIGINAL;
+    cfg->match_custom = (IssdMatchRules){1, 2, 0, 0, 0, 1};
     cfg->active_mod_packs[0] = 0;
     cfg->hd_texture_packs[0] = 0;
     snprintf(cfg->mods_dir, sizeof(cfg->mods_dir), "%s", "mods");
@@ -206,6 +249,18 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     int ival = 0;
     bool valid_int = parse_int(value, &ival);
     char field[64];
+    const char *rule_keys[] = {"match_preset", "match_duration", "match_difficulty",
+        "match_offside", "match_fouls", "match_cards", "match_extra_time"};
+    int *rule_values[] = {&cfg->match_preset, &cfg->match_custom.duration,
+        &cfg->match_custom.difficulty, &cfg->match_custom.offside,
+        &cfg->match_custom.fouls, &cfg->match_custom.cards, &cfg->match_custom.extra_time};
+    const int rule_max[] = {3, 2, 4, 1, 1, 1, 1};
+    for (unsigned i = 0; i < sizeof(rule_max)/sizeof(rule_max[0]); ++i) {
+        if (!strcmp(key, rule_keys[i])) {
+            if (valid_int) *rule_values[i] = clamp(ival, 0, rule_max[i]);
+            return;
+        }
+    }
     for (int p = 0; p < ISSD_PROFILE_PLAYERS; p++) {
         IssdPlayerProfile *profile = &cfg->player_profiles[p];
         snprintf(field, sizeof(field), "player_%d_schema", p + 1);
@@ -230,6 +285,21 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
         snprintf(field, sizeof(field), "touch_%d_size", i);
         if (!strcmp(key, field)) { if (valid_int) cfg->touch_size[i] = clamp(ival, 50, 200); return; }
     }
+    /* Presentation values reject malformed numbers and clamp before narrowing.
+     * Missing keys retain defaults, including legacy files with no UI settings. */
+    if (!strcmp(key, "output_resolution")) { if (valid_int) cfg->output_resolution = clamp(ival, 0, 4); return; }
+    if (!strcmp(key, "overlay_scale")) { if (valid_int) cfg->overlay_scale = clamp(ival, 0, 4); return; }
+    if (!strcmp(key, "radar_scale")) { if (valid_int) cfg->radar_scale = clamp(ival, 1, 3); return; }
+    if (!strcmp(key, "hud_scale")) { if (valid_int) cfg->hud_scale = clamp(ival, 1, 3); return; }
+    if (!strcmp(key, "radar_position")) { if (valid_int) cfg->radar_position = clamp(ival, 0, 4); return; }
+    if (!strcmp(key, "radar_opacity")) { if (valid_int) cfg->radar_opacity = clamp(ival, 25, 100); return; }
+    if (!strcmp(key, "ball_outline")) { if (valid_int) cfg->ball_outline = ival != 0; return; }
+    if (!strcmp(key, "ball_shadow")) { if (valid_int) cfg->ball_shadow = ival != 0; return; }
+    if (!strcmp(key, "player_markers")) { if (valid_int) cfg->player_markers = ival != 0; return; }
+    if (!strcmp(key, "player_names")) { if (valid_int) cfg->player_names = ival != 0; return; }
+    if (!strcmp(key, "scaling_filter")) { if (valid_int) cfg->scaling_filter = (IssdScalingFilter)clamp(ival, 0, 3); return; }
+    if (!strcmp(key, "internal_res")) { if (valid_int) cfg->internal_res = (IssdInternalResolution)clamp(ival, 0, 5); return; }
+    if (!strcmp(key, "aspect_ratio")) { if (valid_int) cfg->aspect_ratio = (IssdAspectRatio)clamp(ival, 0, ISSD_ASPECT_COUNT - 1); return; }
 
     if (strcmp(key, "rom_path") == 0) copy_config_string(cfg->rom_path, sizeof(cfg->rom_path), value);
     else if (strcmp(key, "mods_dir") == 0) copy_config_string(cfg->mods_dir, sizeof(cfg->mods_dir), value);
@@ -240,9 +310,6 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     else if (strcmp(key, "target_fps") == 0) cfg->target_fps = ival;
     else if (strcmp(key, "integer_scaling") == 0) cfg->integer_scaling = (ival != 0);
     else if (strcmp(key, "scanlines") == 0) cfg->scanlines = (ival != 0);
-    else if (strcmp(key, "aspect_ratio") == 0) cfg->aspect_ratio = (IssdAspectRatio)ival;
-    else if (strcmp(key, "internal_res") == 0) cfg->internal_res = (IssdInternalResolution)ival;
-    else if (strcmp(key, "scaling_filter") == 0) cfg->scaling_filter = (IssdScalingFilter)ival;
     else if (strcmp(key, "true_widescreen") == 0) cfg->true_widescreen = (ival != 0);
     else if (strcmp(key, "audio_freq") == 0) cfg->audio_freq = ival;
     else if (strcmp(key, "master_volume") == 0) cfg->master_volume = ival;
@@ -253,6 +320,7 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     else if (strcmp(key, "fast_menus") == 0) cfg->fast_menus = (ival != 0);
     else if (strcmp(key, "debug_unhooked_code") == 0) cfg->debug_unhooked_code = (ival != 0);
     else if (strcmp(key, "gameplay_goalkeeper_ai") == 0) cfg->gameplay_goalkeeper_ai = (ival != 0);
+    else if (strcmp(key, "gameplay_bug_fixes") == 0) cfg->gameplay_bug_fixes = (ival != 0);
     else if (strcmp(key, "gameplay_player_ai") == 0) cfg->gameplay_player_ai = (ival != 0);
     else if (strcmp(key, "active_mod_packs") == 0) { strncpy(cfg->active_mod_packs, value, sizeof(cfg->active_mod_packs)-1); cfg->active_mod_packs[sizeof(cfg->active_mod_packs)-1]=0; }
     else if (strcmp(key, "hd_texture_packs") == 0) { strncpy(cfg->hd_texture_packs, value, sizeof(cfg->hd_texture_packs)-1); cfg->hd_texture_packs[sizeof(cfg->hd_texture_packs)-1]=0; }
@@ -328,6 +396,16 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "internal_res=%d\n", (int)cfg->internal_res);
     fprintf(f, "scaling_filter=%d\n", (int)cfg->scaling_filter);
     fprintf(f, "true_widescreen=%d\n", cfg->true_widescreen ? 1 : 0);
+    fprintf(f, "output_resolution=%d\n", clamp(cfg->output_resolution, 0, 4));
+    fprintf(f, "overlay_scale=%d\n", clamp(cfg->overlay_scale, 0, 4));
+    fprintf(f, "ball_outline=%d\n", cfg->ball_outline ? 1 : 0);
+    fprintf(f, "ball_shadow=%d\n", cfg->ball_shadow ? 1 : 0);
+    fprintf(f, "player_markers=%d\n", cfg->player_markers ? 1 : 0);
+    fprintf(f, "player_names=%d\n", cfg->player_names ? 1 : 0);
+    fprintf(f, "radar_scale=%d\n", clamp(cfg->radar_scale, 1, 3));
+    fprintf(f, "hud_scale=%d\n", clamp(cfg->hud_scale, 1, 3));
+    fprintf(f, "radar_position=%d\n", clamp(cfg->radar_position, 0, 4));
+    fprintf(f, "radar_opacity=%d\n", clamp(cfg->radar_opacity, 25, 100));
     fprintf(f, "audio_freq=%d\n", cfg->audio_freq);
     fprintf(f, "master_volume=%d\n", cfg->master_volume);
     fprintf(f, "music_volume=%d\n", cfg->music_volume);
@@ -338,6 +416,12 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "debug_unhooked_code=%d\n", cfg->debug_unhooked_code ? 1 : 0);
     fprintf(f, "gameplay_goalkeeper_ai=%d\n", cfg->gameplay_goalkeeper_ai ? 1 : 0);
     fprintf(f, "gameplay_player_ai=%d\n", cfg->gameplay_player_ai ? 1 : 0);
+    fprintf(f, "gameplay_bug_fixes=%d\n", cfg->gameplay_bug_fixes ? 1 : 0);
+    fprintf(f, "match_preset=%d\nmatch_duration=%d\nmatch_difficulty=%d\n",
+            cfg->match_preset, cfg->match_custom.duration, cfg->match_custom.difficulty);
+    fprintf(f, "match_offside=%d\nmatch_fouls=%d\nmatch_cards=%d\nmatch_extra_time=%d\n",
+            cfg->match_custom.offside, cfg->match_custom.fouls,
+            cfg->match_custom.cards, cfg->match_custom.extra_time);
     fprintf(f, "active_mod_packs=%s\n", cfg->active_mod_packs);
     fprintf(f, "hd_texture_packs=%s\n", cfg->hd_texture_packs);
     fprintf(f, "key_p1_up=%d\n", cfg->key_p1_up);

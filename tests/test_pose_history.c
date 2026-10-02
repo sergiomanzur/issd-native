@@ -1,6 +1,8 @@
 /* Locomotion continuation for objects the cartridge has stopped animating. */
 #include <assert.h>
+#include <limits.h>
 #include <stdio.h>
+#include <string.h>
 #include "issd_pose_history.h"
 
 #define OBJ 0x0900u
@@ -17,7 +19,79 @@ static uint16_t margin(int x, uint16_t frozen) {
   return issd_pose_history_pose(OBJ, x, 100, frozen);
 }
 
+static void reject_state(const uint8_t *bad, size_t size) {
+  uint8_t before[ISSD_POSE_HISTORY_STATE_SIZE], after[ISSD_POSE_HISTORY_STATE_SIZE];
+  issd_pose_history_save_state(before);
+  assert(!issd_pose_history_validate_state(bad, size));
+  assert(!issd_pose_history_load_state(bad, size));
+  issd_pose_history_save_state(after);
+  assert(!memcmp(before, after, sizeof(before)));
+}
+
+static void test_state(void) {
+  const uint16_t cycle[] = {0x4010, 0x4020, 0x4030, 0x4040};
+  uint8_t saved[ISSD_POSE_HISTORY_STATE_SIZE], after[ISSD_POSE_HISTORY_STATE_SIZE];
+  uint8_t bad[ISSD_POSE_HISTORY_STATE_SIZE];
+  uint16_t expected[40];
+  issd_pose_history_reset();
+  int x = 200;
+  for (unsigned i = 0; i < 32; i++, x -= 3) live(x, cycle[(i / 2) % 4]);
+  x = -40;
+  for (unsigned i = 0; i < 15; i++, x -= 3) margin(x, cycle[3]);
+  /* Include a separately observed slot with negative world coordinates. */
+  issd_pose_history_observe_world(0x400, 100, 100, -1234, -5678, 0x1234);
+  issd_pose_history_save_state(saved);
+  assert(issd_pose_history_validate_state(saved, sizeof(saved)));
+  assert(saved[1] == 0x2e && saved[2] == 0xfb && saved[3] == 0xff && saved[4] == 0xff);
+  int saved_x = x;
+  for (unsigned i = 0; i < 40; i++, x -= 3) expected[i] = margin(x, cycle[3]);
+  issd_pose_history_reset();
+  assert(issd_pose_history_load_state(saved, sizeof(saved)));
+  issd_pose_history_save_state(after);
+  assert(!memcmp(saved, after, sizeof(saved)));
+  assert(issd_pose_history_last_pose(0x400) == 0x1234);
+  x = saved_x;
+  for (unsigned i = 0; i < 40; i++, x -= 3) assert(margin(x, cycle[3]) == expected[i]);
+  reject_state(NULL, sizeof(saved));
+  for (size_t n = 0; n < sizeof(saved); n++) reject_state(saved, n);
+  reject_state(saved, sizeof(saved) + 1);
+  const unsigned offsets[] = {0, 9, 10, 75, 76, 129, 134, 160, 161, 162, 163, 169, 171,
+                             ISSD_POSE_HISTORY_STATE_SIZE - 1};
+  const uint8_t values[] = {2, 2, 2, 9, 8, 27, 6, 13, 2, 12, 5, 8, 1, 1};
+  for (unsigned i = 0; i < sizeof(offsets) / sizeof(offsets[0]); i++) {
+    memcpy(bad, saved, sizeof(bad));
+    bad[offsets[i]] = values[i];
+    reject_state(bad, sizeof(bad));
+  }
+  /* Serialized signed 32-bit extremes remain valid. Travel arithmetic must
+   * safely handle both subtraction and absolute values after restoration. */
+  const uint32_t extremes[] = {UINT32_C(0x80000000), UINT32_C(0x7fffffff),
+                              UINT32_C(0xffff7fff), UINT32_C(0x00008000)};
+  for (unsigned coordinate = 0; coordinate < 18; coordinate++) {
+    unsigned offset = coordinate < 2 ? 1u + coordinate * 4u
+                                     : 11u + (coordinate - 2u) * 4u;
+    for (unsigned i = 0; i < sizeof(extremes) / sizeof(extremes[0]); i++) {
+      memcpy(bad, saved, sizeof(bad));
+      for (unsigned byte = 0; byte < 4; byte++)
+        bad[offset + byte] = (uint8_t)(extremes[i] >> (byte * 8u));
+      assert(issd_pose_history_load_state(bad, sizeof(bad)));
+      issd_pose_history_observe_world(0x400, 100, 100, INT_MAX, INT_MAX, 0x1234);
+      issd_pose_history_observe_world(0x400, 100, 100, INT_MIN, INT_MIN, 0x1234);
+      issd_pose_history_save_state(after);
+      assert(issd_pose_history_validate_state(after, sizeof(after)));
+    }
+    const uint32_t boundaries[] = {UINT32_C(0xffff8000), UINT32_C(0x00007fff)};
+    for (unsigned i = 0; i < 2; i++) {
+      memcpy(bad, saved, sizeof(bad));
+      for (unsigned byte = 0; byte < 4; byte++)
+        bad[offset + byte] = (uint8_t)(boundaries[i] >> (byte * 8u));
+      assert(issd_pose_history_validate_state(bad, sizeof(bad)));
+    }
+  }
+}
+
 int main(void) {
+  test_state();
   /* The live window requires x in [0, 288) and y in [-32, 288). */
   assert(issd_pose_history_live_window(0, 0));
   assert(!issd_pose_history_live_window(-1, 0));
@@ -120,9 +194,8 @@ int main(void) {
   for (int i = 0; i < 10; i++) distinct += seen[i];
   assert(distinct >= 8);         /* walks the whole 10-pose cycle, not 4 of it */
 
-  /* A cycle once demonstrated is remembered: a player is interrupted by turns
-   * and tackles constantly, and requiring two clean periods immediately before
-   * crossing out left almost every margin frame with nothing to continue. */
+  /* A new action outside the learned cycle must retain its own descriptor.
+   * Continuing a previous run would turn tackles and turns into running. */
   issd_pose_history_reset();
   x = 200;
   for (int rep = 0; rep < 3; rep++)
@@ -139,7 +212,20 @@ int main(void) {
     if (g != prev) changes++;
     prev = g;
   }
-  assert(changes >= 6);
+  assert(changes == 0);
+
+  /* Advancing cartridge descriptors in the margin are authoritative. The
+   * hold window prevents replacing a slower, still-live animation step. */
+  issd_pose_history_reset();
+  x = 200;
+  for (int rep = 0; rep < 4; rep++)
+    for (int i = 0; i < 4; i++) { live(x, cyc[i]); x -= 3; live(x, cyc[i]); x -= 3; }
+  x = -20;
+  for (int f = 0; f < 24; f++) {
+    uint16_t actual = cyc[(f/2) % 4];
+    x -= 2;
+    assert(margin(x, actual) == actual);
+  }
 
   /* Auxiliary records are not on the object grid and are passed through. */
   issd_pose_history_observe(0x04A0, -40, 100, 0x1234);
@@ -155,6 +241,20 @@ int main(void) {
   assert(!issd_pose_history_live_window(-1, 100));
   assert(issd_pose_history_live_window(0, 100));
   assert(live(0, 0x4777) == 0x4777);
+
+  /* A disabled animation must not revive a previous action or run cycle. */
+  issd_pose_history_reset();
+  x = 200;
+  for (int rep = 0; rep < 4; rep++)
+    for (int i = 0; i < 4; i++) { live(x, cyc[i]); x -= 3; live(x, cyc[i]); x -= 3; }
+  x = -40;
+  for (int f = 0; f < 20; f++) { x -= 3; margin(x, frozen); }
+  assert(margin(x - 3, 0) == 0);
+  assert(issd_pose_history_last_pose(OBJ) == 0);
+  for (int f = 0; f < 20; f++) {
+    x -= 3;
+    assert(margin(x, frozen) == frozen); /* reused slot requires fresh evidence */
+  }
 
   puts("pose history tests passed");
   return 0;

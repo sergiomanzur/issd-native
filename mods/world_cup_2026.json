@@ -4976,6 +4976,7 @@
     },
     {
       "team_id": 15,
+      "kit_record": 36,
       "name": "Swiss",
       "short_name": "SUI",
       "country_code": "SUI",
@@ -7106,6 +7107,7 @@
     },
     {
       "team_id": 18,
+      "kit_record": 37,
       "name": "Austria",
       "short_name": "AUT",
       "country_code": "AUT",
@@ -7461,6 +7463,7 @@
     },
     {
       "team_id": 26,
+      "kit_record": 43,
       "name": "Turkey",
       "short_name": "TUR",
       "country_code": "TUR",
@@ -8881,6 +8884,7 @@
     },
     {
       "team_id": 23,
+      "kit_record": 42,
       "name": "Poland",
       "short_name": "POL",
       "country_code": "POL",
@@ -9236,6 +9240,7 @@
     },
     {
       "team_id": 21,
+      "kit_record": 40,
       "name": "Canada",
       "short_name": "CAN",
       "country_code": "CAN",
@@ -10660,6 +10665,7 @@
     },
     {
       "team_id": 19,
+      "kit_record": 38,
       "name": "Ecuador",
       "short_name": "ECU",
       "country_code": "ECU",

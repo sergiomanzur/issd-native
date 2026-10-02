@@ -6,6 +6,7 @@
 #include "issd_config.h"
 #include "issd_mod.h"
 #include "issd_save.h"
+#include "issd_match.h"
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
@@ -36,6 +37,9 @@ int issd_touch_rects(const void **out) { (void)out; return 0; }
 bool issd_touch_center(int c,int *x,int *y) { (void)c;(void)x;(void)y;return false; }
 void issd_request_quit(void) { }
 void issd_restart_application(void) { }
+bool issd_save_match_favorite(const void *p,size_t n,const char *l) { (void)p;(void)n;(void)l; return false; }
+bool issd_save_read_match_favorite(void **p,size_t *n) { *p=NULL; *n=0; return false; }
+bool issd_save_match_favorite_info(char *o,size_t n) { snprintf(o,n,"No favorite"); return false; }
 
 #define ROW_INTERNAL_RES 5
 
@@ -46,6 +50,7 @@ static void select_internal_res_row(void) {
 
 int main(void) {
     issd_config_init_defaults(&g_issd_config);
+    issd_match_init(g_ram, &g_issd_config, NULL, NULL);
     issd_menu_init();
     issd_menu_set_input_reset_callback(reset_input);
 
@@ -65,6 +70,13 @@ int main(void) {
 
     /* CRT genuinely renders into the scaled buffer, so it still cycles. */
     g_issd_config.scaling_filter = ISSD_FILTER_CRT;
+    issd_menu_navigate_right();
+    assert(g_issd_config.internal_res == ISSD_RES_2X);
+    issd_menu_navigate_left();
+    assert(g_issd_config.internal_res == ISSD_RES_1X);
+
+    /* Sharp uses the integer intermediate before final display scaling. */
+    g_issd_config.scaling_filter = ISSD_FILTER_SHARP;
     issd_menu_navigate_right();
     assert(g_issd_config.internal_res == ISSD_RES_2X);
     issd_menu_navigate_left();
@@ -156,8 +168,41 @@ int main(void) {
     for (unsigned i = 0; i < sizeof framebuffer / sizeof framebuffer[0]; i++) framebuffer[i] = 0xffffffff;
     issd_menu_render(framebuffer, 256, 224);
     assert(framebuffer[102 * 256 + 20] == 0xff002244); /* Old page text must be erased. */
+    g_overlay_menu.current_item = 3;
+    assert(!g_issd_config.gameplay_bug_fixes);
+    issd_menu_confirm(); assert(g_issd_config.gameplay_bug_fixes);
+    issd_menu_navigate_left(); assert(!g_issd_config.gameplay_bug_fixes);
+    issd_menu_handle_click(30, 105, 256, 224); assert(g_issd_config.gameplay_bug_fixes);
+    issd_menu_navigate_down(); assert(g_overlay_menu.current_item == 4);
+    issd_menu_navigate_down(); assert(g_overlay_menu.current_item == 0);
+    issd_menu_navigate_up(); assert(g_overlay_menu.current_item == 4);
+    issd_menu_confirm();
+    assert(g_overlay_menu.page == ISSD_MENU_PAGE_MAIN && g_overlay_menu.current_item == 17);
+    issd_menu_confirm();
     issd_menu_cancel();
     assert(g_overlay_menu.page == ISSD_MENU_PAGE_MAIN && g_overlay_menu.current_item == 17);
+    issd_menu_confirm();
+    g_overlay_menu.current_item = 2; issd_menu_confirm();
+    assert(g_overlay_menu.page == ISSD_MENU_PAGE_MATCH);
+    g_overlay_menu.current_item = 0; issd_menu_confirm();
+    assert(issd_menu_is_open()); /* no invented kickoff checkpoint */
+    assert(strstr(g_overlay_menu.status_message, "checkpoint"));
+    issd_menu_render(framebuffer, 256, 224);
+    bool visible_error = false;
+    for (int y = 192; y < 200; ++y) for (int x = 16; x < 240; ++x)
+        visible_error |= framebuffer[y * 256 + x] == 0xffffaa00;
+    assert(visible_error); /* failures must be readable while this page is paused */
+    g_overlay_menu.current_item = 5;
+    issd_menu_navigate_right(); assert(g_issd_config.match_preset == ISSD_MATCH_CLASSIC);
+    issd_menu_navigate_right(); assert(g_issd_config.match_preset == ISSD_MATCH_CASUAL);
+    g_overlay_menu.current_item = 7;
+    issd_menu_navigate_right();
+    assert(g_issd_config.match_preset == ISSD_MATCH_CUSTOM && g_issd_config.match_custom.duration == 1);
+    g_overlay_menu.current_item = 12; issd_menu_navigate_down();
+    assert(g_overlay_menu.current_item == 13 && g_overlay_menu.scroll > 0);
+    issd_menu_render(framebuffer, 256, 224);
+    issd_menu_cancel(); assert(g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY);
+    issd_menu_cancel(); assert(g_overlay_menu.page == ISSD_MENU_PAGE_MAIN);
     g_overlay_menu.current_item = 1;
     issd_menu_confirm();
     assert(g_overlay_menu.page == ISSD_MENU_PAGE_CONTROLS);

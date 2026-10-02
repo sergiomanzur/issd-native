@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 /* Continues locomotion animation for objects sitting in the widescreen margin.
@@ -15,8 +16,10 @@
  * replays the locomotion cycle it last saw, at the cadence it saw. Nothing is
  * written back to WRAM, so the simulation is untouched.
  *
- * It replays the last cycle; it cannot invent an action that began out of view.
- * A player who starts a slide tackle in the margin still shows a run cycle. */
+ * The widescreen renderer supplies complete animation descriptors as tokens,
+ * pairing each continued geometry with its actual graphics. It only continues
+ * a frozen member of a demonstrated cycle. Changed or unlearned descriptors
+ * retain the cartridge action; it cannot invent an action begun out of view. */
 
 #ifdef __cplusplus
 extern "C" {
@@ -26,12 +29,23 @@ extern "C" {
 #define ISSD_POSE_FIRST_OBJECT 0x0400u
 #define ISSD_POSE_END_OBJECT   0x1B00u
 
+/* Portable little-endian records with signed 32-bit world coordinates. */
+#define ISSD_POSE_HISTORY_STATE_SIZE (23u * 176u)
+void issd_pose_history_save_state(uint8_t *state);
+bool issd_pose_history_validate_state(const uint8_t *state, size_t size);
+bool issd_pose_history_load_state(const uint8_t *state, size_t size);
+
 /* Forget every observation. Call when continuity with the previous presented
  * frame is broken (state load, scene cut). */
 void issd_pose_history_reset(void);
 
-/* Record one object once per frame, before reconstructing it. */
+/* Record one object once per frame, before reconstructing it. A zero token
+ * marks an inactive animation and forgets all evidence for that object slot. */
 void issd_pose_history_observe(unsigned object, int x, int y, uint16_t pose);
+/* Screen coordinates determine culling; world coordinates determine travel,
+ * so camera panning cannot make a stationary player run in place. */
+void issd_pose_history_observe_world(unsigned object, int x, int y,
+                                     int world_x, int world_y, uint16_t pose);
 
 /* Pose to reconstruct this object with: the live pose whenever the game is
  * still animating it, otherwise a continued one. Falls back to the live pose

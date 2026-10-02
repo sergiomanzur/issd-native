@@ -14,6 +14,7 @@ def test_native_widescreen_preparation(tmp_path):
             repo / "tests/test_widescreen_native.c",
             repo / "ISSDNative/issd_widescreen.c",
             repo / "ISSDNative/issd_pose_history.c",
+            repo / "ISSDNative/issd_animation.c",
         ],
         [
             repo / "ISSDNative",

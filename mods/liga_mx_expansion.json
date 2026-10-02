@@ -1075,6 +1075,7 @@
     },
     {
       "team_id": 19,
+      "kit_record": 38,
       "name": "Pumas UNAM",
       "short_name": "PUM",
       "country_code": "MEX",
@@ -1431,6 +1432,7 @@
     },
     {
       "team_id": 20,
+      "kit_record": 39,
       "name": "Deportivo Toluca",
       "short_name": "TOL",
       "country_code": "MEX",
@@ -1787,6 +1789,7 @@
     },
     {
       "team_id": 21,
+      "kit_record": 40,
       "name": "Atlas FC",
       "short_name": "ATS",
       "country_code": "MEX",
@@ -4637,6 +4640,7 @@
     },
     {
       "team_id": 22,
+      "kit_record": 41,
       "name": "Club Necaxa",
       "short_name": "NEC",
       "country_code": "MEX",
@@ -5351,6 +5355,7 @@
     },
     {
       "team_id": 18,
+      "kit_record": 37,
       "name": "Mazatl?n FC",
       "short_name": "MZT",
       "country_code": "MEX",
@@ -6063,6 +6068,7 @@
     },
     {
       "team_id": 23,
+      "kit_record": 42,
       "name": "Quer?taro FC",
       "short_name": "QRO",
       "country_code": "MEX",
@@ -7488,6 +7494,7 @@
     },
     {
       "team_id": 15,
+      "kit_record": 36,
       "name": "Leones Negros UdeG",
       "short_name": "UDG",
       "country_code": "MEX",
@@ -8912,6 +8919,7 @@
     },
     {
       "team_id": 26,
+      "kit_record": 43,
       "name": "Correcaminos UAT",
       "short_name": "COR",
       "country_code": "MEX",

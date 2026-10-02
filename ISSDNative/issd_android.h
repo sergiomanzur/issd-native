@@ -32,6 +32,9 @@ void issd_android_pick_mods_folder(void);
 bool issd_android_is_picker_cancelled(void);
 bool issd_android_is_finishing(void);
 void issd_android_set_game_running(bool running);
+/* Unconsumed overlay-safe edges, in SDL window-coordinate pixels. Renderer
+ * output pixels may differ: scale each axis by output_size/window_size. */
+void issd_android_safe_insets(int *left, int *top, int *right, int *bottom);
 
 #else
 
@@ -46,6 +49,12 @@ static inline void issd_android_pick_mods_folder(void) {}
 static inline bool issd_android_is_picker_cancelled(void) { return false; }
 static inline bool issd_android_is_finishing(void) { return false; }
 static inline void issd_android_set_game_running(bool running) { (void)running; }
+static inline void issd_android_safe_insets(int *left, int *top, int *right, int *bottom) {
+    if (left) *left = 0;
+    if (top) *top = 0;
+    if (right) *right = 0;
+    if (bottom) *bottom = 0;
+}
 
 #endif
 

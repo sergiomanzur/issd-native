@@ -17,7 +17,7 @@ def run(root, exe, rom, frames):
     for name, aspect, enabled, width in [
         ("original", 0, 0, 256), ("authentic", 6, 1, 320),
         ("16_10", 3, 1, 358),
-        ("16_9", 2, 1, 398), ("21_9", 4, 1, 446),
+        ("16_9", 2, 1, 398), ("21_9", 4, 1, 504),
     ]:
         folder = root / name
         folder.mkdir(parents=True, exist_ok=True)

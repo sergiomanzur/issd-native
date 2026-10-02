@@ -4,13 +4,9 @@ A native recompilation and modernization of **International Superstar Soccer Del
 
 The goal is to preserve the original gameplay while adding modern controls, presentation options, saves, and editable mod packs. This is a **beta project working toward 1.0**; recompilation coverage does not establish complete gameplay or hardware fidelity.
 
-The current release is **[v0.2.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.2.0-beta.1)**, a GitHub prerelease for Windows and Android. It includes four-player local multiplayer, campaign save recovery, cartridge password interoperability, and optional gameplay AI tweaks. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.2.0-beta.1.md).
+The current release is **[v0.3.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.3.0-beta.1)**, a GitHub prerelease for Windows and Android. It adds configurable per-player controls and touch layouts, exhibition rematches/drills and favorites, verified original-game bug fixes, and improved graphics/readability including widened penalty scenery. Four-player local play, campaign recovery, cartridge password interoperability and optional AI tweaks remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.3.0-beta.1.md).
 
-Current source also includes **unreleased per-player remapping/deadzones,
-configurable touch layouts, and a background/resume pause path**. These additions
-are not in the published v0.2.0-beta.1 downloads. The [supported-feature inventory](docs/SUPPORTED_FEATURES.md)
-records actual behavior and inactive settings; [acceptance checks](docs/ACCEPTANCE_TESTS.md)
-separate automated evidence from pending complete-campaign and device testing.
+The [supported-feature inventory](docs/SUPPORTED_FEATURES.md) records actual behavior and inactive settings; [acceptance checks](docs/ACCEPTANCE_TESTS.md) separate automated evidence from pending complete-campaign and device testing. Original formation/substitution menus have [input-driven acceptance checks](docs/TEAM_CHANGES_ACCEPTANCE.md) for first-team commits, request cancellation and advancing save/reload with AI off/on. The project remains a beta; netplay is a [future design](docs/NETPLAY_DESIGN.md).
 
 ## Current platforms
 
@@ -31,17 +27,19 @@ Current Windows, Linux, and Android builds succeed; gameplay and controller regr
 - **Local multiplayer:** Up to four independent SDL2 gamepads, SNES multitap support, stable player slots, connection notifications, and automatic pause when a gamepad disconnects during live play.
 - **Controls:** Saved P1–P4 Classic/FIFA/PES/custom gamepad profiles, in-game remapping and separate stick/trigger deadzones; remappable P1 keyboard inputs; individual Android touch positions and sizes. See [controls](docs/CONTROLS.md).
 - **Overlay menu:** Presentation, audio, controls, saves, and mod selection, accessible from keyboard, gamepad, and Android touch.
+- **Exhibition shortcuts:** Instant rematch, independent drill checkpoints, a persistent favorite setup, and Original/Classic/Casual/custom rules using existing cartridge options. See [match shortcuts](docs/MATCH_SHORTCUTS.md).
 - **Campaign saves:** Explicit Continue, safe campaign checkpoints, two backup generations, and compatibility checks against applied gameplay data. See [the campaign saves guide](docs/CAMPAIGN_SAVES.md).
 - **Password bridge:** Native entry/export for all six original Cup/World Series password formats, original checksum validation and restoration, and autosave after import. Requires unmodified retail gameplay. See [the password guide](docs/PASSWORD_BRIDGE.md).
 - **Save states:** Quicksave/quickload and eight numbered slots with integrity and gameplay compatibility checks. New snapshots preserve native CPU/timing and multitap state. Older v4–v8 raw snapshots require a compatibility warning and explicit confirmation.
-- **Presentation:** Windowed/fullscreen display, 4:3 and square-pixel modes, integer scaling, an Authentic 320 view, expanded pitch/stadium rendering for 16:10, 16:9, and 21:9, nearest/linear filtering, and a CPU CRT scanline filter.
+- **Presentation:** Window-size presets, actual resolution reporting, independent integer scaling, 4:3/square-pixel/Authentic 320 and wider views, nearest/linear/Sharp/CRT filters, sharp scalable overlays, Original/Sharp/Enhanced presets with a sample preview/reset, and optional ball/player/radar readability with label size and radar placement/opacity controls. See [graphics settings](docs/GRAPHICS_SETTINGS.md).
 - **Modding:** Ordered roster/formation/kit/stadium packs, striped and away kits, custom flags, team plates, squad photos, and BMP background tile replacements. ISSD Mod Studio provides a visual editor.
 - **Gameplay tweaks:** Stackable, persistent goalkeeper shot tracking and formation/substitution-aware player positioning, controlled from the new **Gameplay Tweaks** overlay page. Both default off and apply live. See [the gameplay tweaks guide](docs/GAMEPLAY_TWEAKS.md).
+- **Original bug fixes:** One persistent master toggle for six verified corrections, with original behavior when Off and save compatibility checks. Reported glitches without a verified cause remain unresolved. See [the bug-fix guide](docs/ORIGINAL_BUG_FIXES.md).
 - **Developer tools:** Headless simulation, screenshots, RAM/state dumps, frame-based input scripts, ROM verification, and regression tests.
 
-Gameplay advances at 60 Hz. Higher presentation FPS settings do not add interpolated gameplay frames. Resolution scaling enlarges the rendered image; it does not redraw the original assets in HD. The internal-resolution control applies to CRT filtering, with scaled composition also used by HD packs.
+Gameplay advances at 60 Hz. Higher presentation FPS settings do not add interpolated gameplay frames. Resolution scaling enlarges the rendered image; it does not redraw the original assets in HD. Intermediate scaling applies to CRT, Sharp and HD tile composition; actual output dimensions are reported separately.
 
-Widescreen extends the view using game metatiles and supplemental sprite rendering. Wider presets remain experimental: the original game's object culling can leave players at the outer edges frozen or incompletely animated. Use 4:3 for the baseline presentation. Audio fidelity and broader end-to-end gameplay validation remain targets.
+Widescreen extends the view using game metatiles and supplemental sprites. Verified culled player states continue their authored ROM animations without prior cycle learning; learned locomotion provides a fallback. Geometry and graphics stay paired without changing simulation. Wider presets remain experimental: unsupported offscreen actions can still hold. The goal-facing penalty view also extends its grass/crowd scenery for 16:10, 16:9 and 21:9 while retaining the original goal, players and HUD. Use 4:3 for the baseline presentation. Audio fidelity and broader end-to-end gameplay validation remain targets.
 
 ## Getting started
 
@@ -193,9 +191,24 @@ python -m pytest tests/test_local_multiplayer.py -q
 
 Tests need Python and pytest, with compiler/SDL2 requirements for native harnesses. Some also require Pillow. ROM-backed checks require your supported ROM and a built executable; see the individual test files for setup.
 
-The latest full project-suite run (2026-10-01) produced **174 passed, 2 failed, 1 skipped, and 7 subtests passed**. Campaign, password, recovery, transactional snapshot, advancing replay, multiplayer, and gameplay-tweak checks passed. After the final input-clearing and remapping-capture fixes, focused controls, configuration, touch, host lifecycle, menu, multiplayer, campaign and AI-hook verification produced **30 passed** in 125.74 seconds. A separately added fresh-start, nine-match accelerated Cup test passed in 266.03 seconds, including Continue after every result and completion. The current Windows `build/ISSDNative.exe`, Linux, and Android `arm64-v8a`/`x86_64` release builds compiled successfully.
+The latest full project-suite run (2026-10-01) produced **227 passed, 2 failed, 2 skipped, and 7 subtests passed** in 971.41 seconds. Both failures are the existing mod appearance-nibble expectation and shared-kit warnings. Graphics checks cover presets/preview/reset, label/radar controls, real SDL software rendering from 320x240 through 4K, and renderer-reset recovery. Five real-ROM viewports passed at frames 600 and 1200 with identical guest RAM and exact original center pixels. Windows, Linux and Android `arm64-v8a`/`x86_64` builds succeeded; physical display/touch acceptance remains pending. See [graphics settings](docs/GRAPHICS_SETTINGS.md) and [acceptance records](docs/ACCEPTANCE_TESTS.md).
 
-The two remaining baseline failures are an appearance-nibble expectation (`test_mod_rom_patching`) and shipped-pack kit-sharing warnings (`test_shipped_packs_validate`). The earlier menu harness linking and snapshot replay failures are fixed. Full tournament, shootout, substitution and device acceptance evidence is tracked in [ACCEPTANCE_TESTS.md](docs/ACCEPTANCE_TESTS.md). Physical four-controller matches, Android controls, physical-cartridge password comparison, and gameplay-tweak balance still need playtesting. This is not yet a fully passing 1.0 test baseline.
+Final graphics verification against the updated Windows executable returned **17 passed in 68.07 seconds**, including a live graphical match replay and paused HD capture geometry.
+
+The offscreen-animation follow-up passed **18 focused checks** against the updated
+Windows executable. Verified culled states now use the original ROM animation
+tables, including cold starts and terminal holds. The reproducible
+[match graphics checks](docs/GRAPHICS_MATCH_ACCEPTANCE.md) track original pause/replay,
+period transitions, extra time and shootout entry. Its extended run passed
+**3 tests in 213.68 seconds**, comparing 11 scenes at three widths with identical
+full game RAM and native center pixels. Remaining gaps are documented.
+
+The penalty-camera follow-up passed **11 focused checks** and the expanded
+**3-test retail run in 279.40 seconds** (16 scenes, 53 viewport runs and 1,197
+captures), including actual kicks and subsequent turns at 16:10/16:9/21:9.
+Windows, Linux and Android builds succeeded.
+
+The two remaining baseline failures are an appearance-nibble expectation (`test_mod_rom_patching`) and shipped-pack kit-sharing warnings (`test_shipped_packs_validate`). The earlier menu harness linking and snapshot replay failures are fixed. Full tournament, shootout, team-change and device acceptance evidence is tracked in [ACCEPTANCE_TESTS.md](docs/ACCEPTANCE_TESTS.md). Physical four-controller matches, Android controls, physical-cartridge password comparison, and gameplay-tweak balance still need playtesting. This is not yet a fully passing 1.0 test baseline.
 
 Useful runtime options:
 
@@ -211,6 +224,7 @@ Useful runtime options:
 | `--frames <count>` | Stop after the requested simulation frame count |
 | `--auto-start <frame>` | Start automated menu navigation into a match |
 | `--screenshot <file.bmp>` | Save the final rendered frame |
+| `--graphics-report <file.json>` | Record actual presentation dimensions, renderer resets and CPU/total rendering times |
 | `--dump-state <file>` | Write a diagnostic state dump |
 | `--script <file>` | Apply frame-based inputs, optionally addressed to P1–P4 |
 | `--import-password-symbols <file>` | Import raw palette-index bytes on the settled cartridge Password screen |

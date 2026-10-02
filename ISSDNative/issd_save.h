@@ -58,6 +58,12 @@ void issd_save_set_context(const uint8_t *base, size_t base_size,
 bool issd_save_campaign(const char *label);
 bool issd_save_continue(void);
 bool issd_save_continue_info(char *out_info, size_t max_len);
+/* Cached full runtime setup, independent of campaign and numbered slots.
+ * All favorite operations require an applied context and pure validator.
+ * Successful read returns malloc-owned raw payload; failures reset outputs. */
+bool issd_save_match_favorite(const void *data, size_t size, const char *label);
+bool issd_save_read_match_favorite(void **data, size_t *size);
+bool issd_save_match_favorite_info(char *out_info, size_t max_len);
 const char *issd_save_error(void);
 bool issd_save_is_legacy(int slot_index);
 bool issd_load_from_slot_confirmed(int slot_index, bool allow_legacy);

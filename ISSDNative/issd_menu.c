@@ -1,5 +1,6 @@
 #include "issd_menu.h"
 #include "issd_controls.h"
+#include "issd_match_menu.h"
 #include "issd_password_ui.h"
 #include "issd_config.h"
 #include "issd_save.h"
@@ -129,11 +130,13 @@ const uint8_t g_issd_font8x8[96][8] = {
 #define MENU_ITEM_PICK_MODS_FOLDER 19
 #define MENU_ITEM_RESTART 20
 #define MENU_ITEM_QUIT 21
-#define MENU_TOTAL_ITEMS 22
+#define MENU_ITEM_GRAPHICS 22
+#define MENU_TOTAL_ITEMS 23
 #else
 #define MENU_ITEM_RESTART 18
 #define MENU_ITEM_QUIT 19
-#define MENU_TOTAL_ITEMS 20
+#define MENU_ITEM_GRAPHICS 20
+#define MENU_TOTAL_ITEMS 21
 #endif
 
 #define MENU_ITEM_CONTINUE 15
@@ -352,12 +355,85 @@ static void password_ui_result(IssdPasswordUiResult result) {
     }
 }
 
-/* Internal resolution only reaches the screen through the CRT filter, which
- * generates scanline darkening into a scaled buffer. Nearest and linear hand
- * the logical buffer straight to SDL, so the setting would be a label that
- * changes nothing -- keep the row inert rather than advertising six options. */
+/* CRT and sharp scaling both use the configured integer intermediate. */
 bool issd_menu_internal_res_applies(void) {
-    return g_issd_config.scaling_filter == ISSD_FILTER_CRT;
+    return g_issd_config.scaling_filter == ISSD_FILTER_CRT ||
+           g_issd_config.scaling_filter == ISSD_FILTER_SHARP;
+}
+
+#define MENU_VISIBLE_ROWS 15
+#define GRAPHICS_ROWS 18
+static int s_main_visible_rows = MENU_VISIBLE_ROWS, s_graphics_visible_rows = GRAPHICS_ROWS;
+static void menu_fit_height(int height) {
+    s_main_visible_rows = (height - 44) / 12;
+    s_graphics_visible_rows = (height - 44) / 14;
+    if (s_main_visible_rows < 1) s_main_visible_rows = 1;
+    if (s_main_visible_rows > MENU_VISIBLE_ROWS) s_main_visible_rows = MENU_VISIBLE_ROWS;
+    if (s_graphics_visible_rows < 1) s_graphics_visible_rows = 1;
+    if (s_graphics_visible_rows > GRAPHICS_ROWS) s_graphics_visible_rows = GRAPHICS_ROWS;
+}
+static int s_output_width, s_output_height, s_native_width = 256, s_native_height = 224;
+static int s_intermediate_width, s_intermediate_height;
+void issd_menu_set_intermediate_metrics(int width, int height) {
+    s_intermediate_width = width; s_intermediate_height = height;
+}
+void issd_menu_set_display_metrics(int ow, int oh, int nw, int nh) {
+    s_output_width = ow; s_output_height = oh;
+    if (nw > 0 && nh > 0) { s_native_width = nw; s_native_height = nh; }
+}
+static void menu_keep_visible(void) {
+    int count = g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS ? GRAPHICS_ROWS : MENU_TOTAL_ITEMS;
+    int visible = g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS ? s_graphics_visible_rows : s_main_visible_rows;
+    if (g_overlay_menu.scroll > count - visible) g_overlay_menu.scroll = count - visible;
+    if (g_overlay_menu.current_item < g_overlay_menu.scroll) g_overlay_menu.scroll = g_overlay_menu.current_item;
+    if (g_overlay_menu.current_item >= g_overlay_menu.scroll + visible)
+        g_overlay_menu.scroll = g_overlay_menu.current_item - visible + 1;
+    if (g_overlay_menu.scroll < 0) g_overlay_menu.scroll = 0;
+}
+static void graphics_open(void) {
+    g_overlay_menu.page = ISSD_MENU_PAGE_GRAPHICS;
+    g_overlay_menu.current_item = g_overlay_menu.scroll = 0;
+}
+static void graphics_adjust(int direction) {
+    switch (g_overlay_menu.current_item) {
+    case 0:
+#ifdef ISSD_ANDROID
+        return; /* Android presentation follows the device display. */
+#else
+        g_issd_config.output_resolution = (g_issd_config.output_resolution + direction + 5) % 5; break;
+#endif
+    case 1: g_issd_config.aspect_ratio = (IssdAspectRatio)((g_issd_config.aspect_ratio + direction + ISSD_ASPECT_COUNT) % ISSD_ASPECT_COUNT); break;
+    case 2: g_issd_config.integer_scaling = !g_issd_config.integer_scaling; break;
+    case 3: g_issd_config.scaling_filter = (IssdScalingFilter)((g_issd_config.scaling_filter + direction + 4) % 4); break;
+    case 4: if (issd_menu_internal_res_applies()) g_issd_config.internal_res = (IssdInternalResolution)((g_issd_config.internal_res + direction + 6) % 6); break;
+    case 5: g_issd_config.overlay_scale = (g_issd_config.overlay_scale + direction + 5) % 5; break;
+    case 6: g_issd_config.ball_outline = !g_issd_config.ball_outline; break;
+    case 7: g_issd_config.ball_shadow = !g_issd_config.ball_shadow; break;
+    case 8: g_issd_config.player_markers = !g_issd_config.player_markers; break;
+    case 9: g_issd_config.player_names = !g_issd_config.player_names; break;
+    case 10: g_issd_config.radar_scale = (g_issd_config.radar_scale - 1 + direction + 3) % 3 + 1; break;
+    case 11: g_issd_config.hud_scale = (g_issd_config.hud_scale - 1 + direction + 3) % 3 + 1; break;
+    case 12: g_issd_config.radar_position = (g_issd_config.radar_position + direction + 5) % 5; break;
+    case 13: g_issd_config.radar_opacity = ((g_issd_config.radar_opacity / 25 - 1 + direction + 4) % 4 + 1) * 25; break;
+    case 14: {
+        int preset = issd_config_visual_preset_id(&g_issd_config);
+        if (preset == ISSD_VISUAL_CUSTOM) preset = direction > 0 ? ISSD_VISUAL_ENHANCED : ISSD_VISUAL_ORIGINAL;
+        issd_config_visual_preset(&g_issd_config, (preset + direction + 3) % 3); break;
+    }
+    case 15:
+        g_overlay_menu.page = ISSD_MENU_PAGE_GRAPHICS_PREVIEW;
+        g_overlay_menu.current_item = g_overlay_menu.scroll = 0;
+        return;
+    case 16:
+        issd_config_visual_preset(&g_issd_config, ISSD_VISUAL_ORIGINAL);
+        g_issd_config.output_resolution = 0;
+        g_issd_config.internal_res = ISSD_RES_1X;
+        g_issd_config.overlay_scale = 0;
+        g_issd_config.integer_scaling = g_issd_config.scanlines = false;
+        break;
+    default: issd_menu_cancel(); return;
+    }
+    issd_config_save(&g_issd_config, NULL);
 }
 
 /* Rows visible at once on the mods page; the list scrolls past that. */
@@ -384,13 +460,15 @@ static void mods_step(int direction) {
 
 static void gameplay_select(void) {
     int row = g_overlay_menu.current_item;
-    if (row == 2) {
+    if (row == 2) { issd_match_menu_open(); return; }
+    if (row == 4) {
         g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
         g_overlay_menu.current_item = MENU_ITEM_GAMEPLAY;
         return;
     }
     if (row == 0) g_issd_config.gameplay_goalkeeper_ai = !g_issd_config.gameplay_goalkeeper_ai;
     if (row == 1) g_issd_config.gameplay_player_ai = !g_issd_config.gameplay_player_ai;
+    if (row == 3) g_issd_config.gameplay_bug_fixes = !g_issd_config.gameplay_bug_fixes;
     if (s_prepare_save_context) s_prepare_save_context();
     issd_menu_refresh_continue();
     issd_config_save(&g_issd_config, NULL);
@@ -399,26 +477,34 @@ static void gameplay_select(void) {
 bool issd_menu_navigate_up(void) {
     s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW) return true;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) { g_overlay_menu.current_item = (g_overlay_menu.current_item + -1 + GRAPHICS_ROWS) % GRAPHICS_ROWS; menu_keep_visible(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MATCH) { issd_match_menu_step(-1); return true; }
     if (issd_controls_active()) { issd_controls_step(-1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_up(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
-        g_overlay_menu.current_item = (g_overlay_menu.current_item + 2) % 3; return true;
+        g_overlay_menu.current_item = (g_overlay_menu.current_item + 4) % 5; return true;
     }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(-1); return true; }
     g_overlay_menu.current_item = (g_overlay_menu.current_item - 1 + MENU_TOTAL_ITEMS) % MENU_TOTAL_ITEMS;
+    menu_keep_visible();
     return true;
 }
 
 bool issd_menu_navigate_down(void) {
     s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW) return true;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) { g_overlay_menu.current_item = (g_overlay_menu.current_item + 1 + GRAPHICS_ROWS) % GRAPHICS_ROWS; menu_keep_visible(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MATCH) { issd_match_menu_step(1); return true; }
     if (issd_controls_active()) { issd_controls_step(1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_down(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
-        g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % 3; return true;
+        g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % 5; return true;
     }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(1); return true; }
     g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % MENU_TOTAL_ITEMS;
+    menu_keep_visible();
     return true;
 }
 
@@ -428,6 +514,10 @@ static const int s_fps_presets[] = { 60, 120, 144, 165, 240, 0 };
 bool issd_menu_navigate_left(void) {
     s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW) return true;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) { graphics_adjust(-1); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MAIN && g_overlay_menu.current_item == MENU_ITEM_GRAPHICS) { graphics_open(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MATCH) { issd_match_menu_adjust(-1); return true; }
     if (issd_controls_active()) { issd_controls_adjust(-1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_left(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
@@ -456,7 +546,7 @@ bool issd_menu_navigate_left(void) {
             g_issd_config.internal_res = (IssdInternalResolution)((g_issd_config.internal_res - 1 + 6) % 6);
             break;
         case 6: /* Filter */
-            g_issd_config.scaling_filter = (IssdScalingFilter)((g_issd_config.scaling_filter - 1 + 3) % 3);
+            g_issd_config.scaling_filter = (IssdScalingFilter)((g_issd_config.scaling_filter - 1 + 4) % 4);
             break;
         case 7: { /* Target FPS */
             int idx = 0;
@@ -498,12 +588,17 @@ bool issd_menu_navigate_left(void) {
         default:
             break;
     }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MAIN && g_overlay_menu.current_item >= 3 && g_overlay_menu.current_item <= 8) issd_config_save(&g_issd_config, NULL);
     return true;
 }
 
 bool issd_menu_navigate_right(void) {
     s_legacy_confirm_slot = -2;
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW) return true;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) { graphics_adjust(1); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MAIN && g_overlay_menu.current_item == MENU_ITEM_GRAPHICS) { graphics_open(); return true; }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MATCH) { issd_match_menu_adjust(1); return true; }
     if (issd_controls_active()) { issd_controls_adjust(1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_right(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
@@ -532,7 +627,7 @@ bool issd_menu_navigate_right(void) {
             g_issd_config.internal_res = (IssdInternalResolution)((g_issd_config.internal_res + 1) % 6);
             break;
         case 6: /* Filter */
-            g_issd_config.scaling_filter = (IssdScalingFilter)((g_issd_config.scaling_filter + 1) % 3);
+            g_issd_config.scaling_filter = (IssdScalingFilter)((g_issd_config.scaling_filter + 1) % 4);
             break;
         case 7: { /* Target FPS */
             int idx = 0;
@@ -574,12 +669,17 @@ bool issd_menu_navigate_right(void) {
         default:
             break;
     }
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MAIN && g_overlay_menu.current_item >= 3 && g_overlay_menu.current_item <= 8) issd_config_save(&g_issd_config, NULL);
     return true;
 }
 
 bool issd_menu_confirm(void) {
-    if (s_prepare_save_context) s_prepare_save_context();
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW && g_overlay_menu.is_open) return issd_menu_cancel();
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS && g_overlay_menu.is_open) { graphics_adjust(1); return true; }
+    if (s_prepare_save_context && !(g_overlay_menu.page == ISSD_MENU_PAGE_MAIN &&
+        ((g_overlay_menu.current_item >= 3 && g_overlay_menu.current_item <= 8) || g_overlay_menu.current_item == MENU_ITEM_GRAPHICS))) s_prepare_save_context();
     if (!g_overlay_menu.is_open) return false;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MATCH) { issd_match_menu_confirm(); return true; }
     if (issd_controls_active()) { issd_controls_confirm(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) { gameplay_select(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
@@ -607,6 +707,7 @@ bool issd_menu_confirm(void) {
         case 2: /* Mods page */
             mods_open();
             break;
+        case MENU_ITEM_GRAPHICS: graphics_open(); break;
         case MENU_ITEM_PASSWORD:
             issd_password_ui_open();
             g_overlay_menu.page = ISSD_MENU_PAGE_PASSWORD;
@@ -701,6 +802,14 @@ bool issd_menu_confirm(void) {
 }
 
 bool issd_menu_cancel(void) {
+    if (g_overlay_menu.is_open && g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW) {
+        g_overlay_menu.page = ISSD_MENU_PAGE_GRAPHICS;
+        g_overlay_menu.current_item = 15; menu_keep_visible(); return true;
+    }
+    if (g_overlay_menu.is_open && g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) {
+        g_overlay_menu.page = ISSD_MENU_PAGE_MAIN; g_overlay_menu.current_item = MENU_ITEM_GRAPHICS; menu_keep_visible(); return true;
+    }
+    if (g_overlay_menu.is_open && g_overlay_menu.page == ISSD_MENU_PAGE_MATCH) { issd_match_menu_cancel(); return true; }
     if (!g_overlay_menu.is_open) return false;
     if (issd_controls_active()) { issd_controls_cancel(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
@@ -724,14 +833,16 @@ bool issd_menu_cancel(void) {
 bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
     if (!g_overlay_menu.is_open) return false;
     if (issd_menu_binding_capture()) return true;
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW) return issd_menu_cancel();
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
         if (s_prepare_save_context) s_prepare_save_context();
         password_ui_result(issd_password_ui_click(fb_x, fb_y, width, height));
         return true;
     }
 
-    int box_w = 240;
-    int box_h = 220;
+    int box_w = (g_overlay_menu.page == ISSD_MENU_PAGE_MAIN || g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) && width >= 400 ? 384 : 240;
+    menu_fit_height(height);
+    int box_h = height < 224 && (g_overlay_menu.page == ISSD_MENU_PAGE_MAIN || g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) ? height - 4 : 220;
     int box_x = (width - box_w) / 2;
     int box_y = (height - box_h) / 2;
     if (box_x < 0) box_x = 0;
@@ -743,6 +854,9 @@ bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
         return true;
     }
 
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MATCH) {
+        issd_match_menu_click(fb_x, fb_y, box_x, box_y); return true;
+    }
     if (issd_controls_active()) {
         int count = g_overlay_menu.page == ISSD_MENU_PAGE_CONTROLS ? 20 : g_overlay_menu.page == ISSD_MENU_PAGE_KEYBOARD ? 14 : 7;
         int row = g_overlay_menu.scroll + (fb_y - box_y - 22) / 12;
@@ -754,7 +868,7 @@ bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
         return true;
     }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
-        for (int row = 0; row < 3; row++) {
+        for (int row = 0; row < 5; row++) {
             int y = box_y + 28 + row * 24;
             if (fb_y >= y && fb_y < y + 24) {
                 g_overlay_menu.current_item = row; gameplay_select(); return true;
@@ -782,11 +896,20 @@ bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
         return true;
     }
 
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) {
+        menu_keep_visible();
+        int row = g_overlay_menu.scroll + (fb_y - box_y - 18) / 14;
+        if (fb_y >= box_y + 18 && row < GRAPHICS_ROWS && fb_y < box_y + 18 + s_graphics_visible_rows*14) { g_overlay_menu.current_item = row; graphics_adjust(fb_x < box_x + 30 ? -1 : 1); }
+        else if (fb_y >= box_y + box_h - 22) issd_menu_cancel();
+        return true;
+    }
+    menu_keep_visible();
     /* Main Menu Page */
-    int start_y = box_y + 14;
-    int row_h = MENU_TOTAL_ITEMS > 20 ? 8 : (MENU_TOTAL_ITEMS > 18 ? 9 : (MENU_TOTAL_ITEMS > 17 ? 10 : 11));
-    for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {
-        int item_y = start_y + i * row_h;
+    menu_keep_visible();
+    int start_y = box_y + 18;
+    int row_h = 12;
+    for (int i = g_overlay_menu.scroll; i < MENU_TOTAL_ITEMS && i < g_overlay_menu.scroll + s_main_visible_rows; i++) {
+        int item_y = start_y + (i - g_overlay_menu.scroll) * row_h;
         if (fb_y >= item_y && fb_y < item_y + row_h) {
             g_overlay_menu.current_item = i;
             if (fb_x > box_x + box_w * 3 / 4) {
@@ -874,6 +997,169 @@ static void issd_menu_render_mods(uint32_t *fb, int width, int height,
                "A/< >:Toggle  ESC:Back", 0xFF888888);
 }
 
+static bool s_display_render;
+/* An illustrative paused pitch, independent of live RAM or simulation. */
+static void render_graphics_preview(uint32_t *fb, int width, int height) {
+    static uint32_t sample[320*224];
+    const IssdConfig *cfg = &g_issd_config;
+    int sw = cfg->true_widescreen && cfg->aspect_ratio >= ISSD_ASPECT_16_9 ? 320 : 256;
+    int sh = 224;
+    FillBox(sample,sw,sh,0,0,sw,sh,0xFF207438);
+    for (int x=0;x<sw;x+=32) FillBox(sample,sw,sh,x,24,16,sh-24,0xFF236F36);
+    DrawBox(sample,sw,sh,8,30,sw-16,sh-38,0xFFA8CBA5);
+    FillBox(sample,sw,sh,sw/2,30,1,sh-38,0xFFA8CBA5);
+    DrawBox(sample,sw,sh,sw/2-24,sh/2-22,48,44,0xFFA8CBA5);
+    DrawBox(sample,sw,sh,8,72,38,80,0xFFA8CBA5);
+    DrawBox(sample,sw,sh,sw-46,72,38,80,0xFFA8CBA5);
+    FillBox(sample,sw,sh,0,0,sw,24,0xFF102820);
+    DrawString(sample,sw,sh,8,8,"HOME 1  AWAY 0     45:00",0xFFFFFFFF);
+    int px=sw/3, py=92;
+    FillBox(sample,sw,sh,px-3,py-12,6,6,0xFFE5B890);
+    FillBox(sample,sw,sh,px-5,py-6,10,9,0xFF50A0E8);
+    FillBox(sample,sw,sh,px-4,py+3,3,6,0xFF182830);
+    FillBox(sample,sw,sh,px+1,py+3,3,6,0xFF182830);
+    FillBox(sample,sw,sh,sw*2/3-4,62,8,12,0xFFFFA050);
+    int ballx=px+28, bally=py+12;
+    if(cfg->ball_shadow) FillBox(sample,sw,sh,ballx-4,bally+9,9,3,0xFF182A20);
+    if(cfg->ball_outline) FillBox(sample,sw,sh,ballx-3,bally-3,7,7,0xFF101820);
+    FillBox(sample,sw,sh,ballx-2,bally-2,5,5,0xFFFFFFFF);
+    int hs=cfg->hud_scale;
+    if (hs<1) hs=1;
+    if (hs>3) hs=3;
+    if(cfg->player_markers) {
+        for(int y=0;y<4*hs;y++) FillBox(sample,sw,sh,px-y/hs*hs,py+12+y,1+2*(y/hs)*hs,1,0xFF60C8FF);
+    }
+    if(cfg->player_names || cfg->player_markers) {
+        const char *name=cfg->player_names ? "PLAYER" : "P1";
+        int tx=px-(int)strlen(name)*4*hs, ty=cfg->radar_position>=3 ? 140 : 36;
+        for(;*name;name++,tx+=8*hs) for(int y=0;y<8;y++) for(int x=0;x<8;x++)
+            if(g_issd_font8x8[(unsigned char)*name-32][y] & (0x80>>x))
+                FillBox(sample,sw,sh,tx+x*hs,ty+y*hs,hs,hs,0xFF60C8FF);
+    }
+    int rs=cfg->radar_scale, rw=56+24*(rs-1), rh=32+16*(rs-1);
+    int rx=(sw-rw)/2, ry=sh-rh-8;
+    if(cfg->radar_position==1 || cfg->radar_position==3) rx=8;
+    if(cfg->radar_position==2 || cfg->radar_position==4) rx=sw-rw-8;
+    if(cfg->radar_position>=3) ry=32;
+    int opacity=cfg->radar_opacity;
+    for(int y=ry;y<ry+rh;y++) for(int x=rx;x<rx+rw;x++) {
+        uint32_t old=sample[y*sw+x], color=0xFF000000;
+        for(int shift=0;shift<24;shift+=8)
+            color|=((((old>>shift)&255)*(100-opacity)+((0xFF163E30u>>shift)&255)*opacity)/100)<<shift;
+        sample[y*sw+x]=color;
+    }
+    DrawBox(sample,sw,sh,rx,ry,rw,rh,0xFFA0C8B0);
+    FillBox(sample,sw,sh,rx+rw/2,ry,1,rh,0xFFA0C8B0);
+    FillBox(sample,sw,sh,rx+rw/3,ry+rh/2,rs+1,rs+1,0xFF60C8FF);
+    FillBox(sample,sw,sh,rx+rw*2/3,ry+rh/3,rs+1,rs+1,0xFFFFA050);
+    FillBox(sample,sw,sh,rx+rw/2+4,ry+rh/2+4,rs,rs,0xFFFFFFFF);
+    int aw=width-24, ah=height-56;
+    DrawString(fb,width,height,12,8,"PREVIEW / SAMPLE",0xFFFFD700);
+    if(aw>0 && ah>0) {
+        int numerator=4, denominator=3;
+        switch(cfg->aspect_ratio) {
+        case ISSD_ASPECT_8_7: numerator=8;denominator=7;break;
+        case ISSD_ASPECT_16_9: numerator=16;denominator=9;break;
+        case ISSD_ASPECT_16_10: numerator=16;denominator=10;break;
+        case ISSD_ASPECT_21_9: numerator=21;denominator=9;break;
+        case ISSD_ASPECT_AUTHENTIC: numerator=10;denominator=7;break;
+        default: break;
+        }
+        int dw=aw,dh=dw*denominator/numerator;
+        if(dh>ah) {dh=ah;dw=dh*numerator/denominator;}
+        int ox=(width-dw)/2,oy=24+(ah-dh)/2;
+        static const int minimum[]={1,2,3,4,6,8};
+        int prescale=1;
+        if(cfg->scaling_filter==ISSD_FILTER_SHARP) {
+            prescale=minimum[cfg->internal_res];
+            int fit=dw/sw;
+            if(dh/sh<fit) fit=dh/sh;
+            if(fit>prescale) prescale=fit;
+        }
+        for(int y=0;y<dh;y++) for(int x=0;x<dw;x++) {
+            uint32_t c=sample[(y*sh/dh)*sw+x*sw/dw];
+            /* Model the game's filter, while keeping preview chrome crisp. */
+            if(cfg->scaling_filter!=ISSD_FILTER_NEAREST) {
+                int fx=x*sw*prescale*256/dw, fy=y*sh*prescale*256/dh;
+                int x0=(fx/256)/prescale, x1=(fx/256+1)/prescale;
+                int y0=(fy/256)/prescale, y1=(fy/256+1)/prescale;
+                if(x1>=sw) x1=sw-1;
+                if(y1>=sh) y1=sh-1;
+                int wx=fx&255,wy=fy&255;
+                c=0xFF000000;
+                for(int shift=0;shift<24;shift+=8) {
+                    unsigned top=((sample[y0*sw+x0]>>shift)&255)*(256-wx)+((sample[y0*sw+x1]>>shift)&255)*wx;
+                    unsigned bottom=((sample[y1*sw+x0]>>shift)&255)*(256-wx)+((sample[y1*sw+x1]>>shift)&255)*wx;
+                    c|=((top*(256-wy)+bottom*wy)>>16)<<shift;
+                }
+            }
+            if((cfg->scaling_filter==ISSD_FILTER_CRT || cfg->scanlines) && (y&1))
+                c=0xFF000000 | ((c&0x00FEFEFE)>>1);
+            fb[(oy+y)*width+ox+x]=c;
+        }
+    }
+    DrawString(fb,width,height,12,height-22,"ENTER / ESC / TAP: Back",0xFFB0B0B0);
+}
+static void render_graphics(uint32_t *fb, int width, int height, int bx, int by, int bh) {
+#ifndef ISSD_ANDROID
+    static const char *output[] = { "AUTO", "1280x720", "1920x1080", "2560x1440", "3840x2160" };
+#endif
+    static const char *aspect[] = { "4:3 CRT", "8:7 PIXEL", "16:9 WIDE", "16:10 PC", "21:9 ULTRA", "LEGACY INTEGER", "AUTHENTIC 320" };
+    static const char *filter[] = { "NEAREST", "LINEAR", "CRT SCANLINES", "SHARP" };
+    static const int multiple[] = {1,2,3,4,6,8};
+    char rows[GRAPHICS_ROWS][64], scale[16];
+    if (g_issd_config.overlay_scale) snprintf(scale, sizeof scale, "%dX", g_issd_config.overlay_scale);
+    else snprintf(scale, sizeof scale, "AUTO");
+#ifdef ISSD_ANDROID
+    snprintf(rows[0], sizeof rows[0], "Output: DEVICE DISPLAY");
+#else
+    snprintf(rows[0], sizeof rows[0], "Window Output: <%s>", output[g_issd_config.output_resolution]);
+#endif
+    snprintf(rows[1], sizeof rows[1], "Aspect: <%s>", aspect[g_issd_config.aspect_ratio]);
+    snprintf(rows[2], sizeof rows[2], "Integer Scaling: <%s>", g_issd_config.integer_scaling ? "ON" : "OFF");
+    snprintf(rows[3], sizeof rows[3], "Game Filter: <%s>", filter[g_issd_config.scaling_filter]);
+    int m = multiple[g_issd_config.internal_res];
+    if (g_issd_config.scaling_filter == ISSD_FILTER_SHARP)
+        snprintf(rows[4], sizeof rows[4], "Sharp Minimum: <%dX %dx%d>", m, s_native_width*m, s_native_height*m);
+    else snprintf(rows[4], sizeof rows[4], "Intermediate: <%dX %dx%d>%s", m, s_native_width*m, s_native_height*m, issd_menu_internal_res_applies() ? "" : " (inactive)");
+    snprintf(rows[5], sizeof rows[5], "Overlay Text: <%s>", scale);
+    snprintf(rows[6], sizeof rows[6], "Ball Outline: <%s>", g_issd_config.ball_outline ? "ON" : "OFF");
+    snprintf(rows[7], sizeof rows[7], "Ball Shadow: <%s>", g_issd_config.ball_shadow ? "ON" : "OFF");
+    snprintf(rows[8], sizeof rows[8], "Player Markers: <%s>", g_issd_config.player_markers ? "ON" : "OFF");
+    snprintf(rows[9], sizeof rows[9], "Player Names: <%s>", g_issd_config.player_names ? "ON" : "OFF");
+    snprintf(rows[10], sizeof rows[10], "Radar: <%dX>", g_issd_config.radar_scale);
+    snprintf(rows[11], sizeof rows[11], "HUD Scale: <%dX>", g_issd_config.hud_scale);
+    static const char *position[] = {"BOTTOM CENTER", "BOTTOM LEFT", "BOTTOM RIGHT", "TOP LEFT", "TOP RIGHT"};
+    static const char *preset[] = {"ORIGINAL", "SHARP", "ENHANCED", "CUSTOM"};
+    snprintf(rows[12], sizeof rows[12], "Radar Position: <%s>", position[g_issd_config.radar_position]);
+    snprintf(rows[13], sizeof rows[13], "Radar Opacity: <%d%%>", g_issd_config.radar_opacity);
+    snprintf(rows[14], sizeof rows[14], "Visual Preset: <%s>", preset[issd_config_visual_preset_id(&g_issd_config)]);
+    snprintf(rows[15], sizeof rows[15], "Preview...");
+    snprintf(rows[16], sizeof rows[16], "Reset Graphics");
+    snprintf(rows[17], sizeof rows[17], "Back");
+    DrawString(fb, width, height, bx + 14, by + 4, "GRAPHICS / READABILITY", 0xFFFFD700);
+    menu_keep_visible();
+    for (int row = g_overlay_menu.scroll; row < GRAPHICS_ROWS && row < g_overlay_menu.scroll + s_graphics_visible_rows; row++) {
+        uint32_t color = row == g_overlay_menu.current_item ? 0xFF00FF66 : 0xFFE0E0E0;
+        int y = by + 18 + (row - g_overlay_menu.scroll)*14;
+        if (row == g_overlay_menu.current_item) DrawChar(fb,width,height,bx+4,y,'>',color);
+        char visible[64]; snprintf(visible, sizeof visible, "%s", rows[row]);
+        int chars = ((width >= 400 ? 384 : 240) - 20) / 8;
+        if (chars < (int)strlen(visible)) visible[chars] = 0;
+        DrawString(fb,width,height,bx+14,y,visible,color);
+    }
+    char metrics[64];
+    snprintf(metrics,sizeof metrics,"Output %dx%d / Game %dx%d",s_output_width,s_output_height,s_native_width,s_native_height);
+    DrawString(fb,width,height,bx+8,by+bh-30,g_issd_config.fullscreen ? "Fullscreen uses display resolution" : metrics,0xFFB0B0B0);
+    if (issd_menu_internal_res_applies()) {
+        int iw = s_intermediate_width > 0 ? s_intermediate_width : s_native_width*m;
+        int ih = s_intermediate_height > 0 ? s_intermediate_height : s_native_height*m;
+        snprintf(metrics,sizeof metrics,"Actual intermediate: %dx%d",iw,ih);
+        DrawString(fb,width,height,bx+8,by+bh-20,metrics,0xFFB0B0B0);
+    }
+    DrawString(fb,width,height,bx+8,by+bh-10,"< >:Change  ESC:Back",0xFF888888);
+}
+
 void issd_menu_render(uint32_t *fb, int width, int height) {
     if (!g_overlay_menu.is_open || !fb) return;
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) {
@@ -887,12 +1173,17 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
         uint32_t r = ((p >> 16) & 0xFF) / 3;
         uint32_t g = ((p >> 8) & 0xFF) / 3;
         uint32_t b = (p & 0xFF) / 3;
-        fb[i] = 0xFF000000 | (r << 16) | (g << 8) | b;
+        fb[i] = s_display_render ? 0 : 0xFF000000 | (r << 16) | (g << 8) | b;
+    }
+
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW) {
+        render_graphics_preview(fb,width,height); return;
     }
 
     /* 2. Menu Window Box (center) */
-    int box_w = 240;
-    int box_h = 220;
+    int box_w = (g_overlay_menu.page == ISSD_MENU_PAGE_MAIN || g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) && width >= 400 ? 384 : 240;
+    menu_fit_height(height);
+    int box_h = height < 224 && (g_overlay_menu.page == ISSD_MENU_PAGE_MAIN || g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) ? height - 4 : 220;
     int box_x = (width - box_w) / 2;
     int box_y = (height - box_h) / 2;
     if (box_x < 0) box_x = 0;
@@ -903,6 +1194,9 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
      * pages or ON/OFF labels cannot leave text from previous renders behind. */
     FillBox(fb, width, height, box_x + 1, box_y + 1, box_w - 2, box_h - 2, 0xFF002244);
 
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_MATCH) {
+        issd_match_menu_render(fb, width, height, box_x, box_y, DrawString); return;
+    }
     if (issd_controls_active()) {
         issd_controls_render(fb, width, height, box_x, box_y, DrawString);
         return;
@@ -910,21 +1204,24 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
 
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
         DrawString(fb, width, height, box_x + 48, box_y + 4, "GAMEPLAY TWEAKS", 0xFFFFD700);
-        char rows[3][29];
+        char rows[5][29];
         snprintf(rows[0], sizeof rows[0], "Goalkeeper AI: <%s>", g_issd_config.gameplay_goalkeeper_ai ? "ON" : "OFF");
         snprintf(rows[1], sizeof rows[1], "Player AI:     <%s>", g_issd_config.gameplay_player_ai ? "ON" : "OFF");
-        snprintf(rows[2], sizeof rows[2], "Back");
-        for (int row = 0; row < 3; row++) {
+        snprintf(rows[2], sizeof rows[2], "Match Shortcuts / Presets...");
+        snprintf(rows[3], sizeof rows[3], "Original Bug Fixes: <%s>", g_issd_config.gameplay_bug_fixes ? "ON" : "OFF");
+        snprintf(rows[4], sizeof rows[4], "Back");
+        for (int row = 0; row < 5; row++) {
             int y = box_y + 28 + row * 24;
             uint32_t color = row == g_overlay_menu.current_item ? 0xFF00FF66 : 0xFFE0E0E0;
             if (row == g_overlay_menu.current_item) DrawChar(fb, width, height, box_x + 4, y, '>', color);
             DrawString(fb, width, height, box_x + 14, y, rows[row], color);
         }
-        const char *help = g_overlay_menu.current_item == 0 ? "Tracks angled shots sooner" : "Formation and substitute AI";
-        DrawString(fb, width, height, box_x + 8, box_y + 112, help, 0xFFB0B0B0);
-        DrawString(fb, width, height, box_x + 8, box_y + 136, "Combine any tweaks freely", 0xFFB0B0B0);
-        DrawString(fb, width, height, box_x + 8, box_y + 148, "Changes apply immediately", 0xFFB0B0B0);
-        DrawString(fb, width, height, box_x + 8, box_y + 172, "Saves require matching tweaks", 0xFFFFAA00);
+        const char *help = g_overlay_menu.current_item == 0 ? "Tracks angled shots sooner" :
+                           g_overlay_menu.current_item == 1 ? "Formation and substitute AI" :
+                           g_overlay_menu.current_item == 3 ? "Fix original game exploits" : "Rematch, drill and favorites";
+        DrawString(fb, width, height, box_x + 8, box_y + 148, help, 0xFFB0B0B0);
+        DrawString(fb, width, height, box_x + 8, box_y + 160, "Combine any tweaks freely", 0xFFB0B0B0);
+        DrawString(fb, width, height, box_x + 8, box_y + 172, "Saves need matching tweaks", 0xFFB0B0B0);
         DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, "A/< >:Toggle  ESC:Back", 0xFF888888);
         return;
     }
@@ -934,8 +1231,15 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
         return;
     }
 
+    if (g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS) { render_graphics(fb, width, height, box_x, box_y, box_h); return; }
+
     /* 3. Title */
-    DrawString(fb, width, height, box_x + 44, box_y + 4, "ISSD NATIVE MENU", 0xFFFFD700);
+    menu_keep_visible();
+    char title[48];
+    int last_row = g_overlay_menu.scroll + s_main_visible_rows;
+    if (last_row > MENU_TOTAL_ITEMS) last_row = MENU_TOTAL_ITEMS;
+    snprintf(title, sizeof title, "ISSD MENU [%d-%d/%d]", g_overlay_menu.scroll+1, last_row, MENU_TOTAL_ITEMS);
+    DrawString(fb, width, height, box_x + 14, box_y + 4, title, 0xFFFFD700);
 
     /* Display Strings */
 
@@ -947,14 +1251,14 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9)    ? "21:9 ULTRA" :
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_AUTHENTIC) ? "AUTHENTIC 320" : "INTEGER";
 
-    const char *res_str = (g_issd_config.internal_res == ISSD_RES_1X)     ? "1X (256x224)" :
-                          (g_issd_config.internal_res == ISSD_RES_2X)     ? "2X (512x448)" :
-                          (g_issd_config.internal_res == ISSD_RES_3X)     ? "3X (720p HD)" :
-                          (g_issd_config.internal_res == ISSD_RES_4X)     ? "4X (1080p FHD)" :
-                          (g_issd_config.internal_res == ISSD_RES_6X)     ? "6X (1440p QHD)" : "8X (4K UHD)";
+    static const int res_multiple[] = {1,2,3,4,6,8};
+    int multiple = res_multiple[g_issd_config.internal_res];
+    char res_str[32];
+    snprintf(res_str, sizeof res_str, "%dX (%dx%d)", multiple,
+             s_native_width * multiple, s_native_height * multiple);
 
     const char *filter_str = (g_issd_config.scaling_filter == ISSD_FILTER_NEAREST) ? "NEAREST (SHARP)" :
-                             (g_issd_config.scaling_filter == ISSD_FILTER_LINEAR)  ? "LINEAR (SMOOTH)" : "CRT SCANLINES";
+                             (g_issd_config.scaling_filter == ISSD_FILTER_LINEAR)  ? "LINEAR (SMOOTH)" : g_issd_config.scaling_filter == ISSD_FILTER_SHARP ? "SHARP (INTEGER+LINEAR)" : "CRT SCANLINES";
 
     char fps_str[24];
     if (g_issd_config.target_fps > 0) {
@@ -970,8 +1274,9 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[2], sizeof(items[2]), "Mods...     <%s>", issd_menu_mods_label());
     snprintf(items[3], sizeof(items[3]), "Aspect:     <%s>", aspect_str);
     snprintf(items[4], sizeof(items[4]), "Widescreen: <%s>", g_issd_config.true_widescreen ? "ON (TRUE FOV)" : "OFF (4:3 NATIVE)");
-    snprintf(items[5], sizeof(items[5]), "Internal:   <%s>",
-             issd_menu_internal_res_applies() ? res_str : "CRT FILTER ONLY");
+    snprintf(items[5], sizeof(items[5]), "%s <%s>",
+             g_issd_config.scaling_filter == ISSD_FILTER_SHARP ? "Sharp Min: " : "Internal:  ",
+             issd_menu_internal_res_applies() ? res_str : "CRT/SHARP ONLY");
     snprintf(items[6], sizeof(items[6]), "Filter:     <%s>", filter_str);
     snprintf(items[7], sizeof(items[7]), "Target FPS: <%s>", fps_str);
     snprintf(items[8], sizeof(items[8]), "VSync:      <%s>", g_issd_config.vsync ? "ON" : "OFF");
@@ -991,6 +1296,7 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[MENU_ITEM_PICK_ROM], sizeof(items[MENU_ITEM_PICK_ROM]), "Choose ROM File...");
     snprintf(items[MENU_ITEM_PICK_MODS_FOLDER], sizeof(items[MENU_ITEM_PICK_MODS_FOLDER]), "Choose Mods Folder...");
 #endif
+    snprintf(items[MENU_ITEM_GRAPHICS], sizeof(items[MENU_ITEM_GRAPHICS]), "Graphics / Readability...");
     snprintf(items[MENU_ITEM_RESTART], sizeof(items[MENU_ITEM_RESTART]), "Save & Restart (applies mods)");
 #ifdef ISSD_ANDROID
     snprintf(items[MENU_ITEM_QUIT], sizeof(items[MENU_ITEM_QUIT]), "Quit (last checkpoint kept)");
@@ -998,15 +1304,19 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     snprintf(items[MENU_ITEM_QUIT], sizeof(items[MENU_ITEM_QUIT]), "Quit to Desktop (checkpoint kept)");
 #endif
 
-    int start_y = box_y + 14;
-    int row_h = MENU_TOTAL_ITEMS > 20 ? 8 : (MENU_TOTAL_ITEMS > 18 ? 9 : (MENU_TOTAL_ITEMS > 17 ? 10 : 11));
-    for (int i = 0; i < MENU_TOTAL_ITEMS; i++) {
+    menu_keep_visible();
+    int start_y = box_y + 18;
+    int row_h = 12;
+    for (int i = g_overlay_menu.scroll; i < MENU_TOTAL_ITEMS && i < g_overlay_menu.scroll + s_main_visible_rows; i++) {
         uint32_t color = (i == g_overlay_menu.current_item) ? 0xFF00FF66 : 0xFFE0E0E0;
-        int item_y = start_y + i * row_h;
+        int item_y = start_y + (i - g_overlay_menu.scroll) * row_h;
         if (i == g_overlay_menu.current_item) {
             DrawChar(fb, width, height, box_x + 4, item_y, '>', 0xFF00FF66);
         }
-        DrawString(fb, width, height, box_x + 14, item_y, items[i], color);
+        char visible[44]; snprintf(visible, sizeof visible, "%s", items[i]);
+        int chars = (box_w - 20) / 8;
+        if (chars < (int)strlen(visible)) visible[chars] = 0;
+        DrawString(fb, width, height, box_x + 14, item_y, visible, color);
     }
 
     /* 4. Footer info / Status Message */
@@ -1037,8 +1347,70 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
         DrawString(fb, width, height, box_x + 8, box_y + box_h - 22, first, 0xFFB0B0B0);
         DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, second, 0xFF888888);
     } else {
-        DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, "A:Select  < >:Change  ESC:Back", 0xFF888888);
+        DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, width >= 400 ? "UP/DN:Scroll A:Select <>:Change ESC:Back" : "UP/DN:Scroll A:Select ESC:Back", 0xFF888888);
     }
+}
+
+/* Canvas and transform shared by rendering and hit testing. Legacy submenus
+ * retain their 256x224 geometry, while long main/settings labels have room. */
+static int s_safe_left, s_safe_top, s_safe_right, s_safe_bottom;
+void issd_menu_set_safe_insets(int left, int top, int right, int bottom) {
+    s_safe_left = left > 0 ? left : 0;
+    s_safe_top = top > 0 ? top : 0;
+    s_safe_right = right > 0 ? right : 0;
+    s_safe_bottom = bottom > 0 ? bottom : 0;
+}
+static void display_safe_rectangle(int width, int height, int *x, int *y, int *w, int *h) {
+    /* Clamp by subtraction rather than summing potentially huge insets. */
+    *x = s_safe_left < width ? s_safe_left : width - 1;
+    *y = s_safe_top < height ? s_safe_top : height - 1;
+    int right = s_safe_right < width - *x ? s_safe_right : width - *x - 1;
+    int bottom = s_safe_bottom < height - *y ? s_safe_bottom : height - *y - 1;
+    *w = width - *x - right;
+    *h = height - *y - bottom;
+}
+static void display_geometry(int width, int height, int *cw, int *ch, int *scale, int *ox, int *oy) {
+    int sx,sy,sw,sh;
+    display_safe_rectangle(width,height,&sx,&sy,&sw,&sh);
+    *cw = g_overlay_menu.page == ISSD_MENU_PAGE_MAIN || g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS || g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS_PREVIEW ? 400 : 256;
+    *ch = 224;
+    if (sw < *cw) *cw = sw;
+    if (sh < *ch) *ch = sh;
+    int fit = sw / *cw;
+    if (sh / *ch < fit) fit = sh / *ch;
+    *scale = g_issd_config.overlay_scale ? g_issd_config.overlay_scale : sh / 300;
+    if (*scale < 1) *scale = 1;
+    if (*scale > fit) *scale = fit;
+    *ox = sx + (sw - *cw * *scale) / 2;
+    *oy = sy + (sh - *ch * *scale) / 2;
+}
+void issd_menu_render_display(uint32_t *argb, int width, int height) {
+    if (!argb || width <= 0 || height <= 0) return;
+    memset(argb, 0, (size_t)width*height*sizeof *argb);
+    if (!g_overlay_menu.is_open) return;
+    int cw,ch,scale,ox,oy;
+    display_geometry(width,height,&cw,&ch,&scale,&ox,&oy);
+    static uint32_t canvas[400*224];
+    memset(canvas,0,sizeof canvas);
+    s_display_render = true;
+    int status_timer = g_overlay_menu.status_timer;
+    issd_menu_render(canvas,cw,ch);
+    g_overlay_menu.status_timer = status_timer;
+    s_display_render = false;
+    for (int y=0; y<height; y++) for(int x=0;x<width;x++) argb[y*width+x] = 0xAA000000;
+    for (int y=0;y<ch;y++) for(int x=0;x<cw;x++) {
+        uint32_t p = canvas[y*cw+x];
+        if (!(p >> 24)) continue;
+        for (int dy=0;dy<scale;dy++) for (int dx=0;dx<scale;dx++)
+            argb[(oy+y*scale+dy)*width+ox+x*scale+dx] = p;
+    }
+}
+bool issd_menu_handle_display_click(int x, int y, int width, int height) {
+    if (!g_overlay_menu.is_open || width <= 0 || height <= 0) return false;
+    int cw,ch,scale,ox,oy;
+    display_geometry(width,height,&cw,&ch,&scale,&ox,&oy);
+    if (x < ox || y < oy || x >= ox+cw*scale || y >= oy+ch*scale) { issd_menu_close(); return true; }
+    return issd_menu_handle_click((x-ox)/scale,(y-oy)/scale,cw,ch);
 }
 
 /* A line over the game itself, for things the player must see even with
@@ -1046,6 +1418,13 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
  * actually applied. */
 static char s_notice[96];
 static int  s_notice_frames;
+
+bool issd_menu_has_notification(void) { return s_notice_frames > 0; }
+
+void issd_menu_tick_notification(void) {
+    if (s_notice_frames > 0) s_notice_frames--;
+    if (g_overlay_menu.status_timer > 0) g_overlay_menu.status_timer--;
+}
 
 void issd_menu_notify(const char *message, int frames) {
     if (!message) return;
@@ -1098,7 +1477,7 @@ void issd_menu_render_notification(uint32_t *fb, int width, int height) {
 
     /* Darken behind the text rather than filling it: the message sits over
      * whatever is on screen at boot, which is rarely a flat colour. */
-    for (int py = y; py < y + h && py < height; py++)
+    for (int py = y < 0 ? 0 : y; py < y + h && py < height; py++)
         for (int px = x; px < x + w && px < width; px++) {
             const uint32_t p = fb[py * width + px];
             fb[py * width + px] = 0xFF000000 |
@@ -1112,6 +1491,27 @@ void issd_menu_render_notification(uint32_t *fb, int width, int height) {
                             r->warnings ? 0xFFFFAA00 : 0xFF88FF88;
     for (int i = 0; i < lines; i++)
         DrawString(fb, width, height, x + 6, y + 3 + i * 9, line[i], colour);
+}
+
+void issd_menu_render_notification_display(uint32_t *argb, int width, int height) {
+    if (!argb || width <= 0 || height <= 0 || s_notice_frames <= 0) return;
+    int cw,ch,scale,ox,oy;
+    display_geometry(width,height,&cw,&ch,&scale,&ox,&oy);
+    static uint32_t canvas[400*224];
+    memset(canvas,0,sizeof canvas);
+    int remaining = s_notice_frames;
+    issd_menu_render_notification(canvas,cw,ch);
+    s_notice_frames = remaining;
+    /* Anchor to the bottom edge, keeping the same sharp text scale as menus. */
+    int sx,sy,sw,sh;
+    display_safe_rectangle(width,height,&sx,&sy,&sw,&sh);
+    oy = sy + sh - ch*scale;
+    for(int y=0;y<ch;y++) for(int x=0;x<cw;x++) {
+        uint32_t p = canvas[y*cw+x];
+        if (!(p >> 24)) continue;
+        for(int dy=0;dy<scale;dy++) for(int dx=0;dx<scale;dx++)
+            argb[(oy+y*scale+dy)*width+ox+x*scale+dx] = p;
+    }
 }
 
 /* ------------------------------------------- stadium name plate ------ */

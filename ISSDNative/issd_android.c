@@ -41,6 +41,35 @@ const char *issd_android_external_dir(void) { return s_external; }
 const char *issd_android_internal_dir(void) { return s_internal; }
 const char *issd_android_mods_dir(void) { return s_mods[0] ? s_mods : "mods"; }
 
+void issd_android_safe_insets(int *left, int *top, int *right, int *bottom) {
+    int *edges[] = {left, top, right, bottom};
+    for (int i = 0; i < 4; ++i) if (edges[i]) *edges[i] = 0;
+    JNIEnv *env = SDL_AndroidGetJNIEnv();
+    if (!env) return;
+    jobject activity = SDL_AndroidGetActivity();
+    jclass cls = NULL;
+    jintArray snapshot = NULL;
+    if ((*env)->ExceptionCheck(env) || !activity) goto cleanup;
+    cls = (*env)->GetObjectClass(env, activity);
+    if ((*env)->ExceptionCheck(env) || !cls) goto cleanup;
+    jmethodID getter = (*env)->GetMethodID(env, cls, "getOverlaySafeInsets", "()[I");
+    if ((*env)->ExceptionCheck(env) || !getter) goto cleanup;
+    snapshot = (jintArray)(*env)->CallObjectMethod(env, activity, getter);
+    if ((*env)->ExceptionCheck(env) || !snapshot) goto cleanup;
+    jsize count = (*env)->GetArrayLength(env, snapshot);
+    if ((*env)->ExceptionCheck(env) || count != 4) goto cleanup;
+    jint values[4];
+    (*env)->GetIntArrayRegion(env, snapshot, 0, 4, values);
+    if ((*env)->ExceptionCheck(env)) goto cleanup;
+    for (int i = 0; i < 4; ++i)
+        if (edges[i]) *edges[i] = values[i] > 0 ? values[i] : 0;
+cleanup:
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+    if (snapshot) (*env)->DeleteLocalRef(env, snapshot);
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    if (activity) (*env)->DeleteLocalRef(env, activity);
+}
+
 static void call_activity_picker(const char *method) {
     JNIEnv *env = SDL_AndroidGetJNIEnv();
     jobject activity = SDL_AndroidGetActivity();

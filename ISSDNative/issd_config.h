@@ -12,6 +12,15 @@
 #define ISSD_PROFILE_CUSTOM 3
 #define ISSD_INPUT_SOURCE_MASK ((UINT64_C(0x1fffff) & ~(UINT64_C(1) << 5)) | (UINT64_C(0x3f) << 32))
 
+enum { ISSD_VISUAL_ORIGINAL, ISSD_VISUAL_SHARP, ISSD_VISUAL_ENHANCED, ISSD_VISUAL_CUSTOM };
+
+enum { ISSD_MATCH_ORIGINAL, ISSD_MATCH_CLASSIC, ISSD_MATCH_CASUAL, ISSD_MATCH_CUSTOM };
+typedef struct {
+    int duration; /* 0/1/2: 3/5/7 minutes; hidden duration 3 is unsupported */
+    int difficulty; /* five original levels, 0..4 */
+    int offside, fouls, cards, extra_time; /* cartridge encoding: 0 on, 1 off */
+} IssdMatchRules;
+
 typedef struct {
     int schema; /* 0 CLASSIC, 1 FIFA, 2 PES, 3 CUSTOM */
     int stick_deadzone;   /* 0..30000, signed SDL stick axis threshold */
@@ -33,7 +42,7 @@ typedef enum {
     /* 320x224. The cartridge culls objects outside x,y in [-32,288), so a
      * 32 pixel margin per side is the widest view in which every visible
      * player is still simulated, animated and in the game's own draw list.
-     * Wider presets look better but freeze players in the outer band.
+     * Wider presets can continue learned locomotion but unlearned actions may hold.
      * Appended rather than renumbered so saved configs keep their meaning. */
     ISSD_ASPECT_AUTHENTIC = 6
 } IssdAspectRatio;
@@ -41,17 +50,18 @@ typedef enum {
 
 typedef enum {
     ISSD_RES_1X = 0,        /* Native 256 x 224 */
-    ISSD_RES_2X = 1,        /* 512 x 448 (SD) */
-    ISSD_RES_3X = 2,        /* 768 x 672 (720p HD) */
-    ISSD_RES_4X = 3,        /* 1024 x 896 (1080p FHD) */
-    ISSD_RES_6X = 4,        /* 1536 x 1344 (1440p QHD) */
-    ISSD_RES_8X_4K = 5      /* 2048 x 1792 (4K UHD) */
+    ISSD_RES_2X = 1,        /* 512 x 448 */
+    ISSD_RES_3X = 2,        /* 768 x 672 */
+    ISSD_RES_4X = 3,        /* 1024 x 896 */
+    ISSD_RES_6X = 4,        /* 1536 x 1344 */
+    ISSD_RES_8X_4K = 5      /* 2048 x 1792; historical API name, not output 4K */
 } IssdInternalResolution;
 
 typedef enum {
     ISSD_FILTER_NEAREST = 0, /* Sharp Pixels (Nearest Neighbor) */
     ISSD_FILTER_LINEAR = 1,  /* Smooth (Bilinear) */
-    ISSD_FILTER_CRT = 2      /* CRT Scanlines Filter */
+    ISSD_FILTER_CRT = 2,     /* CRT Scanlines Filter */
+    ISSD_FILTER_SHARP = 3    /* Integer nearest prescale, then linear presentation */
 } IssdScalingFilter;
 
 typedef enum {
@@ -72,6 +82,16 @@ typedef struct {
     IssdInternalResolution internal_res;
     IssdScalingFilter scaling_filter;
     bool true_widescreen;
+    int output_resolution; /* 0 current/auto, 1 720p, 2 1080p, 3 1440p, 4 2160p */
+    int overlay_scale;     /* 0 automatic, 1..4 output-pixel UI scale */
+    bool ball_outline;
+    bool ball_shadow;
+    bool player_markers;
+    bool player_names;
+    int radar_scale;       /* 1..3 native radar enlargement */
+    int hud_scale;         /* 1..3 selected-player label size */
+    int radar_position;    /* bottom center/left/right, top left/right */
+    int radar_opacity;     /* 25..100 percent, enlarged radar background */
 
     /* Audio */
     int audio_freq;
@@ -86,6 +106,9 @@ typedef struct {
     bool debug_unhooked_code;
     bool gameplay_goalkeeper_ai;
     bool gameplay_player_ai;
+    bool gameplay_bug_fixes; /* Master switch for verified original-game fixes. */
+    int match_preset; /* Original leaves the cartridge's settings untouched */
+    IssdMatchRules match_custom;
 
     /* Name of the active mod pack, empty for vanilla. Stored by name rather
      * than index so adding or removing a pack cannot silently select a
@@ -125,6 +148,9 @@ typedef struct {
 extern IssdConfig g_issd_config;
 
 void issd_config_init_defaults(IssdConfig *cfg);
+/* Presentation-only presets; preserve display, engine, controls and mods. */
+void issd_config_visual_preset(IssdConfig *cfg, int preset);
+int issd_config_visual_preset_id(const IssdConfig *cfg);
 /* Replace bindings with a named preset, retaining this player's thresholds. */
 void issd_config_player_preset(IssdConfig *cfg, int player, int schema);
 

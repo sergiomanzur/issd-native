@@ -1,6 +1,87 @@
 # Changelog
 
-## Unreleased — controls and acceptance
+## v0.3.0-beta.1 (2026-10-02)
+
+Beta prerelease for Windows and Android, with graphics, controls, exhibition
+shortcuts, optional original-game corrections and expanded acceptance coverage.
+The project remains below 1.0. Android version code advances to 5.
+
+### release reliability
+
+- Preserve host animation and pose history in checked snapshots for deterministic
+  advancing widescreen replay, while retaining older snapshot compatibility.
+- Redirect explicit kit overrides to isolated home/away palette records; fix
+  shared-kit allocations in both shipped packs without hiding validation warnings.
+- Correct goalkeeper appearance documentation and tests to match original graphics
+  behavior, retaining exhaustive outfield hairstyle coverage.
+
+### original team management acceptance
+
+- Add input-driven original formation/substitution, request cancellation and
+  advancing save/reload checks with both AI policies off and on; document
+  first-team scope and pending both-team/extra-time/limit cases.
+- Add bounded per-actor AI metadata tracing. Keep player and goalkeeper debug
+  reads from changing CPU open-bus or cartridge bookkeeping state.
+- Preserve original auxiliary vertical culling in widescreen fallback drawing,
+  fixing a stale object drawn over the native top edge after management return.
+
+### graphics and readability
+
+- Widen penalty-camera scenery for 16:10/16:9/21:9, retaining the original goal,
+  players, HUD and kick mechanics. Add real-shot and successive-turn comparisons.
+
+- Decode original ROM animation tables for verified culled player states, keeping
+  native timing/state changes authoritative and deliberate terminal poses held.
+- Add reproducible original Cup-final graphics checks across 256/398/504 pixels,
+  including pause/replay and opt-in accelerated period/extra-time/shootout entry.
+
+- Add Original/Sharp/Enhanced visual presets, derived Custom status, a filtered
+  sample preview and a graphics reset which retains display/gameplay preferences.
+- Add selected-player label scaling/collision avoidance and enlarged-radar
+  placement, background opacity and small-surface fitting.
+- Extend ultrawide to a safe 504x224 native view; discard stale animation history
+  on scene/submode/layout changes and inactive/reused actor slots.
+- Recover SDL textures after renderer resets and add optional graphics timing
+  reports with actual output/native/intermediate dimensions.
+
+- Add a Graphics / Readability page, desktop window-size presets, actual output
+  and intermediate dimensions, independent integer scaling and Sharp filtering.
+- Draw sharply scaled overlays/notifications after filtering the game, with
+  scrolling main/settings pages and matching output-pixel mouse/touch handling.
+- Add optional ball outline/shadow, P1–P4 markers, selected-player names and
+  enlarged radar; defaults preserve the original match appearance.
+- Continue learned widescreen locomotion with paired geometry/graphics and
+  camera-compensated movement, without changing guest simulation.
+- Preserve paused framebuffer stride during aspect changes, update texture
+  filters live, and retain notification durations across high-refresh drawing.
+- Unsupported wider actions remain limited; physical device acceptance is pending.
+
+### original game bug fixes
+
+- One persistent Original Bug Fixes toggle under Gameplay Tweaks: Off preserves
+  original behavior; On enables the verified bundle alongside AI tweaks.
+- Fix keeper movement stacking, phantom skill-point refunds, repeated behind-goal
+  awards, two-digit score wrap, invalid foul restarts and name graphics overflow.
+- Include the switch in save/password compatibility and invalidate resident
+  exhibition checkpoints when it changes. Added cartridge and native regressions.
+- Stuck-post, substitution-camera and penalty-replay reports remain unverified;
+  the bundle does not claim every original defect is fixed.
+
+### exhibition shortcuts
+
+- Gameplay Tweaks now links to Match Shortcuts / Presets: instant exhibition
+  rematch, independent mark/restart drill checkpoints and a persistent favorite.
+- Retain complete native setups, including teams, kits, weather, stadium,
+  lineups, rules and controller assignments. Campaigns and numbered saves are
+  independent; incompatible favorites are retained and rejected safely.
+- Original (default), Classic, Casual and custom rules use verified original
+  duration, five difficulty levels, offside, foul, card and extra-time options.
+  Apply at the original pre-constructor boundary rather than during live play.
+- Added original-exhibition constructor/replay/favorite acceptance tests and
+  failure/compatibility regressions. No verified input-origin scoring exploit
+  was identified, so shooting and goalkeeper balance remain unchanged.
+
+### controls and acceptance
 
 - Saved P1–P4 controller profiles with presets, in-game button/axis/trigger
   remapping, and independent adjustable stick/trigger deadzones.

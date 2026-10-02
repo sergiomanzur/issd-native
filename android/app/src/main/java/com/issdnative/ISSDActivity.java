@@ -5,9 +5,12 @@ import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.provider.DocumentsContract;
 import android.util.Log;
 import android.view.View;
+import android.view.WindowInsets;
+import android.view.DisplayCutout;
 import android.view.WindowManager;
 import android.widget.Toast;
 
@@ -40,6 +43,69 @@ public class ISSDActivity extends SDLActivity {
     private static volatile boolean sRomPickerCancelled = false;
     private static volatile boolean sGameRunning = false;
     private boolean mPickerActive = false;
+    // Each array is published once, never mutated. The SDL native thread can
+    // read this snapshot without accessing Android Views off the UI thread.
+    private volatile int[] mOverlaySafeInsets = new int[] {0, 0, 0, 0};
+
+    public int[] getOverlaySafeInsets() {
+        return mOverlaySafeInsets;
+    }
+
+    private void updateOverlaySafeInsets(WindowInsets insets) {
+        View decor = getWindow().getDecorView();
+        View surface = mSurface;
+        if (insets == null || surface == null || surface.getWidth() <= 0
+                || surface.getHeight() <= 0 || decor.getWidth() <= 0 || decor.getHeight() <= 0) {
+            mOverlaySafeInsets = new int[] {0, 0, 0, 0};
+            return;
+        }
+        int left, top, right, bottom;
+        if (Build.VERSION.SDK_INT >= 30) {
+            android.graphics.Insets bars = insets.getInsets(WindowInsets.Type.systemBars());
+            left = bars.left; top = bars.top; right = bars.right; bottom = bars.bottom;
+        } else {
+            left = insets.getSystemWindowInsetLeft();
+            top = insets.getSystemWindowInsetTop();
+            right = insets.getSystemWindowInsetRight();
+            bottom = insets.getSystemWindowInsetBottom();
+        }
+        if (Build.VERSION.SDK_INT >= 28) {
+            DisplayCutout cutout = insets.getDisplayCutout();
+            if (cutout != null) {
+                left = Math.max(left, cutout.getSafeInsetLeft());
+                top = Math.max(top, cutout.getSafeInsetTop());
+                right = Math.max(right, cutout.getSafeInsetRight());
+                bottom = Math.max(bottom, cutout.getSafeInsetBottom());
+            }
+        }
+        int[] surfacePosition = new int[2], decorPosition = new int[2];
+        surface.getLocationInWindow(surfacePosition);
+        decor.getLocationInWindow(decorPosition);
+        int x = surfacePosition[0] - decorPosition[0];
+        int y = surfacePosition[1] - decorPosition[1];
+        // SDL may already have laid out its SurfaceView inside system bars or
+        // a cutout. Only reserve the part still overlapping the surface.
+        mOverlaySafeInsets = new int[] {
+            Math.min(surface.getWidth(), Math.max(0, left - x)),
+            Math.min(surface.getHeight(), Math.max(0, top - y)),
+            Math.min(surface.getWidth(), Math.max(0, right - (decor.getWidth() - x - surface.getWidth()))),
+            Math.min(surface.getHeight(), Math.max(0, bottom - (decor.getHeight() - y - surface.getHeight())))
+        };
+    }
+
+    private void observeOverlaySafeInsets() {
+        View decor = getWindow().getDecorView();
+        // SDLActivity has no OnApplyWindowInsetsListener. Preserve normal
+        // dispatch so SDL's own surface layout continues to receive insets.
+        decor.setOnApplyWindowInsetsListener((view, insets) -> {
+            updateOverlaySafeInsets(insets);
+            view.post(() -> updateOverlaySafeInsets(view.getRootWindowInsets()));
+            return view.onApplyWindowInsets(insets);
+        });
+        decor.getViewTreeObserver().addOnGlobalLayoutListener(
+            () -> updateOverlaySafeInsets(decor.getRootWindowInsets()));
+        decor.requestApplyInsets();
+    }
 
     public static boolean isPickerCancelled() {
         return sRomPickerCancelled;
@@ -77,6 +143,7 @@ public class ISSDActivity extends SDLActivity {
             getFilesDir().getAbsolutePath());
 
         super.onCreate(savedInstanceState);
+        observeOverlaySafeInsets();
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 

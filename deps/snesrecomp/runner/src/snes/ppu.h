@@ -31,9 +31,10 @@ enum {
   // Maximum widescreen expansion *per side*, baked into the priority-buffer
   // capacity. This is a compile-time ceiling only; the actual extra columns
   // rendered each frame are the runtime ppu->extraLeftCur/extraRightCur, which
-  // default to 0 (authentic 256-wide output). 96 per side allows up to a
-  // 448-pixel internal width, comfortably past 16:9 at 224 lines.
-  kPpuExtraLeftRight = 96,
+  // default to 0 (authentic 256-wide output). 128 per side provides aligned
+  // scratch capacity for a widened 512-pixel presentation. Game-specific
+  // tile streamers can impose a smaller runtime limit.
+  kPpuExtraLeftRight = 128,
   // Full internal width of the priority buffers (logical 256 + both borders).
   kPpuBufWidth = kPpuXPixels + kPpuExtraLeftRight * 2,
   // Split-screen games can assign distinct anchor layouts to each viewport.

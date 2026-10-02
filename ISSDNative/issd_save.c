@@ -246,7 +246,6 @@ static bool RawLoadPath(const char *path) {
     if (s_load_snapshot_backend) {
         bool ok = s_load_snapshot_backend(path);
         if (ok) {
-            issd_widescreen_reset();
             printf("[Save] Snapshot loaded from '%s'\n", path);
         } else {
             printf("[Save] Snapshot load failed for '%s'\n", path);
@@ -488,22 +487,14 @@ static bool Publish(const char *path, const CheckedSave *save) {
     return ok;
 }
 
-static bool CreateEnvelope(const char *path, const char *label, uint64_t generation,
-                           bool campaign, CheckedSave *out) {
-    if (!s_save_snapshot_backend) return Fail("Full snapshot backend unavailable");
-    char payload_path[SAVE_PATH_MAX];
-    if (!TemporaryPath(path, "capture", payload_path)) return false;
-    if (!s_save_snapshot_backend(payload_path)) {
-        remove(payload_path); return Fail("Snapshot capture failed");
-    }
-    uint8_t *payload = NULL; size_t length = 0;
-    bool ok = ReadBounded(payload_path, MAX_PAYLOAD, &payload, &length);
-    remove(payload_path);
-    if (!ok) return false;
+static bool EnvelopeFromPayload(const void *payload, size_t length, const char *label,
+                                uint64_t generation, bool campaign, CheckedSave *out) {
     memset(out, 0, sizeof(*out));
+    if (!s_has_context) return Fail("Save context unavailable");
+    if (!payload || !length || length > MAX_PAYLOAD) return Fail("Invalid or oversized snapshot payload");
     out->size = ENVELOPE_HEADER + length;
     out->bytes = calloc(1, out->size);
-    if (!out->bytes) { free(payload); return Fail("Cannot allocate save envelope"); }
+    if (!out->bytes) return Fail("Cannot allocate save envelope");
     uint8_t *h = out->bytes;
     memcpy(h, "ISCE", 4); Write32(h + 4, 1); Write32(h + 8, 1); Write32(h + 12, ENVELOPE_HEADER);
     Write64(h + 16, length); Write64(h + 24, generation); Write64(h + 32, (uint64_t)time(NULL));
@@ -515,7 +506,7 @@ static bool CreateEnvelope(const char *path, const char *label, uint64_t generat
         unsigned char c = (unsigned char)label[i];
         h[80 + i] = c < 32 || c == 127 ? ' ' : c;
     }
-    memcpy(h + ENVELOPE_HEADER, payload, length); free(payload);
+    memcpy(h + ENVELOPE_HEADER, payload, length);
     if (!EnvelopeDigest(h, out->size, h + ENVELOPE_HASH_OFFSET)) {
         free(out->bytes); memset(out, 0, sizeof(*out)); return false;
     }
@@ -524,6 +515,22 @@ static bool CreateEnvelope(const char *path, const char *label, uint64_t generat
     }
     out->generation = generation;
     return true;
+}
+
+static bool CreateEnvelope(const char *path, const char *label, uint64_t generation,
+                           bool campaign, CheckedSave *out) {
+    if (!s_save_snapshot_backend) return Fail("Full snapshot backend unavailable");
+    char payload_path[SAVE_PATH_MAX];
+    if (!TemporaryPath(path, "capture", payload_path)) return false;
+    if (!s_save_snapshot_backend(payload_path)) {
+        remove(payload_path); return Fail("Snapshot capture failed");
+    }
+    uint8_t *payload = NULL; size_t length = 0;
+    bool ok = ReadBounded(payload_path, MAX_PAYLOAD, &payload, &length);
+    remove(payload_path);
+    if (ok) ok = EnvelopeFromPayload(payload, length, label, generation, campaign, out);
+    free(payload);
+    return ok;
 }
 
 static int GatherCampaign(const char paths[3][SAVE_PATH_MAX], CheckedSave saves[3]) {
@@ -548,12 +555,12 @@ static void FreeSaves(CheckedSave *saves, int count) {
 }
 
 #ifdef _WIN32
-typedef HANDLE CampaignLock;
+typedef HANDLE SaveLock;
 #else
-typedef int CampaignLock;
+typedef int SaveLock;
 #endif
 
-static bool AcquireCampaignLock(const char *primary, CampaignLock *lock) {
+static bool AcquireSaveLock(const char *primary, SaveLock *lock) {
     char path[SAVE_PATH_MAX];
     int n = snprintf(path, sizeof(path), "%s.lock", primary);
     if (n < 0 || n >= SAVE_PATH_MAX) return Fail("Save path too long");
@@ -562,22 +569,22 @@ static bool AcquireCampaignLock(const char *primary, CampaignLock *lock) {
      * The operating system releases the actual lock if the process exits. */
 #ifdef _WIN32
     *lock = CreateFileA(path, GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (*lock == INVALID_HANDLE_VALUE) return Fail("Campaign save already in progress or unavailable");
+    if (*lock == INVALID_HANDLE_VALUE) return Fail("Save publication already in progress or unavailable");
 #else
     *lock = open(path, O_CREAT | O_RDWR, 0600);
-    if (*lock < 0) return Fail("Campaign save lock unavailable");
+    if (*lock < 0) return Fail("Save publication lock unavailable");
     struct flock operation;
     memset(&operation, 0, sizeof(operation));
     operation.l_type = F_WRLCK;
     operation.l_whence = SEEK_SET;
     if (fcntl(*lock, F_SETLK, &operation) < 0) {
-        close(*lock); return Fail("Campaign save already in progress or unavailable");
+        close(*lock); return Fail("Save publication already in progress or unavailable");
     }
 #endif
     return true;
 }
 
-static void ReleaseCampaignLock(CampaignLock lock) {
+static void ReleaseSaveLock(SaveLock lock) {
 #ifdef _WIN32
     CloseHandle(lock);
 #else
@@ -589,13 +596,13 @@ bool issd_save_campaign(const char *label) {
     s_error[0] = 0;
     char paths[3][SAVE_PATH_MAX];
     if (!CampaignPaths(paths, true)) return false;
-    CampaignLock lock;
-    if (!AcquireCampaignLock(paths[0], &lock)) return false;
+    SaveLock lock;
+    if (!AcquireSaveLock(paths[0], &lock)) return false;
     CheckedSave prior[3];
     int count = GatherCampaign(paths, prior);
     uint64_t generation = count ? prior[0].generation + 1 : 1;
     if (!generation) {
-        FreeSaves(prior, count); ReleaseCampaignLock(lock);
+        FreeSaves(prior, count); ReleaseSaveLock(lock);
         return Fail("Save generation exhausted");
     }
     CheckedSave candidate;
@@ -619,7 +626,7 @@ bool issd_save_campaign(const char *label) {
         free(candidate.bytes);
     }
     FreeSaves(prior, count);
-    ReleaseCampaignLock(lock);
+    ReleaseSaveLock(lock);
     if (ok) s_error[0] = 0;
     return ok;
 }
@@ -633,6 +640,69 @@ static void FormatInfo(const CheckedSave *save, char *out, size_t size) {
         if (tm_info) strftime(when, sizeof(when), "%Y-%m-%d %H:%M", tm_info);
     }
     snprintf(out, size, "%s (%s)", (const char *)save->bytes + 80, when);
+}
+
+static bool FavoritePath(char path[SAVE_PATH_MAX], bool create) {
+    if (!s_has_context) return Fail("Save context unavailable");
+    if (!s_validate_snapshot_backend) return Fail("Snapshot validator unavailable");
+    char root[SAVE_PATH_MAX], directory[SAVE_PATH_MAX];
+    GetSavesDir(root, sizeof(root));
+    if (!root[0]) return Fail("Save directory unavailable");
+    int n = snprintf(directory, sizeof(directory), "%s/matches", root);
+    if (n < 0 || n > SAVE_PATH_MAX - 64) return Fail("Save path too long");
+    if (create && !MakeDirs(directory)) return false;
+    snprintf(path, SAVE_PATH_MAX, "%s/favorite.sav", directory);
+    return true;
+}
+
+bool issd_save_match_favorite(const void *data, size_t size, const char *label) {
+    s_error[0] = 0;
+    char path[SAVE_PATH_MAX];
+    if (!FavoritePath(path, false)) return false;
+    /* Build and pure-validate the cached payload before any disk mutation. */
+    CheckedSave candidate;
+    if (!EnvelopeFromPayload(data, size, label && label[0] ? label : "Favorite match", 1, false, &candidate))
+        return false;
+    if (!FavoritePath(path, true)) { free(candidate.bytes); return false; }
+    SaveLock lock;
+    if (!AcquireSaveLock(path, &lock)) { free(candidate.bytes); return false; }
+    bool ok = Publish(path, &candidate);
+    ReleaseSaveLock(lock);
+    free(candidate.bytes);
+    if (ok) s_error[0] = 0;
+    return ok;
+}
+
+bool issd_save_read_match_favorite(void **data, size_t *size) {
+    s_error[0] = 0;
+    if (data) *data = NULL;
+    if (size) *size = 0;
+    if (!data || !size) return Fail("Invalid favorite payload output");
+    char path[SAVE_PATH_MAX];
+    if (!FavoritePath(path, false)) return false;
+    CheckedSave save;
+    if (!ReadEnvelope(path, &save)) return false;
+    size_t length = save.size - ENVELOPE_HEADER;
+    /* Transfer the validated allocation after moving out its envelope. */
+    memmove(save.bytes, save.bytes + ENVELOPE_HEADER, length);
+    *data = save.bytes;
+    *size = length;
+    return true;
+}
+
+bool issd_save_match_favorite_info(char *out_info, size_t max_len) {
+    s_error[0] = 0;
+    if (!out_info || !max_len) return Fail("Invalid save information buffer");
+    out_info[0] = 0;
+    char path[SAVE_PATH_MAX];
+    CheckedSave save;
+    if (!FavoritePath(path, false) || !ReadEnvelope(path, &save)) {
+        snprintf(out_info, max_len, "%s", s_error);
+        return false;
+    }
+    FormatInfo(&save, out_info, max_len);
+    free(save.bytes);
+    return true;
 }
 
 bool issd_save_continue_info(char *out_info, size_t max_len) {
@@ -659,7 +729,6 @@ static bool RestoreEnvelope(const char *original_path, const CheckedSave *save) 
     if (ok) ok = s_load_snapshot_backend(payload_path);
     remove(payload_path);
     if (!ok) return Fail("Snapshot restore failed");
-    issd_widescreen_reset();
     if (s_load_callback) s_load_callback();
     return true;
 }

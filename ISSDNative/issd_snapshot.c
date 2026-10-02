@@ -1,4 +1,8 @@
 #include "issd_snapshot.h"
+#include "issd_animation.h"
+#include "issd_pose_history.h"
+#include "issd_widescreen.h"
+#include "snes/snes.h"
 #include "common_rtl.h"
 #include "common_cpu_infra.h"
 #include "cpu_state.h"
@@ -10,7 +14,10 @@ extern int g_interp_apu_driving;
 
 /* Explicit little-endian fields; never persist CpuState's RAM pointer or ABI
  * padding. This extension is independent of the runner's v4-v8 guest schema. */
-enum { EXTRA_SIZE = 128, EXTRA_MAGIC = 0x58445349, EXTRA_VERSION = 1 };
+enum { CORE_SIZE = 128, EXTRA_SIZE = ISSD_SNAPSHOT_EXTRA_SIZE,
+       EXTRA_MAGIC = 0x58445349, EXTRA_VERSION = 2 };
+static bool presentation_loaded;
+extern Snes *g_snes;
 static void put(uint8_t *p, uint64_t value, unsigned count) {
     for (unsigned i = 0; i < count; ++i) p[i] = (uint8_t)(value >> (i * 8));
 }
@@ -64,14 +71,18 @@ void issd_snapshot_save_extra(SaveLoadInfo *sli) {
     data[108] = tail.valid;
     data[109] = tail.hrv;
     put(data + 110, tail.entry_s, 2);
+    issd_animation_save_state(data + CORE_SIZE);
+    issd_pose_history_save_state(data + CORE_SIZE + ISSD_ANIMATION_STATE_SIZE);
     sli->func(sli, data, sizeof(data));
 }
 
 bool issd_snapshot_validate_extra(const void *blob, size_t size, uint32_t version) {
     const uint8_t *data = (const uint8_t *)blob;
-    if (!data || version < 5 || size != EXTRA_SIZE ||
-        get(data, 4) != EXTRA_MAGIC || get(data + 4, 4) != EXTRA_VERSION ||
-        get(data + 8, 4) != EXTRA_SIZE || get(data + 12, 4) > INT_MAX)
+    if (!data || version < 5 || size < CORE_SIZE ||
+        get(data, 4) != EXTRA_MAGIC ||
+        !((get(data + 4, 4) == 1 && size == CORE_SIZE) ||
+          (get(data + 4, 4) == EXTRA_VERSION && size == EXTRA_SIZE)) ||
+        get(data + 8, 4) != size || get(data + 12, 4) > INT_MAX)
         return false;
     if (data[28] != 0 && data[28] != 2 && data[28] != 3) return false;
     for (unsigned i = 30; i <= 38; ++i)
@@ -80,16 +91,28 @@ bool issd_snapshot_validate_extra(const void *blob, size_t size, uint32_t versio
         (data[109] != 0 && data[109] != 2 && data[109] != 3))
         return false;
     if (data[104] && get(data + 96, 8) > get(data + 48, 8)) return false;
-    for (unsigned i = 112; i < EXTRA_SIZE; ++i)
+    for (unsigned i = 112; i < CORE_SIZE; ++i)
         if (data[i]) return false;
+    if (size == EXTRA_SIZE &&
+        (!issd_animation_validate_state(data + CORE_SIZE, ISSD_ANIMATION_STATE_SIZE) ||
+         !issd_pose_history_validate_state(data + CORE_SIZE + ISSD_ANIMATION_STATE_SIZE, ISSD_POSE_HISTORY_STATE_SIZE)))
+        return false;
     return true;
 }
 
 void issd_snapshot_load_extra(SaveLoadInfo *sli, uint32_t version) {
     uint8_t data[EXTRA_SIZE] = {0};
-    sli->func(sli, data, sizeof(data));
+    sli->func(sli, data, CORE_SIZE);
+    size_t size = get(data + 8, 4);
+    if (size != CORE_SIZE && size != EXTRA_SIZE) return;
+    if (size == EXTRA_SIZE) sli->func(sli, data + CORE_SIZE, EXTRA_SIZE - CORE_SIZE);
     /* The runner already accepted the whole chunk through pure preflight. */
-    if (!issd_snapshot_validate_extra(data, sizeof(data), version)) return;
+    if (!issd_snapshot_validate_extra(data, size, version)) return;
+    presentation_loaded = size == EXTRA_SIZE;
+    if (presentation_loaded) {
+        issd_animation_load_state(data + CORE_SIZE, ISSD_ANIMATION_STATE_SIZE);
+        issd_pose_history_load_state(data + CORE_SIZE + ISSD_ANIMATION_STATE_SIZE, ISSD_POSE_HISTORY_STATE_SIZE);
+    }
     g_cpu.A = (uint16_t)get(data + 16, 2);
     g_cpu.X = (uint16_t)get(data + 18, 2);
     g_cpu.Y = (uint16_t)get(data + 20, 2);
@@ -129,6 +152,12 @@ void issd_snapshot_on_loaded(uint32_t version) {
     /* Interpreter invocations have automatic local CPU contexts; their
      * dynamic-read cache is a host optimization and must be rebuilt. Older
      * guest-only files retain their historical CPU/clock compatibility. */
+    if (!presentation_loaded) {
+        issd_animation_reset();
+        issd_pose_history_reset();
+    }
+    presentation_loaded = false;
+    if (g_snes) issd_widescreen_rebase(g_snes->ppu, g_snes->ram);
     interp_bridge_reset_dynamic_cache();
     g_interp_apu_driving = 0;
 }

@@ -45,12 +45,11 @@ extern bool g_ws_active;
 // clamped to room bounds) is set separately via PpuSetExtraSideSpace.
 extern int g_ws_extra;
 
-// Hard cap on g_ws_extra from the SNES 9-bit OAM x space (see ppu.c and
-// ENHANCEMENTS Rule 5): the wrap threshold is 256+extra and the widest
-// left-margin sprite tiles sit at 512-(64+extra), which must stay >= the
-// threshold => 2*extra <= 192 => extra <= 95. Beyond this, outer-margin
-// sprites are unrepresentable. Every consumer clamps to this same constant.
-enum { kWsExtraMax = 95 };
+// Capacity ceiling within the 128-pixel PPU scratch border. Past 95 pixels,
+// wrapped native OAM positions are ambiguous: a title must provide explicit
+// signed-position hints for supplemental sprites instead of inferring a side
+// from the 9-bit value. Titles impose their own safe tile-streamer limit.
+enum { kWsExtraMax = 127 };
 
 // Per-frame present: copy the PPU's rendered framebuffer `src` (rows of
 // row_bytes = snes_width*4, as written by the line renderer at that pitch)

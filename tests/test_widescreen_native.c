@@ -36,6 +36,43 @@ static void fixture(void) {
   for(int i=0;i<128;i++) ppu.oam[i*2]=0xf0f0;
 }
 
+/* Original goal-facing penalty camera: BG1 owns the single goal, BG2 the
+ * tiled stands/grass, BG3 the HUD. Widen scenery without duplicating the goal. */
+static void test_penalty_background(void) {
+  static uint8_t saved_ram[sizeof(ram)];
+  static uint16_t saved_vram[0x8000], saved_oam[0x100];
+  static const int extras[] = {51, 71, 124};
+  for (unsigned i = 0; i < sizeof(extras)/sizeof(extras[0]); i++) {
+    fixture();
+    word(0x70, 0x0c); word(0x50, 0);
+    ppu.bgmode = 9; ppu.bgXsc[0] = 1; ppu.bgXsc[1] = 0x10;
+    ppu.bgXsc[2] = 9; ppu.bgTileAdr = 0x4522;
+    memcpy(saved_ram, ram, sizeof(ram));
+    memcpy(saved_vram, ppu.vram, sizeof(saved_vram));
+    memcpy(saved_oam, ppu.oam, sizeof(saved_oam));
+    assert(!issd_widescreen_pitch_layout(&ppu, ram));
+    assert(!issd_widescreen_begin(&ppu, ram, rom, sizeof(rom), extras[i]));
+    assert(ppu.extraLeftCur == extras[i] && ppu.extraRightCur == extras[i]);
+    assert(ppu.wsLayerWidenMask == 2 && ppu.wsLayerClamp == 0x0d);
+    assert(ppu.wsLayerRepeat == 0); /* actual BG2 tilemap continuation */
+    assert(!Issd_IsWidescreenActive()); /* no simulation/culling overrides */
+    issd_widescreen_end(&ppu);
+    assert(!memcmp(saved_ram, ram, sizeof(ram)));
+    assert(!memcmp(saved_vram, ppu.vram, sizeof(saved_vram)));
+    assert(!memcmp(saved_oam, ppu.oam, sizeof(saved_oam)));
+    /* An awarded in-match penalty uses the same layout in submode $11. */
+    word(0x70, 0x11);
+    issd_widescreen_begin(&ppu, ram, rom, sizeof(rom), extras[i]);
+    assert(ppu.wsLayerWidenMask == 2 && ppu.wsLayerClamp == 0x0d);
+    /* Close-up graphics guard excludes stats, pre-match and other layouts. */
+    word(0x70, 0x12); issd_widescreen_begin(&ppu, ram, rom, sizeof(rom), extras[i]);
+    assert(ppu.extraLeftCur == 0 && ppu.extraRightCur == 0);
+    word(0x70, 0x0c); ppu.bgXsc[1] = 0x13;
+    issd_widescreen_begin(&ppu, ram, rom, sizeof(rom), extras[i]);
+    assert(ppu.wsLayerClamp == 0x0f);
+  }
+}
+
 static void test_offscreen_player_graphics(void) {
   fixture();
   /* $84E6C7 records the animation descriptor before skipping an offscreen
@@ -59,7 +96,7 @@ static void test_offscreen_player_graphics(void) {
 
   /* Real player descriptors use decoded RAM geometry. The descriptor's new
    * pose must replace the stale pose, and kit details follow the same frame. */
-  static const int extras[] = {32,51,71,95};
+  static const int extras[] = {32,51,71,95,124};
   for (unsigned i=0;i<sizeof(extras)/sizeof(extras[0]);i++) {
     issd_widescreen_reset();
     word(0x808,(uint16_t)-20); word(0x800,0x9000); word(0x830,2);
@@ -95,8 +132,44 @@ static void test_offscreen_player_graphics(void) {
   assert(ppu.vram[0x6600]==0xbeef && ppu.oam[0]==0xf0f0);
 }
 
+static void test_auxiliary_vertical_admission(void) {
+  fixture();
+  /* Actual management-return regression: stale $09A0 pose at y=-8 was
+   * vertically culled by the cartridge, but the fallback drew its first
+   * piece at x48/y-7 over the native top row. */
+  word(0x9a0,0x4040); word(0x9a8,48); word(0x9ac,(uint16_t)-8);
+  word(0x9be,1);
+  word(0x4040,1); word(0x6040,4); word(0x8040,5); word(0xa040,0);
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),51);
+  for (unsigned i=0;i<128;i++) assert(ppu.oam[i*2]==0xf0f0);
+  issd_widescreen_end(&ppu);
+
+  /* Later buffered generations have y>=0 but are still absent from the
+   * native draw list. A center-origin auxiliary must never be resurrected
+   * just because its stale pose remains in RAM. */
+  for (unsigned y=0;y<=16;y+=8) {
+    issd_widescreen_reset(); word(0x9ac,y);
+    issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),51);
+    for (unsigned i=0;i<128;i++) assert(ppu.oam[i*2]==0xf0f0);
+    issd_widescreen_end(&ppu);
+  }
+
+  /* A horizontal cull with the same pose still needs a margin copy. */
+  issd_widescreen_reset(); word(0x9a8,320); word(0x9ac,80);
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),95);
+  assert((ppu.oam[0]&255)==64 && (ppu.oam[0]>>8)==81);
+  issd_widescreen_end(&ppu);
+
+  /* Small auxiliary records retain their own y+32 admission interval. */
+  fixture(); word(0x4a0,0x4040); word(0x4a8,48); word(0x4ac,(uint16_t)-40);
+  word(0x4040,1); word(0x6040,4); word(0x8040,40); word(0xa040,0);
+  issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),51);
+  for (unsigned i=0;i<128;i++) assert(ppu.oam[i*2]==0xf0f0);
+  issd_widescreen_end(&ppu);
+}
+
 static void test_padded_stadium_edge(void) {
-  static const int extras[] = {32,51,71,95};
+  static const int extras[] = {32,51,71,95,124};
   for (unsigned width=0;width<sizeof(extras)/sizeof(extras[0]);width++) {
   fixture();
   /* The page stride includes zero padding after the authored stadium. Its
@@ -276,7 +349,10 @@ int main(void) {
   issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),95);
   assert(ppu.extraLeftCur==95 && ppu.extraRightCur==95);
   issd_widescreen_end(&ppu);
+  test_penalty_background();
   test_offscreen_player_graphics();
+  test_auxiliary_vertical_admission();
   test_padded_stadium_edge();
   puts("widescreen native tests passed");
+  return 0;
 }

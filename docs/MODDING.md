@@ -313,7 +313,7 @@ half-read.
 | `shirt` | `"#RRGGBB"` | Shirt colour. The three shades the cartridge uses are derived from it. |
 | `shorts` | `"#RRGGBB"` | Shorts colour. |
 | `socks` | `"#RRGGBB"` | Sock colour. |
-| `kit_record` | 0-83 | Which of the 84 kit palettes to paint. Only needed for a team the measured table does not cover - see section 6a. |
+| `kit_record` | 0-83 | Redirects the team's home and away strip to this palette before painting it. Use a unique record to isolate a shared strip - see section 6a. |
 | `formation` | text | See section 6. Optional. |
 | `tactics` | text | `attacking`, `balanced`, `defensive`. Optional. |
 | `players` | array | Optional: leave it out to change only the shape. |
@@ -328,7 +328,7 @@ A pack may also carry a `stadiums` array alongside `teams`; see section 8.
 | `name` | text | **8 characters**, A-Z a-z, space and a full stop. Longer names are cut; anything else becomes a space. Leading spaces are how the cartridge sits a name on screen - `" Pabi"` - and are kept. |
 | `position` | `GK` `DF` `MF` `FW`, or 0-15 | The letters shown beside the name. The cartridge has six codes, not four: 3 and 5 sit between defence and midfield and between midfield and attack, and 51 of its 720 players have one. Write the number to keep one exactly. |
 | `skin_tone` | 0-1 | Misnamed, and the name is kept so packs already written still load. It is the palette the player is drawn with: 0 dark hair, 1 fair. Those are the only two the cartridge uses; 2 and 3 select palettes the strip does not fit and turn the whole player orange or green. |
-| `hair_style` | 0-15 | The other half of the same byte. Nothing in a match reads it, though the cartridge's own squads vary it from 0 to 13. Kept so an imported squad goes back byte for byte. |
+| `hair_style` | 0-15 | The low half of the appearance byte. Nonzero values select special hair graphics through the cartridge's hair actor routines ($83:C903 and $83:CAD7); stock squads use 0-13. Outfield values are preserved. For `GK` or numeric position 1, this is always stored as 0, matching all 72 stock keepers; `skin_tone` is still preserved. |
 | the ten attributes | 0-99 | see below |
 
 ### Attributes
@@ -493,14 +493,22 @@ Palette recoloring alone is flat per part. The mod loader also supports vertical
 shirt stripes through the `stripes` field and the original jersey-detail
 mapping; this does not provide arbitrary replacement sprite artwork.
 
-**Some teams share a strip.** Which of the 84 palettes a team wears is not
-written down anywhere in the cartridge; it was measured a match at a time
-(see `docs/REVERSE_ENGINEERING.md`). Six teams - Swiss, Wales, Scotland,
-N. Ireland, Czech Rep. and Poland - turned out to share one palette, and
-Austria and Turkey another. Recolour one of those and you recolour them
-all; the loader says so in the results. England's own palette is one of
-the two it was seen wearing and could not be told apart, so it is the one
-team the table leaves blank - name `kit_record` to paint it.
+**Some teams share a strip.** The loader reads each team's home and away
+palette addresses from the cartridge's pointer tables. Recolouring a shared
+home palette also recolours its other wearers; the loader warns in the results.
+To give a team its own strip, set `kit_record` to a distinct record from 0 to 83.
+After checking the palette's signature, the loader redirects both of that team's
+pointers and paints the selected record, leaving its former shared palettes alone.
+An invalid record or signature leaves the pointers unchanged. Selecting a record
+that another team still wears can recolour that team, so allocation must account
+for both home and away pointers and every team the pack leaves untouched.
+
+The shipped Liga MX and World Cup packs reserve records 36-43 for teams that
+the validator identifies as sharing strips. Those records originally serve as
+away strips for teams that both packs replace; their away pointers move to
+their home strips when those replacements load. The allocation avoids the
+original home and all-star palettes. These numbers are a pack-specific choice,
+not a guarantee that records 36-43 are free for every other pack.
 
 ### The name plate
 

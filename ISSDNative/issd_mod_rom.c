@@ -286,6 +286,10 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
                                rating_to_nibble(a->stamina));
     rom[base + 6] = (uint8_t)(((p->skin_tone & 0x0F) << 4) |
                                (p->hair_style & 0x0F));
+    /* Keepers use the cartridge's zero hairstyle convention (all 72 stock
+     * keepers). $83:C903 does read this nibble: nonzero allocates a special
+     * hair actor through $83:CB2A, whose index is (nibble - 1) * 4. Preserve
+     * authored outfield styles, but do not allocate that actor for a keeper. */
     if (position_code(p->position) == 1) rom[base + 6] &= 0xF0;
 }
 
@@ -449,6 +453,7 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
 #define ROM_KIT_PTR_TEAMS         43
 #define ROM_KIT_BANK            0x89u
 #define ROM_KIT_STRIDE            34u   /* seventeen colours */
+#define ROM_KIT_RECORDS           84
 #define ROM_KIT_SHIRT              7    /* three shades, dark to light */
 #define ROM_KIT_SHORTS            10    /* three shades */
 #define ROM_KIT_SOCKS             13    /* two shades */
@@ -514,6 +519,13 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
 
     size_t rec = 0;
     if (team->kit_record >= 0) {
+        if (team->kit_record >= ROM_KIT_RECORDS) {
+            char why[112];
+            snprintf(why, sizeof why, "%s: team %u's kit record is out of range",
+                     pack_name, team->team_id);
+            issd_mod_result_note_warning(why);
+            return false;
+        }
         rec = ROM_KIT_BASE + (size_t)team->kit_record * ROM_KIT_STRIDE;
     } else {
         rec = kit_offset(rom, rom_size, team->team_id, false);
@@ -534,6 +546,19 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
                  pack_name, team->team_id);
         issd_mod_result_note_warning(why);
         return false;
+    }
+
+    /* An explicit record selects the strip the team wears, not just where
+     * to paint. Redirect only after the palette signature passes, so a bad
+     * cartridge or override cannot change either pointer table. */
+    if (team->kit_record >= 0 && team->team_id < ROM_KIT_PTR_TEAMS) {
+        const uint16_t addr = (uint16_t)(0x8000u +
+            (rec - (size_t)(ROM_KIT_BANK & 0x7Fu) * 0x8000u) - 2u);
+        const size_t home_ptr = ROM_KIT_PTRS_HOME + (size_t)team->team_id * 2u;
+        const size_t away_ptr = ROM_KIT_PTRS_AWAY + (size_t)team->team_id * 2u;
+        if (home_ptr + 2u > rom_size || away_ptr + 2u > rom_size) return false;
+        rom[home_ptr] = rom[away_ptr] = (uint8_t)addr;
+        rom[home_ptr + 1u] = rom[away_ptr + 1u] = (uint8_t)(addr >> 8);
     }
 
     /* Teams share strips - several wear the same white - so repainting one

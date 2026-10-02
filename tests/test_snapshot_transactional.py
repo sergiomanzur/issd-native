@@ -53,7 +53,8 @@ def test_issd_snapshot_extra_and_legacy_guest_only(tmp_path):
     source = tmp_path / "extra.c"
     source.write_text(runner_source() + (ROOT / "tests/test_snapshot_extra.c").read_text())
     exe = tmp_path / "extra.exe"
-    compile_c(exe, ROOT, [source, ROOT / "ISSDNative/issd_snapshot.c"],
+    compile_c(exe, ROOT, [source, ROOT / "ISSDNative/issd_snapshot.c",
+               ROOT / "ISSDNative/issd_animation.c", ROOT / "ISSDNative/issd_pose_history.c"],
               [ROOT / "ISSDNative", RUNTIME, RUNTIME / "snes"])
     result = subprocess.run([str(exe)], cwd=tmp_path, capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

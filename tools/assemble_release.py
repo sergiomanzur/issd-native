@@ -33,7 +33,7 @@ def main():
               "licenses/SDL2.txt": ROOT / "deps/SDL2/LICENSE.txt"}
     for name in ("GAMEPLAY_TWEAKS", "LOCAL_MULTIPLAYER", "CAMPAIGN_SAVES",
                  "CAMPAIGN_CARTRIDGE_FLOW", "PASSWORD_BRIDGE", "MODDING",
-                 "CONTROLS", "SUPPORTED_FEATURES", "ACCEPTANCE_TESTS"):
+                 "CONTROLS", "SUPPORTED_FEATURES", "ACCEPTANCE_TESTS", "MATCH_SHORTCUTS", "ORIGINAL_BUG_FIXES", "GRAPHICS_SETTINGS", "GRAPHICS_MATCH_ACCEPTANCE", "TEAM_CHANGES_ACCEPTANCE", "NETPLAY_DESIGN"):
         common[f"docs/{name}.md"] = ROOT / f"docs/{name}.md"
     for path in (ROOT / "deps/snesrecomp/third_party/psxrecomp_color_lut").glob("LICENSE-*.txt"):
         common[f"licenses/psxrecomp_color_lut/{path.name}"] = path

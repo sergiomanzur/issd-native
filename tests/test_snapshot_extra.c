@@ -1,4 +1,5 @@
 #include "issd_snapshot.h"
+void issd_widescreen_rebase(Ppu *ppu, const uint8_t *ram) { (void)ppu; (void)ram; }
 
 int g_interp_apu_driving;
 uint64_t g_main_cpu_cycles_estimate;
@@ -50,7 +51,7 @@ int main(void) {
     unsigned char *snapshot = malloc(1024 * 1024);
     assert(snapshot);
     size_t size = RtlSaveSnapshotToMemory(snapshot, 1024 * 1024);
-    assert(size && issd_snapshot_validate_extra(snapshot + size - 128, 128, 8));
+    assert(size && issd_snapshot_validate_extra(snapshot + size - ISSD_SNAPSHOT_EXTRA_SIZE, ISSD_SNAPSHOT_EXTRA_SIZE, 8));
     CpuState expected_cpu = g_cpu;
     memset(&g_cpu, 0, sizeof(g_cpu));
     g_cpu.ram = ram;
@@ -66,12 +67,21 @@ int main(void) {
     assert(cache_resets == 1);
     const unsigned corrupt_offsets[] = {0, 4, 8, 31, 104, 112};
     for (size_t i = 0; i < sizeof(corrupt_offsets) / sizeof(corrupt_offsets[0]); ++i) {
-        unsigned char *byte = snapshot + size - 128 + corrupt_offsets[i];
+        unsigned char *byte = snapshot + size - ISSD_SNAPSHOT_EXTRA_SIZE + corrupt_offsets[i];
         *byte ^= 0xff;
         assert(!RtlLoadSnapshotFromMemory(snapshot, size));
         assert(!memcmp(&g_cpu, &expected_cpu, sizeof(g_cpu)) && cache_resets == 1);
         *byte ^= 0xff;
     }
+    /* The prior 128-byte extension still restores CPU/APU state. */
+    size_t core_start = size - ISSD_SNAPSHOT_EXTRA_SIZE;
+    unsigned char *core = snapshot + core_start;
+    core[4] = 1; core[5] = core[6] = core[7] = 0;
+    core[8] = 128; core[9] = core[10] = core[11] = 0;
+    assert(issd_snapshot_validate_extra(core, 128, 8));
+    g_cpu.A = 0;
+    assert(RtlLoadSnapshotFromMemory(snapshot, core_start + 128));
+    assert(!memcmp(&g_cpu, &expected_cpu, sizeof(g_cpu)));
     /* Every supported raw guest layout remains readable without a chunk. */
     for (uint32_t version = 4; version <= 8; ++version) {
         uint32_t hdr[2] = {RTL_SAV_MAGIC, version};

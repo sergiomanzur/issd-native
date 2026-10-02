@@ -24,7 +24,10 @@ typedef enum {
     ISSD_MENU_PAGE_GAMEPLAY = 3,
     ISSD_MENU_PAGE_CONTROLS = 4,
     ISSD_MENU_PAGE_KEYBOARD = 5,
-    ISSD_MENU_PAGE_TOUCH = 6
+    ISSD_MENU_PAGE_TOUCH = 6,
+    ISSD_MENU_PAGE_MATCH = 7,
+    ISSD_MENU_PAGE_GRAPHICS = 8,
+    ISSD_MENU_PAGE_GRAPHICS_PREVIEW = 9
 } IssdMenuPage;
 
 typedef struct {
@@ -54,7 +57,7 @@ void issd_menu_set_input_reset_callback(void (*callback)(void));
 void issd_menu_close(void);
 bool issd_menu_is_open(void);
 
-/* True when internal resolution actually reaches the screen (CRT filter). */
+/* Internal intermediates apply for CRT and sharp scaling. */
 bool issd_menu_internal_res_applies(void);
 
 /* Navigation: returns true if handled */
@@ -72,11 +75,28 @@ void issd_menu_capture_pad(int player, uint64_t raw);
 /* Render overlay on top of 256x224 32-bit ARGB framebuffer */
 void issd_menu_render(uint32_t *framebuffer, int width, int height);
 
+/* Transparent output-resolution overlay. Integer glyph scaling is independent
+ * of the game filter; click coordinates use the identical centered transform. */
+void issd_menu_render_display(uint32_t *argb, int width, int height);
+bool issd_menu_handle_display_click(int x, int y, int width, int height);
+void issd_menu_set_display_metrics(int output_width, int output_height,
+                                    int native_width, int native_height);
+/* Dimensions of the actual intermediate selected for this output. */
+void issd_menu_set_intermediate_metrics(int width, int height);
+/* Physical output pixels reserved by display cutouts/system UI. */
+void issd_menu_set_safe_insets(int left, int top, int right, int bottom);
+
 /* A short line shown over the game for `frames` frames, whether or not the
  * menu is open. Mods apply during a restart, when nobody is looking at a
  * console, so the outcome has to arrive on screen. */
 void issd_menu_notify(const char *message, int frames);
 void issd_menu_render_notification(uint32_t *framebuffer, int width, int height);
+/* Paint after render_display, retaining transparent pixels around the notice. */
+void issd_menu_render_notification_display(uint32_t *argb, int width, int height);
+/* Output render APIs never advance timers. Call once per 60 Hz tick, also
+ * while paused; legacy native render APIs retain their per-call timing. */
+void issd_menu_tick_notification(void);
+bool issd_menu_has_notification(void);
 
 /* Repaint the stadium select screen's name plate from the mod data.
  * `margin` is the widescreen column count before the authentic 256. */

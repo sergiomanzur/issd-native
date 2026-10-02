@@ -14,6 +14,8 @@ def test_internal_res_row_is_inert_outside_crt(tmp_path):
             repo / "tests/test_menu_internal_res_native.c",
             repo / "ISSDNative/issd_menu.c",
             repo / "ISSDNative/issd_controls.c",
+            repo / "ISSDNative/issd_match.c",
+            repo / "ISSDNative/issd_match_menu.c",
             repo / "ISSDNative/issd_password_ui.c",
             repo / "ISSDNative/issd_config.c",
             repo / "ISSDNative/issd_mod.c",

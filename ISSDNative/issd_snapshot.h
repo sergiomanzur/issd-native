@@ -5,6 +5,9 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "snes/saveload.h"
+#include "issd_animation.h"
+#include "issd_pose_history.h"
+#define ISSD_SNAPSHOT_EXTRA_SIZE (128 + ISSD_ANIMATION_STATE_SIZE + ISSD_POSE_HISTORY_STATE_SIZE)
 
 void issd_snapshot_save_extra(SaveLoadInfo *sli);
 void issd_snapshot_load_extra(SaveLoadInfo *sli, uint32_t version);
