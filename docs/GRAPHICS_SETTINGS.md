@@ -1,6 +1,7 @@
 # Graphics and readability
 
-These improvements are included in v0.3.0-beta.1.
+This guide describes v0.4.0-beta.1, including enhanced running, Color Boost,
+CRT Strength and widened coin-toss/halftime presentation.
 Open the overlay with Escape/F1 or Guide/Back+Start, scroll to **Graphics /
 Readability**, and use Left/Right to change a setting. Main and Graphics pages
 scroll to keep their selected row visible. Settings save immediately.
@@ -12,15 +13,29 @@ derived from the active settings: changing a constituent setting shows Custom.
 
 | Preset | Presentation |
 | --- | --- |
-| Original | 4:3, nearest filtering, 1x intermediate, readability off, original radar. |
-| Sharp | Original presentation with Sharp filtering and automatic prescaling. |
-| Enhanced | 16:9 widened view, Sharp filtering, ball outline/shadow and selected-player labels on, 2x radar at bottom right with 75% background opacity. |
+| Original | 4:3, nearest filtering, 1x intermediate, readability off, original radar and running animation. |
+| Sharp | Original presentation and running animation with Sharp filtering and automatic prescaling. |
+| Enhanced | 16:9 widened view, Sharp filtering, enhanced running animation, ball shadow and selected-player labels on, 2x radar at bottom right with 75% background opacity. |
 
 Presets retain output resolution, overlay text size, fullscreen, VSync, engine
 mode, audio, controls, mods and gameplay settings. They set integer scaling and
 the standalone scanline switch off. **Reset Graphics** restores Original plus
 Auto window output and Auto overlay text, retaining configured window dimensions,
 fullscreen and VSync.
+
+**Running Animation** selects Original or Enhanced and saves as
+`enhanced_running_animation=0` or `1`. New installs and older configuration files
+default to Original. Enhanced adds intermediate palette-indexed lower-body poses
+to the verified eight-direction running/dash loop (hold **Y / Dash**), derived
+from sprites in the loaded ROM. Eight original keyframes plus eight new
+intermediate poses make a 16-pose cycle per direction. Ordinary walking,
+goalkeepers, shots, tackles, special states and other scenes stay original.
+It changes the displayed poses while retaining the game's original movement,
+animation timing and simulation. It does not replace other actions or install
+external sprite artwork. Original and Sharp presets, and Reset Graphics, disable
+it; Enhanced enables it. Changing this setting independently makes the visual
+preset Custom. The illustrative Preview remains a static sample, so inspect the
+animation during a match.
 
 **Preview** opens an illustrative sample pitch showing the current aspect,
 filter, ball effects, player-label size and radar controls. It is labeled Sample:
@@ -58,6 +73,13 @@ game width, including widened views. For example, 8x of the original 256x224 is
 2048x1792; it does not mean 3840x2160 or new high-definition sprite artwork.
 The footer reports the actual intermediate surface separately from output.
 
+**CRT Strength** selects 0%, 25%, 50%, 75% or 100% when CRT Scanlines is
+selected. 100% retains the previous CRT darkening; 0% disables its darkening.
+This setting saves as `crt_strength`. **Color Boost** saves as `color_boost` and
+can be switched independently of the filter. All visual presets leave Color
+Boost off. Reset restores CRT Strength to 100%. Ball Outline has been removed;
+legacy `ball_outline=1` is ignored and saved back as 0.
+
 **Overlay Text** selects Auto or 1x–4x. Menus and notifications are composited
 onto a separate output-sized surface after the game filter, using whole-pixel
 glyph scaling. Their proportions and clicks no longer depend on game aspect or
@@ -79,7 +101,7 @@ combined independently and do not change save compatibility or game state.
 
 | Setting | Behavior |
 | --- | --- |
-| Ball Outline | Adds a dark perimeter around the visible ball. |
+| Color Boost | Optional modest saturation increase for game artwork; defaults off. Host overlay text retains its original colors. |
 | Ball Shadow | Strengthens the ground shadow for an airborne ball; avoids painting over the ball when it is on the ground. |
 | Player Markers | Adds distinct colored P1–P4 labels and markers for human-controlled selected players. Human ordering follows the original controller processing order. |
 | Player Names | Labels selected human players from the match's actual roster-name buffers, including substitutions and loaded mod names. Unsupported/invalid records are omitted. |
@@ -178,3 +200,27 @@ Physical high-DPI display, controller ergonomics, Android touch/cutout layouts
 and full-match visual acceptance still require device testing. High-refresh
 interpolation, a shader suite, HDR and general HD player replacements remain
 outside this milestone. See [acceptance evidence](ACCEPTANCE_TESTS.md).
+
+## Coin-toss introduction
+
+Current sources widen the verified pre-match introduction and actual hand/coin
+minigame for 16:10, 16:9 and 21:9. Select one of those Aspect settings with true
+widescreen enabled. Wider sections of authored crowd artwork extend
+into the added columns, retaining complete close-up fans and their variation;
+the original panels, team sprites, hand/coin action and
+framed display retain their native placement and clipping. This is a wider
+background presentation, without new gameplay or replacement stadium artwork.
+Unsupported presentation layouts retain their prior fallback.
+
+The sky-to-television vertical scroll retains the native scroll timing. The
+side tiles follow the same vertical scroll; the television is never repeated.
+Crowd-flag sprites are explicitly clipped at the original scene edges.
+
+## Halftime statistics
+
+True widescreen also extends the verified halftime/fulltime statistics
+background for 16:10, 16:9 and 21:9. The stadium's outer tiles continue into
+the margins; the statistics card, score, team labels and native sprites keep
+their original placement and clipping. This is a scenery extension, without
+additional visible simulation or a stretched card. Unsupported/loading layouts
+retain their fallback until the verified card layout is ready.

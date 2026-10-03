@@ -20,7 +20,7 @@ int main(void) {
     clear(); issd_readability_render(fb,446,224,95,ram,&cfg); assert(!changed());
     cfg.ball_outline=true; clear(); memcpy(saved,ram,sizeof ram);
     issd_readability_render(fb,446,224,95,ram,&cfg);
-    assert(changed()>0); assert(fb[84*446+223]==0xff226622); assert(!memcmp(saved,ram,sizeof ram));
+    assert(!changed()); assert(fb[84*446+223]==0xff226622); assert(!memcmp(saved,ram,sizeof ram));
     put(0x70,0x12); clear(); issd_readability_render(fb,446,224,95,ram,&cfg); assert(!changed());
     put(0x70,8); cfg.ball_outline=false; cfg.ball_shadow=true;
     clear(); issd_readability_render(fb,446,224,95,ram,&cfg); assert(changed()>0);

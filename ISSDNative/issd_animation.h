@@ -18,5 +18,10 @@ void issd_animation_forget(unsigned object);
 bool issd_animation_pose(unsigned object, const uint8_t *ram,
                          const uint8_t *rom, size_t rom_size,
                          bool native_window, uint16_t *descriptor);
+/* Second half of a verified running keyframe, using the same presentation
+ * phase as culled-player continuation. Does not advance clocks or guest state. */
+bool issd_animation_running_pair(unsigned object, const uint8_t *ram,
+                                 const uint8_t *rom, size_t rom_size,
+                                 uint16_t *current, uint16_t *next);
 
 #endif

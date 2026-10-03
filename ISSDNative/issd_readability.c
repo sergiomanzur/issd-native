@@ -111,11 +111,7 @@ void issd_readability_render(uint32_t *fb,int w,int h,int margin,const uint8_t *
         if (cfg->ball_shadow && (elevated < y-4 || elevated > y+4) && on_pitch(x,y,w,h))
             for (int dy=-1;dy<=1;dy++) for (int dx=-4;dx<=4;dx++)
                 if (dx*dx+dy*dy*8<=16) pixel(fb,w,h,x+dx,y+dy,0xff182a20);
-        if (cfg->ball_outline && on_pitch(x,elevated,w,h))
-            for (int dy=-5;dy<=5;dy++) for (int dx=-5;dx<=5;dx++) {
-                int d=dx*dx+dy*dy;
-                if (d>=20 && d<=29) pixel(fb,w,h,x+dx,elevated+dy,0xff101820);
-            }
+
     }
     struct Selected { unsigned actor,player; int x,y; Rect marker; } selected[4];
     unsigned human=0,count=0;

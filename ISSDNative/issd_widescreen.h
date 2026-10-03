@@ -17,6 +17,10 @@ void issd_widescreen_end(Ppu *ppu);
  * fallback before a snapshot exists. */
 const uint8_t *issd_widescreen_presented_ram(const uint8_t *current);
 bool issd_widescreen_pitch_layout(const Ppu *ppu, const uint8_t *ram);
+/* Verified pre-match/coin BG1 crowd-edge continuation; no pitch world maps. */
+bool issd_widescreen_coin_layout(const Ppu *ppu, const uint8_t *ram);
+/* Original halftime/fulltime card over the loaded stadium background. */
+bool issd_widescreen_stats_layout(const Ppu *ppu, const uint8_t *ram);
 /* True on a menu screen whose BG2 wallpaper can be repeated into the side
  * margins instead of pillarboxing them. */
 bool issd_widescreen_menu_layout(const Ppu *ppu, const uint8_t *ram);

@@ -13,6 +13,8 @@ int main(int argc, char **argv) {
     issd_config_init_defaults(&cfg);
     assert(!cfg.integer_scaling && cfg.output_resolution == 0 && cfg.overlay_scale == 0);
     assert(!cfg.ball_outline && !cfg.ball_shadow && !cfg.player_markers && !cfg.player_names);
+    assert(!cfg.enhanced_running_animation);
+    assert(!cfg.color_boost && cfg.crt_strength==100);
     assert(cfg.radar_scale == 1);
     assert(cfg.hud_scale == 1 && cfg.radar_position == 0 && cfg.radar_opacity == 75);
     IssdConfig preset = cfg;
@@ -23,10 +25,15 @@ int main(int argc, char **argv) {
     for (int p = ISSD_VISUAL_ORIGINAL; p <= ISSD_VISUAL_ENHANCED; ++p) {
         issd_config_visual_preset(&preset, p);
         assert(issd_config_visual_preset_id(&preset) == p);
+        assert(preset.enhanced_running_animation == (p == ISSD_VISUAL_ENHANCED));
+        assert(!preset.color_boost && !preset.ball_outline && preset.crt_strength==100);
+        preset.enhanced_running_animation = !preset.enhanced_running_animation;
+        assert(issd_config_visual_preset_id(&preset) == ISSD_VISUAL_CUSTOM);
+        issd_config_visual_preset(&preset, p);
         assert(preset.output_resolution == 4 && preset.gameplay_bug_fixes);
         assert(preset.master_volume == 35 && !strcmp(preset.active_mod_packs, "test roster"));
     }
-    assert(preset.radar_scale == 2 && preset.radar_position == 2 && preset.ball_outline);
+    assert(preset.radar_scale == 2 && preset.radar_position == 2 && !preset.ball_outline);
     preset.player_names = false;
     assert(issd_config_visual_preset_id(&preset) == ISSD_VISUAL_CUSTOM);
     IssdConfig unchanged = preset;
@@ -79,13 +86,22 @@ int main(int argc, char **argv) {
     if (!strstr(contents, "rom_path=")) return 6;
     if (!strstr(contents, "mods_dir=")) return 7;
     if (!strstr(contents, "aspect_ratio=2")) return 8;
+    assert(strstr(contents, "enhanced_running_animation=0\n"));
+    assert(strstr(contents, "color_boost=0\n"));
+    assert(strstr(contents, "crt_strength=100\n"));
+    assert(strstr(contents, "ball_outline=0\n"));
 
     IssdConfig loaded;
     if (!issd_config_load(&loaded, argv[1])) return 9;
     assert(loaded.integer_scaling && loaded.output_resolution == 4 && loaded.overlay_scale == 3);
     assert(loaded.scaling_filter == ISSD_FILTER_SHARP && loaded.radar_scale == 3);
     assert(loaded.hud_scale == 3 && loaded.radar_position == 4 && loaded.radar_opacity == 50);
-    assert(loaded.ball_outline && loaded.ball_shadow && loaded.player_markers && loaded.player_names);
+    assert(!loaded.ball_outline && loaded.ball_shadow && loaded.player_markers && loaded.player_names);
+    assert(!loaded.enhanced_running_animation);
+    loaded.enhanced_running_animation = true;
+    assert(issd_config_save(&loaded, argv[1]));
+    assert(issd_config_load(&loaded, argv[1]));
+    assert(loaded.enhanced_running_animation);
     if (strcmp(loaded.rom_path, cfg.rom_path) != 0) return 10;
     if (strcmp(loaded.mods_dir, cfg.mods_dir) != 0) return 11;
     if (loaded.aspect_ratio != ISSD_ASPECT_16_9) return 12;
@@ -149,19 +165,43 @@ int main(int argc, char **argv) {
     assert(loaded.scaling_filter == ISSD_FILTER_CRT && loaded.integer_scaling);
     assert(loaded.output_resolution == 0 && loaded.overlay_scale == 0 && loaded.radar_scale == 1);
     assert(!loaded.ball_outline && !loaded.ball_shadow && !loaded.player_markers && !loaded.player_names);
+    assert(!loaded.enhanced_running_animation);
     /* Malformed new settings do not overwrite defaults; old filter values
      * remain stable across a fresh load and save. */
     f = fopen(argv[1], "w");
     assert(f);
     fputs("output_resolution=oops\noverlay_scale=4junk\nradar_scale=oops\n"
           "ball_outline=oops\nball_shadow=oops\nplayer_markers=oops\nplayer_names=oops\n"
-          "scaling_filter=oops\ninternal_res=99\naspect_ratio=-5\n", f);
+          "scaling_filter=oops\ninternal_res=99\naspect_ratio=-5\n"
+          "enhanced_running_animation=1junk\n", f);
     fclose(f);
     assert(issd_config_load(&loaded, argv[1]));
     assert(loaded.output_resolution == 0 && loaded.overlay_scale == 0 && loaded.radar_scale == 1);
     assert(!loaded.ball_outline && !loaded.ball_shadow && !loaded.player_markers && !loaded.player_names);
     assert(loaded.scaling_filter == ISSD_FILTER_LINEAR && loaded.internal_res == ISSD_RES_8X_4K);
     assert(loaded.aspect_ratio == ISSD_ASPECT_4_3);
+    assert(!loaded.enhanced_running_animation);
+    const char *running_values[] = {"-99", "999999999999999999999999", "oops", "0", "1"};
+    const bool running_expected[] = {false, true, false, false, true};
+    for (int i = 0; i < 5; ++i) {
+        f = fopen(argv[1], "w"); assert(f);
+        fprintf(f, "enhanced_running_animation=%s\n", running_values[i]);
+        fclose(f);
+        assert(issd_config_load(&loaded, argv[1]));
+        assert(loaded.enhanced_running_animation == running_expected[i]);
+    }
+    const char *strength_values[]={"-999","999999999999999999999","oops","1junk","37","63","0","25","50","75","100"};
+    const int strength_expected[]={0,100,100,100,25,75,0,25,50,75,100};
+    for(int i=0;i<11;i++) {
+        f=fopen(argv[1],"w"); assert(f);
+        fprintf(f,"ball_outline=1\ncolor_boost=1\ncrt_strength=%s\n",strength_values[i]);
+        fclose(f);
+        assert(issd_config_load(&loaded,argv[1]));
+        assert(!loaded.ball_outline && loaded.color_boost && loaded.crt_strength==strength_expected[i]);
+        assert(issd_config_save(&loaded,argv[1]));
+        assert(issd_config_load(&loaded,argv[1]));
+        assert(!loaded.ball_outline && loaded.color_boost && loaded.crt_strength==strength_expected[i]);
+    }
     for (int filter = 0; filter <= 2; ++filter) {
         loaded.scaling_filter = (IssdScalingFilter)filter;
         assert(issd_config_save(&loaded, argv[1]));

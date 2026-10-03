@@ -74,6 +74,96 @@ static bool penalty_layout(const Ppu *ppu, const uint8_t *ram) {
          ppu->bgTileAdr == 0x4522;
 }
 
+/* CODE_83B165 loads the introduction stadium ($86=8), whose sky, stands
+ * and close-up coin pitch are authored tile backgrounds. Retail banner/coin captures
+ * share this layout within the cartridge presentation stages $72=9..$1C. They have no live world-map continuation:
+ * BG1 owns both the crowd and the single TV; BG2 is its underlying pitch.
+ * Continue only BG1's outer crowd columns, retaining the 256-pixel clip on
+ * the TV/pitch, OBJ and BG3. Repeating a whole background clones the TV. */
+bool issd_widescreen_coin_layout(const Ppu *ppu, const uint8_t *ram) {
+  if (!ppu || !ram) return false;
+  unsigned stage = word(ram, 0x72);
+  return word(ram, 0x32) == 6 && word(ram, 0x70) == 0x0f &&
+         word(ram, 0x86) == 8 && stage >= 9 && stage <= 0x1c &&
+         word(ram, 0x1ffcc) == 0x80 &&
+         (ppu->bgmode & 0xf7) == 1 && ppu->bgXsc[0] == 3 &&
+         ppu->bgXsc[1] == 0x13 && ppu->bgXsc[2] == 0x58 &&
+         ppu->bgTileAdr == 0x4522 && ppu->hScroll[0] == 128 &&
+         ((ppu->screenEnabled[0] | ppu->screenEnabled[1]) & 3) != 0;
+}
+
+/* Authored BG1 map coordinates, independent of its vertical camera scroll:
+ * TV/wall rows5..23 occupy cols19..45, leaving three crowd tiles left and
+ * two right. Use only two left tiles too: the third reaches the TV shadow.
+ * Wall rows12..15 also put shadow in the second left tile, so continue only
+ * their first plain8px wall tile. Other rows admit128px strips. Close fans
+ * rows24..28 use96px
+ * strips containing four complete24px people, with the left phase joining
+ * the native partial person at x0 (1B9/1BA/1BB and its following body rows).
+ * Read every source from the untouched native cols16..47; only host margin
+ * columns change, and End restores the private scanout transaction. */
+static void fill_coin_crowd(Ppu *ppu) {
+  static const uint16_t tv_edge[18]={0x11d,0x110,0x126,0x126,0x129,0x12a,
+    0x12a,0x126,0x137,0x126,0x12a,0x12a,0x129,0x126,0x126,0x12a,0x129,0x151};
+  /* This ring previously contains clouds/floodlights at these same rows.
+   * Classify streamed artwork, never the row number alone. Ordered fan body
+   * and head triplets distinguish close people from reused sky tile IDs. */
+  bool fans_loaded=true;
+  for (unsigned i=0;i<3;i++) {
+    fans_loaded &= (ppu->vram[24*32+18+i]&0x3ff)==0x1a1+i;
+    fans_loaded &= (ppu->vram[25*32+18+i]&0x3ff)==0x1a4+i;
+  }
+  for (unsigned y=0; y<64; y++) {
+    unsigned row=(y&31)*32+(y>>5)*0x800;
+    uint16_t native[32];
+    for (unsigned x=0;x<32;x++)
+      native[x]=ppu->vram[row+((x+16)&31)+((x+16)>>5)*0x400];
+    for (unsigned x=0; x<16; x++) {
+      unsigned left=x, right=16+x;
+      bool tv_loaded=(y>=5 && y<=22 &&
+        (native[3]&0x3ff)==tv_edge[y-5]) ||
+        (y==23 && (ppu->vram[22*32+19]&0x3ff)==0x151);
+      if (tv_loaded) {
+        left=(y>=12 && y<=15) ? 0 : x%2;
+        right=30+x%2;
+      }
+      else if (fans_loaded && y>=24 && y<=28) { left=14+x%12; right=20+x%12; }
+      ppu->vram[row+x]=native[left];
+      ppu->vram[row+0x400+16+x]=native[right];
+    }
+  }
+}
+
+/* $8BAB77/$8BAC27 load the stadium and put the statistics on BG3.
+ * The native ring has no guaranteed lookahead beyond its centered view.
+ * Extend its outer scenery tiles, leaving the single stats card and OBJ
+ * clipped. This does not admit extra players or modify the match state. */
+bool issd_widescreen_stats_layout(const Ppu *ppu, const uint8_t *ram) {
+  if (!ppu || !ram) return false;
+  unsigned stage = word(ram, 0x72);
+  return word(ram, 0x32) == 6 && word(ram, 0x70) == 0x12 &&
+         stage >= 3 && stage <= 8 &&
+         (ppu->bgmode & 0xf7) == 1 && ppu->bgXsc[0] == 3 &&
+         ppu->bgXsc[1] == 0x13 && ppu->bgXsc[2] == 0x5a &&
+         ppu->bgTileAdr == 0x4522 && ppu->hScroll[0] == 0 &&
+         ppu->hScroll[1] == 0 &&
+         ((ppu->screenEnabled[0] | ppu->screenEnabled[1]) & 3) == 3;
+}
+
+static void fill_stats_edges(Ppu *ppu) {
+  for (unsigned layer = 0; layer < 2; layer++) {
+    unsigned base = PPU_bgTilemapAdr(ppu, layer);
+    for (unsigned y = 0; y < 64; y++) {
+      unsigned row = base + (y & 31) * 32 + (y >> 5) * 0x800;
+      uint16_t left = ppu->vram[row], right = ppu->vram[row + 31];
+      for (unsigned x = 0; x < 16; x++) {
+        ppu->vram[row + 0x400 + x] = right;
+        ppu->vram[row + 0x400 + 16 + x] = left;
+      }
+    }
+  }
+}
+
 /* Menus are pillarboxed unless they are one of the screens built the way the
  * cartridge builds all of them: BG2 a tiling wallpaper, BG1 the panels and
  * BG3 or sprites the text. Verified by isolating layers on the main menu and
@@ -591,7 +681,27 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     s_ws_extra = 0;
     unsigned submode = word(ram, 0x70);
     bool is_pillarboxed = (submode == 0x0F || submode == 0x10 || submode == 0x12 || submode == 0x1C);
-    if (is_pillarboxed) {
+    if (issd_widescreen_coin_layout(ppu, ram)) {
+      PpuSetExtraSpace(ppu, (uint16_t)extra);
+      PpuSetExtraSideSpace(ppu, extra, extra, 0);
+      frame.owner=ppu;
+      memcpy(frame.vram,ppu->vram,sizeof(frame.vram));
+      memcpy(frame.oam,ppu->oam,sizeof(frame.oam));
+      memcpy(frame.high_oam,ppu->highOam,sizeof(frame.high_oam));
+      fill_coin_crowd(ppu);
+      PpuSetWidescreenLayerMask(ppu, 1);
+      PpuSetWidescreenLayerClamp(ppu, 0x1e);
+    } else if (issd_widescreen_stats_layout(ppu, ram)) {
+      PpuSetExtraSpace(ppu, (uint16_t)extra);
+      PpuSetExtraSideSpace(ppu, extra, extra, 0);
+      frame.owner = ppu;
+      memcpy(frame.vram, ppu->vram, sizeof(frame.vram));
+      memcpy(frame.oam, ppu->oam, sizeof(frame.oam));
+      memcpy(frame.high_oam, ppu->highOam, sizeof(frame.high_oam));
+      fill_stats_edges(ppu);
+      PpuSetWidescreenLayerMask(ppu, 3);
+      PpuSetWidescreenLayerClamp(ppu, 0x1c);
+    } else if (is_pillarboxed) {
       PpuSetExtraSpaceCentered(ppu, (uint16_t)extra);
     } else {
       PpuSetExtraSpace(ppu, (uint16_t)extra);

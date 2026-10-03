@@ -23,7 +23,7 @@ int main(void) {
     issd_menu_confirm();
     assert(g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS);
     assert(prepared_contexts == 0);
-    issd_menu_navigate_up(); assert(g_overlay_menu.current_item == 17);
+    issd_menu_navigate_up(); assert(g_overlay_menu.current_item == 19);
     issd_menu_navigate_down(); assert(g_overlay_menu.current_item == 0);
     g_issd_config.scaling_filter = ISSD_FILTER_SHARP;
     g_issd_config.internal_res = ISSD_RES_1X;
@@ -39,7 +39,7 @@ int main(void) {
         case 3: assert(loaded.scaling_filter == g_issd_config.scaling_filter); g_issd_config.scaling_filter = ISSD_FILTER_SHARP; break;
         case 4: assert(loaded.internal_res == g_issd_config.internal_res && loaded.internal_res == ISSD_RES_2X); break;
         case 5: assert(loaded.overlay_scale == g_issd_config.overlay_scale); break;
-        case 6: assert(loaded.ball_outline == g_issd_config.ball_outline); break;
+        case 6: assert(loaded.color_boost == g_issd_config.color_boost); break;
         case 7: assert(loaded.ball_shadow == g_issd_config.ball_shadow); break;
         case 8: assert(loaded.player_markers == g_issd_config.player_markers); break;
         case 9: assert(loaded.player_names == g_issd_config.player_names); break;
@@ -47,6 +47,29 @@ int main(void) {
         }
     }
     assert(prepared_contexts == 0);
+    /* The animation row switches and saves without touching game context. */
+    g_overlay_menu.current_item = 17;
+    assert(!g_issd_config.enhanced_running_animation);
+    issd_menu_navigate_right();
+    assert(g_issd_config.enhanced_running_animation);
+    IssdConfig animation_loaded;
+    assert(issd_config_load(&animation_loaded,"graphics-test.ini"));
+    assert(animation_loaded.enhanced_running_animation);
+    issd_menu_navigate_left();
+    assert(!g_issd_config.enhanced_running_animation);
+    issd_menu_confirm();
+    assert(g_issd_config.enhanced_running_animation && prepared_contexts == 0);
+    assert(issd_config_load(&animation_loaded,"graphics-test.ini"));
+    assert(animation_loaded.enhanced_running_animation);
+    g_overlay_menu.current_item=18;
+    g_issd_config.crt_strength=100;
+    for(int i=0;i<5;i++) {
+        issd_menu_navigate_right();
+        assert(g_issd_config.crt_strength==i*25);
+        assert(issd_config_load(&animation_loaded,"graphics-test.ini"));
+        assert(animation_loaded.crt_strength==i*25 && !animation_loaded.ball_outline);
+    }
+    g_overlay_menu.current_item = 0;
     /* New presentation rows persist without preparing emulation context. */
     for (int row=11; row<=13; row++) {
         g_overlay_menu.current_item = row;
@@ -60,10 +83,13 @@ int main(void) {
     g_overlay_menu.current_item=14;
     issd_menu_confirm();
     assert(issd_config_visual_preset_id(&g_issd_config)==ISSD_VISUAL_ORIGINAL);
+    assert(!g_issd_config.enhanced_running_animation);
     issd_menu_confirm();
     assert(issd_config_visual_preset_id(&g_issd_config)==ISSD_VISUAL_SHARP);
+    assert(!g_issd_config.enhanced_running_animation);
     issd_menu_confirm();
     assert(issd_config_visual_preset_id(&g_issd_config)==ISSD_VISUAL_ENHANCED);
+    assert(g_issd_config.enhanced_running_animation);
     g_overlay_menu.current_item=15; issd_menu_confirm();
     assert(g_overlay_menu.page==ISSD_MENU_PAGE_GRAPHICS_PREVIEW);
     uint32_t preview[400*224], original[400*224];
@@ -90,6 +116,17 @@ int main(void) {
     issd_config_visual_preset(&g_issd_config,ISSD_VISUAL_SHARP);
     issd_menu_render_display(preview,400,224);
     assert(memcmp(preview,original,sizeof preview)!=0);
+    g_issd_config.color_boost=true;
+    issd_menu_render_display(preview,400,224);
+    g_issd_config.color_boost=false;
+    issd_menu_render_display(original,400,224);
+    assert(memcmp(preview,original,sizeof preview)!=0);
+    g_issd_config.scaling_filter=ISSD_FILTER_CRT;
+    g_issd_config.crt_strength=0;
+    issd_menu_render_display(original,400,224);
+    g_issd_config.crt_strength=100;
+    issd_menu_render_display(preview,400,224);
+    assert(memcmp(preview,original,sizeof preview)!=0);
     uint32_t tiny_preview[6]={0x12345678,0,0,0,0,0x87654321};
     issd_menu_render_display(tiny_preview+1,2,2);
     assert(tiny_preview[0]==0x12345678 && tiny_preview[5]==0x87654321);
@@ -100,10 +137,12 @@ int main(void) {
     g_issd_config.overlay_scale=4; g_issd_config.integer_scaling=true; g_issd_config.scanlines=true;
     g_issd_config.window_width=1234; g_issd_config.window_height=777;
     g_issd_config.fullscreen=true; g_issd_config.vsync=false;
+    g_issd_config.enhanced_running_animation=true;
     g_overlay_menu.current_item=16; issd_menu_confirm();
     assert(issd_config_visual_preset_id(&g_issd_config)==ISSD_VISUAL_ORIGINAL);
     assert(g_issd_config.output_resolution==0 && g_issd_config.internal_res==ISSD_RES_1X);
     assert(g_issd_config.overlay_scale==0 && !g_issd_config.integer_scaling && !g_issd_config.scanlines);
+    assert(!g_issd_config.enhanced_running_animation);
     assert(g_issd_config.window_width==1234 && g_issd_config.window_height==777);
     assert(g_issd_config.fullscreen && !g_issd_config.vsync && prepared_contexts==0);
     IssdConfig reset; issd_config_init_defaults(&reset);
@@ -130,17 +169,17 @@ int main(void) {
         assert(large[(oy+2*3+dy)*1600+ox+8*3+dx] == 0xFF00E5FF);
         assert(other[(oy+2*3+dy)*1600+ox+8*3+dx] == 0xFF00E5FF);
     }
-    bool outline = g_issd_config.ball_outline;
+    bool outline = g_issd_config.color_boost;
     assert(issd_menu_handle_display_click(ox+40*3,oy+(2+18+6*14)*3,1600,900));
-    assert(g_overlay_menu.current_item == 6 && g_issd_config.ball_outline != outline);
+    assert(g_overlay_menu.current_item == 6 && g_issd_config.color_boost != outline);
     /* Asymmetric physical safe insets shift the visual center and clicks
        by exactly the same amount. */
     issd_menu_set_safe_insets(100,0,0,0);
     issd_menu_render_display(large,1600,900);
     assert(large[(oy+2*3)*1600+ox+50+8*3] == 0xFF00E5FF);
-    outline = g_issd_config.ball_outline;
+    outline = g_issd_config.color_boost;
     issd_menu_handle_display_click(ox+50+40*3,oy+(2+18+6*14)*3,1600,900);
-    assert(g_overlay_menu.current_item == 6 && g_issd_config.ball_outline != outline);
+    assert(g_overlay_menu.current_item == 6 && g_issd_config.color_boost != outline);
     issd_menu_set_safe_insets(0,0,0,0);
     /* Back keeps its appended main row visible, and wrap clears scroll. */
     issd_menu_cancel(); assert(g_overlay_menu.current_item == 20);
@@ -154,7 +193,7 @@ int main(void) {
     /* Short displays scroll graphics rows too; Back remains clickable. */
     issd_menu_render_display(large,400,120);
     issd_menu_navigate_up();
-    assert(g_overlay_menu.current_item == 17 && g_overlay_menu.scroll == 13);
+    assert(g_overlay_menu.current_item == 19 && g_overlay_menu.scroll == 15);
     issd_menu_render_display(large,400,120);
     issd_menu_handle_display_click(40,2+18+4*14,400,120);
     assert(g_overlay_menu.page == ISSD_MENU_PAGE_MAIN);

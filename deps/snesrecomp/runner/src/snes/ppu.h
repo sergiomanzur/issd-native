@@ -380,6 +380,10 @@ static inline bool PpuWidescreenLineRepeatBandActive(const Ppu *ppu, int y) {
 
 static inline int PpuWidescreenLayerExtra(
     const Ppu *ppu, unsigned int layer, int y, int extra) {
+  /* Explicit OBJ clipping for framed presentations. Background-only masks
+   * retain their existing behavior, including widened live-match sprites. */
+  if (layer == 4 && (ppu->wsLayerClamp & 0x10))
+    return 0;
   if (layer < 4) {
     if (ppu->wsLayerWidenMask &&
         !(ppu->wsLayerWidenMask & (1u << layer)))

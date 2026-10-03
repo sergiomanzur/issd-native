@@ -43,7 +43,10 @@ void issd_config_visual_preset(IssdConfig *cfg, int preset) {
     cfg->internal_res = ISSD_RES_1X;
     cfg->integer_scaling = false;
     cfg->scanlines = false;
-    cfg->ball_outline = cfg->ball_shadow = cfg->player_markers = cfg->player_names = enhanced;
+    cfg->ball_outline = cfg->color_boost = false;
+    cfg->crt_strength = 100;
+    cfg->ball_shadow = cfg->player_markers = cfg->player_names = enhanced;
+    cfg->enhanced_running_animation = enhanced;
     cfg->radar_scale = enhanced ? 2 : 1;
     cfg->hud_scale = 1;
     cfg->radar_position = enhanced ? 2 : 0;
@@ -61,8 +64,10 @@ int issd_config_visual_preset_id(const IssdConfig *cfg) {
             cfg->internal_res == expected.internal_res &&
             cfg->integer_scaling == expected.integer_scaling &&
             cfg->scanlines == expected.scanlines &&
-            cfg->ball_outline == expected.ball_outline && cfg->ball_shadow == expected.ball_shadow &&
+            cfg->color_boost == expected.color_boost && cfg->crt_strength == expected.crt_strength &&
+            cfg->ball_shadow == expected.ball_shadow &&
             cfg->player_markers == expected.player_markers && cfg->player_names == expected.player_names &&
+            cfg->enhanced_running_animation == expected.enhanced_running_animation &&
             cfg->radar_scale == expected.radar_scale && cfg->hud_scale == expected.hud_scale &&
             cfg->radar_position == expected.radar_position && cfg->radar_opacity == expected.radar_opacity)
             return p;
@@ -99,6 +104,8 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->internal_res = ISSD_RES_4X;
     cfg->scaling_filter = ISSD_FILTER_LINEAR;
     cfg->true_widescreen = true;
+    cfg->enhanced_running_animation = false;
+    cfg->crt_strength = 100;
     cfg->radar_scale = 1;
     cfg->hud_scale = 1;
     cfg->radar_position = 0;
@@ -293,10 +300,13 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     if (!strcmp(key, "hud_scale")) { if (valid_int) cfg->hud_scale = clamp(ival, 1, 3); return; }
     if (!strcmp(key, "radar_position")) { if (valid_int) cfg->radar_position = clamp(ival, 0, 4); return; }
     if (!strcmp(key, "radar_opacity")) { if (valid_int) cfg->radar_opacity = clamp(ival, 25, 100); return; }
-    if (!strcmp(key, "ball_outline")) { if (valid_int) cfg->ball_outline = ival != 0; return; }
+    if (!strcmp(key, "ball_outline")) { cfg->ball_outline = false; return; }
+    if (!strcmp(key, "color_boost")) { if (valid_int) cfg->color_boost = ival != 0; return; }
+    if (!strcmp(key, "crt_strength")) { if (valid_int) cfg->crt_strength = ((clamp(ival, 0, 100) + 12) / 25) * 25; return; }
     if (!strcmp(key, "ball_shadow")) { if (valid_int) cfg->ball_shadow = ival != 0; return; }
     if (!strcmp(key, "player_markers")) { if (valid_int) cfg->player_markers = ival != 0; return; }
     if (!strcmp(key, "player_names")) { if (valid_int) cfg->player_names = ival != 0; return; }
+    if (!strcmp(key, "enhanced_running_animation")) { if (valid_int) cfg->enhanced_running_animation = clamp(ival, 0, 1) != 0; return; }
     if (!strcmp(key, "scaling_filter")) { if (valid_int) cfg->scaling_filter = (IssdScalingFilter)clamp(ival, 0, 3); return; }
     if (!strcmp(key, "internal_res")) { if (valid_int) cfg->internal_res = (IssdInternalResolution)clamp(ival, 0, 5); return; }
     if (!strcmp(key, "aspect_ratio")) { if (valid_int) cfg->aspect_ratio = (IssdAspectRatio)clamp(ival, 0, ISSD_ASPECT_COUNT - 1); return; }
@@ -398,10 +408,13 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "true_widescreen=%d\n", cfg->true_widescreen ? 1 : 0);
     fprintf(f, "output_resolution=%d\n", clamp(cfg->output_resolution, 0, 4));
     fprintf(f, "overlay_scale=%d\n", clamp(cfg->overlay_scale, 0, 4));
-    fprintf(f, "ball_outline=%d\n", cfg->ball_outline ? 1 : 0);
+    fprintf(f, "ball_outline=0\n");
+    fprintf(f, "color_boost=%d\n", cfg->color_boost ? 1 : 0);
+    fprintf(f, "crt_strength=%d\n", ((clamp(cfg->crt_strength, 0, 100) + 12) / 25) * 25);
     fprintf(f, "ball_shadow=%d\n", cfg->ball_shadow ? 1 : 0);
     fprintf(f, "player_markers=%d\n", cfg->player_markers ? 1 : 0);
     fprintf(f, "player_names=%d\n", cfg->player_names ? 1 : 0);
+    fprintf(f, "enhanced_running_animation=%d\n", cfg->enhanced_running_animation ? 1 : 0);
     fprintf(f, "radar_scale=%d\n", clamp(cfg->radar_scale, 1, 3));
     fprintf(f, "hud_scale=%d\n", clamp(cfg->hud_scale, 1, 3));
     fprintf(f, "radar_position=%d\n", clamp(cfg->radar_position, 0, 4));

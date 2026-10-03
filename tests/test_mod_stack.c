@@ -312,6 +312,25 @@ int main(void) {
         issd_menu_render_team_plate(fb, 256, 224, 0);
         for (size_t i = 0; i < sizeof fb / sizeof fb[0]; i++) assert(fb[i] == 0);
 
+        /* Moving native identity labels must clip at the guest edges, even
+         * when the framebuffer has wide margins. */
+        {
+            extern void issd_menu_draw_team_identity(uint32_t *,int,int,int,int,int,int,int,int,bool);
+            uint32_t wide[358*224+2];
+            memset(wide,0,sizeof wide);
+            issd_menu_draw_team_identity(wide+1,358,224,51,35,250,64,80,16,false);
+            unsigned ink=0;
+            for(int y=0;y<224;y++) for(int x=0;x<358;x++) {
+                uint32_t c=wide[1+y*358+x]; ink+=c!=0;
+                if(x<51 || x>=307) assert(!c);
+            }
+            assert(ink>0 && wide[0]==0 && wide[358*224+1]==0);
+            memset(wide,0,sizeof wide);
+            issd_menu_draw_team_identity(wide+1,358,224,51,34,30,64,80,16,false);
+            issd_menu_draw_team_identity(wide+1,358,224,51,35,264,64,80,16,false);
+            for(unsigned i=0;i<358*224+2;i++) assert(!wide[i]);
+        }
+
         /* --- the squad photograph ------------------------------------- */
         char path[512];
         assert(!issd_mod_team_photo_path(35, path, sizeof path));

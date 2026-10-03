@@ -84,10 +84,13 @@ typedef struct {
     bool true_widescreen;
     int output_resolution; /* 0 current/auto, 1 720p, 2 1080p, 3 1440p, 4 2160p */
     int overlay_scale;     /* 0 automatic, 1..4 output-pixel UI scale */
-    bool ball_outline;
+    bool ball_outline; /* Deprecated: always disabled; retained for source compatibility. */
+    bool color_boost; /* Modest saturation on the game framebuffer only. */
+    int crt_strength; /* 0/25/50/75/100 percent; 100 preserves legacy CRT. */
     bool ball_shadow;
     bool player_markers;
     bool player_names;
+    bool enhanced_running_animation; /* Presentation-only intermediate running poses. */
     int radar_scale;       /* 1..3 native radar enlargement */
     int hud_scale;         /* 1..3 selected-player label size */
     int radar_position;    /* bottom center/left/right, top left/right */

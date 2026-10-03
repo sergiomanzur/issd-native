@@ -134,6 +134,52 @@ static bool script(const uint8_t *rom, size_t size, const Snapshot *s,
   return false;
 }
 
+bool issd_animation_running_pair(unsigned object, const uint8_t *ram,
+                                 const uint8_t *rom, size_t size,
+                                 uint16_t *current, uint16_t *next) {
+  if (!ram || !current || !next || object < FIRST || object >= END ||
+      (object & 255) || object == 0x500 || object == 0x1000 ||
+      !ram[object + 0x30] || word(ram, object + 0x32) != 0x38 ||
+      word(ram, object + 0x92) != 0xbecf ||
+      word(ram, object + 0x1c) != 0xcf9f) return false;
+  Snapshot live = {0};
+  live.descriptor = word(ram, object + 0x14);
+  live.timer = word(ram, object + 0x16);
+  live.duration = word(ram, object + 0x18);
+  live.cursor = word(ram, object + 0x1a);
+  live.script = word(ram, object + 0x1c);
+  live.direction = word(ram, object + 0x2e);
+  live.type = ram[object + 0x30];
+  uint16_t frames[STEPS];
+  unsigned length;
+  if (!script(rom, size, &live, frames, &length) || length != 8) return false;
+  unsigned descriptor = live.descriptor, remaining = live.timer;
+  const Slot *slot = &slots[(object - FIRST) / 0x100];
+  /* The widescreen preparation has already advanced its frozen presentation
+   * copy; use that exact descriptor/timer without touching the copy again. */
+  if (word(ram, object + 0x1e) && slot->seen &&
+      slot->live.script == live.script && slot->live.direction == live.direction &&
+      slot->live.descriptor == live.descriptor &&
+      slot->live.state == 0x38 && slot->live.handler == 0xbecf) {
+    descriptor = slot->descriptor;
+    remaining = slot->timer;
+  }
+  unsigned index = 0;
+  while (index < length && frames[index] != descriptor) index++;
+  if (index == length) return false;
+  unsigned duration = live.duration;
+  if (duration & 0x8000) {
+    const uint8_t *times = span(rom, size, 0x82, duration, length);
+    if (!times) return false;
+    duration = times[index];
+  }
+  if (duration < 2 || duration > 255 || !remaining || remaining > duration ||
+      remaining * 2 > duration) return false;
+  *current = (uint16_t)descriptor;
+  *next = frames[(index + 1) % length];
+  return true;
+}
+
 bool issd_animation_pose(unsigned object, const uint8_t *ram,
                          const uint8_t *rom, size_t rom_size,
                          bool native_window, uint16_t *descriptor) {

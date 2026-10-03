@@ -442,3 +442,177 @@ and saves and verify archive integrity, version metadata and Android ABIs.
 
 Physical device acceptance and the previously documented full-tournament,
 both-team/extra-time substitution and balance gaps remain pending.
+
+
+## Enhanced eight-direction running (2026-10-02)
+
+The optional Graphics → Running Animation setting defaults to Original. Enhanced
+adds a lower-body midpoint to each of the eight authored running/dash keyframes
+in every direction. Hold Y / Dash to trigger the verified loop. Walking, shooting,
+tackling, goalkeeper and special-screen clips remain original. New pixels derive
+from the locally loaded ROM; no cartridge artwork is shipped with this change.
+
+Focused animation, configuration, menu, snapshot and widescreen checks passed
+**8 tests in 15.54s** (`build/running-animation-focused-tests.log`). Final synthetic
+and real-ROM animation acceptance passed **6 tests in 21.91s**
+(`build/running-animation-acceptance-tests.log`). The real geometry atlas verifies
+all **64** direction/keyframe midpoints. Classic and widescreen input runs retain
+identical guest RAM and snapshot payloads with Original/Enhanced, while rendering
+the intermediate poses. Both views reproduce 40 advancing frames byte-for-byte
+after save/reload. Unit checks cover owned tiles, uniform details, upper-body
+preservation, sprite flips, guarded states and transient VRAM restoration.
+
+Preview artifacts are `build/running-animation-acceptance/running-atlas.png` and
+`running-comparison.gif`. Windows, Linux and Android arm64-v8a/x86_64 builds
+succeeded. Final Windows executable SHA-256:
+`6f6ccf77e86442e3b27a97bd5a4b993cc25494dd13f1bc45360fb22c650998bd`.
+Android APK SHA-256:
+`239784e84e63e227cfaaa1df54e8a9bcd62612be5dae33986c808aa693e71343`.
+Physical-device visual acceptance and subjective animation quality remain
+playtesting tasks. This source addition is not part of the published beta.
+
+Final full project regression: **248 passed, 4 skipped, 7 subtests passed in
+1262.68s** (`build/running-animation-full-tests.log`). This includes original cup
+completion/Continue, campaign transitions, extra time, team-management visuals,
+advancing snapshot replay and the new animation acceptance. Skipped optional
+cases and physical-device acceptance remain outside this result.
+
+
+## Mod identities, coin-toss widening and optional cosmetics (2026-10-02)
+
+Current sources remove Ball Outline, including saved legacy enables. Color Boost
+is an optional 12.5% saturation increase, default off, applied to game artwork
+before host overlays. CRT Strength selects 0/25/50/75/100%; 100% preserves prior
+CRT darkening and 0% disables it. Configuration, menu, preview and pure pixel
+checks cover these settings. Real-ROM Color Boost/legacy-outline comparisons
+preserve endpoint WRAM; native artwork follows the documented color transform,
+while host notifications remain separately composited.
+
+The verified pre-match introduction/hand-coin minigame now extends authored
+BG1 crowd edge tiles into 16:10, 16:9 and 21:9 margins. Original center pixels and WRAM match
+classic at frames 1940 and 2450. BG2, BG3 and OBJ stay clipped to the original
+view. A temporary VRAM transaction extends only the outer crowd tiles, avoiding
+duplicated television frames; the margin test checks every pixel against the
+original crowd edges. This uses existing artwork.
+
+Modded names and flags follow the cartridge's active native sprite identities.
+Exact OAM matching suppresses stock parts only when every visible part matches;
+the complete OAM transaction is restored before saves or guest execution.
+Competition flags associate with source-verified team/name slots, including
+repeated Cup group-grid/next-game copies and asymmetric World Series fixtures.
+Tests reject malformed geometry, partial matches, an offscreen match hiding a
+visible mismatch, conflicting team associations and unsupported scenes.
+
+Final native identity acceptance passed **6 tests in 85.62s**
+(`build/team-identity-final-native-tests.log`). Cases cover moving, settled,
+partially exiting and fully departed coin banners, Cup list/grid/next-game
+copies, and World Series matchups. A distinctive fixture flag appears at all
+expected native positions; zero custom pixels leak into widescreen margins.
+Original/modded WRAM match, and modded center pixels match classic/21:9.
+At frame 2000 the latched original frame still shows eight flag columns
+(128 pixels); frame 2010 verifies complete departure. The initial exit test's
+zero-pixel assumption was corrected using that native evidence.
+
+The combined graphics/mod/save/animation/display regression passed **28 other
+checks**, with the six identity cases rerun as above: **34 unique current checks
+passed**. Logs: `build/visual-identity-final-tests.log` and the final native log.
+The full project suite was last run before this follow-up (248 passed, 4 skipped,
+7 subtests); it was not repeated for these rendering-only changes.
+
+Final Windows, Linux and Android arm64-v8a/x86_64 builds succeeded. Logs:
+`build/coin-edge-final-windows-build.log`,
+`build/coin-edge-final-linux-build.log`, and
+`build/coin-edge-final-android-build.log`.
+Windows executable SHA-256:
+`75cd2ccc356dc327b7683dab54361c5fdd1941d16c14bd0c4f2ef0298ebe9a45`.
+Android APK SHA-256:
+`3a830d0e7c2070c896e0219c0d4464086b2a7646dee40f2cbeebf8469ee3f12a`.
+Native capture artifacts are under `build/team-identity-final-native` and
+`build/visual-identity-final-acceptance`. These source additions have not been
+published as a release; physical-device visual/touch acceptance remains pending.
+
+Final crowd-edge refinement: Windows, Linux and both Android ABI builds succeeded.
+The affected coin, widescreen and identity checks passed **10 tests in 141.21s**
+(build/coin-edge-final-tests.log). Actual 21:9 coin captures were visually
+inspected: one centered television, with crowd artwork in both margins.
+The coin tests compare every added minigame pixel to the original edge tiles;
+original center pixels and WRAM remain identical at all three widened ratios.
+Final captures: build/coin-edge-final-acceptance.
+
+## Coin scroll and halftime widescreen (2026-10-02)
+
+The 16:9 coin sequence was captured continuously from original menu input.
+The final regression compares all 1061 frames from 1900 through 2960 against
+classic center pixels and compares endpoint WRAM through kickoff at frame 3100.
+Ten sampled stages cover the sky/stands scroll, television entry, hand/coin,
+direction selection and fade. Every added pixel at those stages matches the
+isolated native scenery edge. A two-pixel crowd-flag spill during television
+entry was reproduced before adding explicit OBJ clipping to these presentations.
+The television remains singular and follows the original vertical scroll.
+
+The halftime fixture reaches a live Cup match through original menu input;
+only the privately saved clock is shortened to reach the original stats
+transition. Classic, 16:10, 16:9 and 21:9 captures have identical center pixels
+and endpoint WRAM. The stadium edges extend, while the card and sprites remain
+clipped. Native unit checks cover layout rejection, untouched center columns,
+VRAM/OAM/WRAM restoration and explicit OBJ clipping that leaves live-match
+sprite widening unchanged. This fixture verifies halftime; fulltime and every
+stadium/transition variant have not been independently captured in this run.
+
+Final affected checks: **10 passed in 130.00s**
+(`build/coin-stats-final-tests.log`). Windows, Linux and Android
+arm64-v8a/x86_64 builds succeeded (`build/coin-stats-final-*-build.log`).
+Windows SHA-256:
+`ea4b82ef934142ba6b6eebf7e33036ce9b053c6d9c945390a6d4fcbbd7f5b4e3`.
+Android APK SHA-256:
+`a360ab6e363a08b30c8efa40d8f96528c554eee88cdddc86ce2e29ba57210c7b7`.
+Captures and the 16:9 scroll preview are under
+`build/coin-stats-final-acceptance`. The full project suite was not rerun.
+
+## Coin crowd quality correction (2026-10-03)
+
+Visual feedback rejected the prior single-column extension: repeating an
+8-pixel edge cut through close-up fan bodies and produced identical spectators.
+The earlier pixel checks established consistency with that algorithm, rather
+than adequate visual quality. Those expectations have been replaced.
+
+The extension now uses 128-pixel authored scenery sections and 96-pixel
+close-up crowd sections containing four complete 24-pixel fans. The left
+section's phase preserves the partial native fan across the boundary. Narrow
+16-pixel sections avoid the television; four plain wall rows use their first
+8-pixel tile because the next tile already contains television shadow. All
+selection uses map rows, so the vertical scroll remains unchanged. Native
+center tiles, game state, sprite clipping and transaction restoration remain
+preserved. No replacement artwork is shipped.
+
+The same tilemap rows initially contain sky before the cartridge streams in
+the stadium. Narrow sections activate only when the row contains the verified
+television tiles; close-up fans require their ordered head/body tile groups.
+Unloaded sky retains wide sections instead of repeating small cloud fragments.
+The scroll regression includes this early loading stage.
+
+Final affected validation passed **6 tests in 179.79s**
+(`build/coin-crowd-stream-final-tests.log`): coin captures at all three widened
+ratios, every native center frame through the 16:9 scroll, sampled margin
+references, rejection of 8-pixel fan repetition on both sides, halftime
+regression, and native layout/transaction checks. Fresh 16:9/21:9 captures and
+a nine-stage scroll contact sheet were visually inspected. Artifacts and the
+replacement GIF are in `build/coin-crowd-stream-final-acceptance`.
+
+Windows, Linux and Android arm64-v8a/x86_64 builds succeeded; logs are
+`build/coin-crowd-stream-final-*-build.log`. Windows executable SHA-256:
+`ad13fb584fea2222b4aa9ea903fab288bd685c3cb70b0fca4a8e206bfc704f1b`.
+Android APK SHA-256:
+`a1b7f9ffe2bf9a4bf75e288a7cd8350f0f6cdc28ae842242fea910ab850a3281`.
+The full project suite was not rerun for this presentation correction.
+
+## v0.4.0-beta.1 release gate (2026-10-03)
+
+The complete project suite passed: **262 passed, 3 skipped, 7 subtests passed in
+1834.47s**, recorded in `build/release-0.4.0-full-suite.log`. Windows x64,
+Linux and Android builds succeeded (`build/release-0.4.0-*-build.log`).
+Archive integrity, checksums, Windows x64 architecture and both Android ABIs
+were verified. A clean Windows package extraction booted for 60 frames with
+isolated configuration and save directories. Android signature verification
+passed and its signing certificate matches v0.3.0-beta.1; version code is 6.
+The pending physical-device and untouched campaign acceptance remains pending.

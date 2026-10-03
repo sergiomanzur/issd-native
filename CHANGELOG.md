@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.4.0-beta.1 (2026-10-03)
+
+- Replace the coin-scene's repeated 8-pixel edge slivers with wider authored
+  scenery sections and complete close-up fans, retaining vertical scroll and
+  one centered television.
+- Widen halftime/fulltime statistics scenery for 16:10, 16:9 and 21:9 while
+  retaining the original centered card. Explicitly clip presentation sprites
+  during the coin-toss scroll and stats screens.
+- Remove the ball outline and ignore saved legacy enables. Add optional Color Boost
+  and adjustable CRT Strength with saved settings and preview support.
+- Extend the verified coin-toss introduction/minigame background to 16:10, 16:9
+  and 21:9 while keeping its native panels and action clipped to the original view.
+- Replace modded moving team identities using matched native sprite geometry,
+  including competition screens and coin-toss panels.
+
+- Add an optional eight-direction enhanced running/dash animation: eight new
+  palette-indexed lower-body poses per direction, retaining original gameplay
+  timing, sprite positions, palettes and priority.
+- Add a saved Original/Enhanced Running Animation setting to Graphics. Original
+  and Sharp presets disable it; Enhanced enables it.
+- Add real-cartridge pose previews, render isolation and classic/widescreen
+  deterministic replay checks.
+
 ## v0.3.0-beta.1 (2026-10-02)
 
 Beta prerelease for Windows and Android, with graphics, controls, exhibition

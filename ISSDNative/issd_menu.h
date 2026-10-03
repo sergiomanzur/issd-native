@@ -123,6 +123,11 @@ void issd_menu_render_team_grid(uint32_t *fb, int width, int height,
 void issd_menu_render_team_flags(uint32_t *fb, int width, int height,
                                  int margin);
 
+/* Sprite identity replacements clip to the cartridge viewport inside wide views. */
+bool issd_menu_team_flag_available(int team_id);
+void issd_menu_draw_team_identity(uint32_t *fb,int width,int height,int margin,
+                                  int team,int x,int y,int room,int tall,bool flag);
+
 /* Provided by the host: save settings and start the process again, so a
  * newly chosen mod pack is applied to a fresh cartridge image. */
 void issd_restart_application(void);

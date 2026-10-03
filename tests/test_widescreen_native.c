@@ -73,6 +73,133 @@ static void test_penalty_background(void) {
   }
 }
 
+/* Measured retail introduction: authored sky/stands/pitch tiles, never the
+ * live stadium world map. BG3 and moving team OBJ stay guest-clipped. */
+static void test_stats_background(void) {
+  static uint16_t saved_vram[0x8000], saved_oam[0x100];
+  static uint8_t saved_ram[sizeof(ram)];
+  const int extras[] = {0, 51, 71, 124};
+  for (unsigned i = 0; i < sizeof(extras)/sizeof(extras[0]); i++) {
+    fixture(); word(0x70, 0x12); word(0x72, 6);
+    ppu.bgmode = 9; ppu.bgXsc[2] = 0x5a; ppu.bgTileAdr = 0x4522;
+    ppu.hScroll[0] = ppu.hScroll[1] = 0; ppu.screenEnabled[0] = 0x17;
+    for (unsigned layer = 0; layer < 2; layer++) {
+      unsigned base = ((ppu.bgXsc[layer] & 0xfc) << 8);
+      ppu.vram[base] = 0x1100 + layer;
+      ppu.vram[base + 31] = 0x2200 + layer;
+    }
+    memcpy(saved_vram, ppu.vram, sizeof(saved_vram));
+    memcpy(saved_oam, ppu.oam, sizeof(saved_oam));
+    memcpy(saved_ram, ram, sizeof(saved_ram));
+    assert(issd_widescreen_stats_layout(&ppu, ram));
+    assert(!issd_widescreen_pitch_layout(&ppu, ram));
+    assert(!issd_widescreen_begin(&ppu, ram, rom, sizeof(rom), extras[i]));
+    assert(ppu.extraLeftCur == extras[i] && ppu.extraRightCur == extras[i]);
+    if (extras[i]) {
+      assert(ppu.wsLayerWidenMask == 3 && ppu.wsLayerClamp == 0x1c);
+      assert(ppu.wsLayerRepeat == 0);
+      for (unsigned layer = 0; layer < 2; layer++) {
+        unsigned base = ((ppu.bgXsc[layer] & 0xfc) << 8);
+        for (unsigned x = 0; x < 16; x++) {
+          assert(ppu.vram[base + 0x400 + x] == 0x2200 + layer);
+          assert(ppu.vram[base + 0x410 + x] == 0x1100 + layer);
+        }
+        assert(!memcmp(ppu.vram + base, saved_vram + base, 32 * sizeof(uint16_t)));
+      }
+    }
+    issd_widescreen_end(&ppu);
+    assert(!memcmp(ppu.vram, saved_vram, sizeof(saved_vram)));
+    assert(!memcmp(ppu.oam, saved_oam, sizeof(saved_oam)));
+    assert(!memcmp(ram, saved_ram, sizeof(ram)));
+    word(0x72, 2); assert(!issd_widescreen_stats_layout(&ppu, ram));
+    word(0x72, 6); ppu.hScroll[1] = 1;
+    assert(!issd_widescreen_stats_layout(&ppu, ram));
+    ppu.hScroll[1] = 0; ppu.bgXsc[2] = 0x58;
+    assert(!issd_widescreen_stats_layout(&ppu, ram));
+  }
+}
+
+static void test_explicit_sprite_clip(void) {
+  fixture();
+  ppu.wsLayerClamp = 0x10;
+  assert(PpuWidescreenLayerExtra(&ppu, 4, 100, 71) == 0);
+  assert(PpuWidescreenLayerExtra(&ppu, 0, 100, 71) == 71);
+  ppu.wsLayerClamp = 0x0f;
+  assert(PpuWidescreenLayerExtra(&ppu, 4, 100, 71) == 71);
+  ppu.wsLayerClamp = 0;
+  assert(PpuWidescreenLayerExtra(&ppu, 4, 100, 71) == 71);
+  assert(PpuWidescreenLayerExtra(&ppu, 5, 100, 71) == 71);
+}
+
+static void test_coin_background(void) {
+  static uint8_t saved_ram[sizeof(ram)];
+  static uint16_t saved_vram[0x8000], saved_oam[0x100];
+  static const int extras[] = {0, 51, 71, 124};
+  for (unsigned i=0; i<sizeof(extras)/sizeof(extras[0]); i++) {
+    fixture(); word(0x70, 0x0f); word(0x72, 0x09); word(0x86, 8);
+    word(0x1ffcc, 0x80); ppu.bgmode=9; ppu.bgXsc[2]=0x58;
+    ppu.bgTileAdr=0x4522; ppu.screenEnabled[0]=0x17;
+    ppu.hScroll[0]=128;
+    /* BG1 native cols16..47 contain the TV; edge columns own crowd only. */
+    for(unsigned y=0;y<64;y++) for(unsigned x=16;x<48;x++) {
+      unsigned a=(y&31)*32+(y>>5)*0x800+(x&31)+(x>>5)*0x400;
+      ppu.vram[a]=(uint16_t)(0x2000+y*64+x);
+    }
+    /* Streamed TV/fan signatures. Unloaded ring rows retain wide scenery. */
+    ppu.vram[5*32+19]=0x051d;
+    ppu.vram[13*32+19]=0x0537;
+    ppu.vram[24*32+18]=0x15a1;ppu.vram[24*32+19]=0x15a2;ppu.vram[24*32+20]=0x15a3;
+    ppu.vram[25*32+18]=0x15a4;ppu.vram[25*32+19]=0x15a5;ppu.vram[25*32+20]=0x15a6;
+    memcpy(saved_ram,ram,sizeof(ram));
+    memcpy(saved_vram,ppu.vram,sizeof(saved_vram));
+    memcpy(saved_oam,ppu.oam,sizeof(saved_oam));
+    assert(!issd_widescreen_pitch_layout(&ppu,ram));
+    assert(issd_widescreen_coin_layout(&ppu,ram));
+    word(0x72,0x13); /* actual hand/coin stage retains authored scenery */
+    assert(issd_widescreen_coin_layout(&ppu,ram));
+    word(0x72,0x1c);
+    assert(issd_widescreen_coin_layout(&ppu,ram));
+    word(0x72,0x1d);
+    assert(!issd_widescreen_coin_layout(&ppu,ram));
+    word(0x72,0x09);
+    assert(!issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),extras[i]));
+    assert(ppu.extraLeftCur==extras[i] && ppu.extraRightCur==extras[i]);
+    if (extras[i]) {
+      assert(ppu.wsLayerWidenMask==1 && ppu.wsLayerClamp==0x1e);
+      assert(ppu.wsLayerRepeat==0);
+      /* Wide strips preserve fan bodies/variation; TV rows never sample it. */
+      assert(ppu.vram[15]==0x201f && ppu.vram[0x400+16]==0x2020);
+      /* Unstreamed row16 must keep its full128px cloud/crowd variation. */
+      assert(ppu.vram[16*32+15]==0x2000+16*64+31);
+      unsigned tv=5*32, fans=25*32;
+      assert(ppu.vram[tv+15]==0x2000+5*64+17);
+      assert(ppu.vram[tv+0x400+16]==0x2000+5*64+46);
+      /* The white wall's second native tile is already a TV shadow. */
+      assert(ppu.vram[13*32+15]==0x2000+13*64+16);
+      assert(ppu.vram[fans+15]==0x2000+25*64+33);
+      assert(ppu.vram[fans+0x400+16]==0x2000+25*64+36);
+      assert(ppu.vram[fans]!=ppu.vram[fans+1]);
+      assert(ppu.vram[16]==0x2010 && ppu.vram[0x400+15]==0x202f);
+      assert(!Issd_IsWidescreenActive());
+    }
+    issd_widescreen_end(&ppu);
+    assert(!memcmp(saved_ram,ram,sizeof(ram)));
+    assert(!memcmp(saved_vram,ppu.vram,sizeof(saved_vram)));
+    assert(!memcmp(saved_oam,ppu.oam,sizeof(saved_oam)));
+    /* Unverified fly-in/loading/stats layouts retain their existing policy. */
+    if (extras[i]) {
+      word(0x72,0x08);
+      issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),extras[i]);
+      assert(ppu.extraLeftCur==0 && ppu.extraRightCur==0);
+      word(0x72,0x09); ppu.hScroll[0]=129;
+      assert(!issd_widescreen_coin_layout(&ppu,ram));
+      ppu.hScroll[0]=128; ppu.bgXsc[2]=0x5a;
+      issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),extras[i]);
+      assert(ppu.extraLeftCur==0 && ppu.extraRightCur==0);
+    }
+  }
+}
+
 static void test_offscreen_player_graphics(void) {
   fixture();
   /* $84E6C7 records the animation descriptor before skipping an offscreen
@@ -204,6 +331,7 @@ static void test_padded_stadium_edge(void) {
   issd_widescreen_end(&ppu);
 }
 int main(void) {
+  test_coin_background();
   fixture();
   assert(issd_widescreen_pitch_layout(&ppu,ram));
   ram[0x32]=1; assert(!issd_widescreen_pitch_layout(&ppu,ram)); ram[0x32]=6;
@@ -350,6 +478,8 @@ int main(void) {
   assert(ppu.extraLeftCur==95 && ppu.extraRightCur==95);
   issd_widescreen_end(&ppu);
   test_penalty_background();
+  test_stats_background();
+  test_explicit_sprite_clip();
   test_offscreen_player_graphics();
   test_auxiliary_vertical_admission();
   test_padded_stadium_edge();

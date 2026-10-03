@@ -25,6 +25,9 @@
 #include "issd_config.h"
 #include "issd_video.h"
 #include "issd_readability.h"
+#include "issd_visual.h"
+#include "issd_running.h"
+#include "issd_team_visual.h"
 #include "issd_gameplay.h"
 #include "issd_bugfix_keeper.h"
 #include "issd_bugfix_skills.h"
@@ -459,6 +462,12 @@ static void IssdDrawPpuFrame(void) {
 
     issd_widescreen_begin(g_snes->ppu, g_ram, g_rom_data, g_rom_size,
                          g_ws_active ? g_ws_extra : 0);
+    if (g_issd_config.enhanced_running_animation)
+        issd_running_begin(g_snes->ppu, issd_widescreen_presented_ram(g_ram),
+                           g_rom_data, g_rom_size);
+
+    issd_team_visual_begin(g_snes->ppu, issd_widescreen_presented_ram(g_ram),
+                           g_rom_data, g_rom_size);
 
     SimpleHdma hdma[8];
     for (int ch = 0; ch < 8; ch++) {
@@ -479,9 +488,15 @@ static void IssdDrawPpuFrame(void) {
         ppu_runLine(g_snes->ppu, line);
     }
     ppu_handleVblank(g_snes->ppu);
+    if (g_issd_config.color_boost)
+        issd_visual_boost_frame(g_pixel_buffer, (size_t)(SNES_WIDTH + 2 * (g_ws_active ? g_ws_extra : 0)) * SNES_HEIGHT);
     issd_readability_render(g_pixel_buffer, SNES_WIDTH + 2 * (g_ws_active ? g_ws_extra : 0),
                             SNES_HEIGHT, g_ws_active ? g_ws_extra : 0,
                             issd_widescreen_presented_ram(g_ram), &g_issd_config);
+    issd_team_visual_render(g_pixel_buffer, SNES_WIDTH + 2 * (g_ws_active ? g_ws_extra : 0),
+                            SNES_HEIGHT, g_ws_active ? g_ws_extra : 0);
+    issd_team_visual_end(g_snes->ppu);
+    issd_running_end(g_snes->ppu);
     issd_widescreen_end(g_snes->ppu);
     issd_hd_dump_frame(g_snes->ppu);
 }
@@ -1746,11 +1761,7 @@ static void UpscaleFrameBuffer(uint32_t *dst, int dst_w, int dst_h, const uint32
                 for (int x = 0; x < src_w; x++) {
                     uint32_t color = src_row[x];
                     if (filter == ISSD_FILTER_CRT && (sy % 2 != 0)) {
-                        /* CRT scanline darkening */
-                        uint32_t r = ((color >> 16) & 0xFF) * 3 / 4;
-                        uint32_t g = ((color >> 8) & 0xFF) * 3 / 4;
-                        uint32_t b = (color & 0xFF) * 3 / 4;
-                        color = 0xFF000000 | (r << 16) | (g << 8) | b;
+                        color = issd_visual_crt_pixel(color, g_issd_config.crt_strength);
                     }
                     for (int sx = 0; sx < scale_x; sx++) {
                         dst_row[x * scale_x + sx] = color;
@@ -2536,10 +2547,7 @@ int main(int argc, char **argv) {
                     for (int y = 1; y < cur_render_h; y += 2) {
                         for (int x = 0; x < cur_render_w; x++) {
                             uint32_t p = g_pixel_buffer[y * cur_render_w + x];
-                            uint32_t r = ((p >> 16) & 0xFF) * 3 / 4;
-                            uint32_t g = ((p >> 8) & 0xFF) * 3 / 4;
-                            uint32_t b = (p & 0xFF) * 3 / 4;
-                            g_pixel_buffer[y * cur_render_w + x] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                            g_pixel_buffer[y * cur_render_w + x] = issd_visual_crt_pixel(p, g_issd_config.crt_strength);
                         }
                     }
                 }

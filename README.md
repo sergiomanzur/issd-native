@@ -4,7 +4,9 @@ A native recompilation and modernization of **International Superstar Soccer Del
 
 The goal is to preserve the original gameplay while adding modern controls, presentation options, saves, and editable mod packs. This is a **beta project working toward 1.0**; recompilation coverage does not establish complete gameplay or hardware fidelity.
 
-The current release is **[v0.3.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.3.0-beta.1)**, a GitHub prerelease for Windows and Android. It adds configurable per-player controls and touch layouts, exhibition rematches/drills and favorites, verified original-game bug fixes, and improved graphics/readability including widened penalty scenery. Four-player local play, campaign recovery, cartridge password interoperability and optional AI tweaks remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.3.0-beta.1.md).
+The current release is **[v0.4.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.4.0-beta.1)**, a GitHub prerelease for Windows and Android. It adds optional eight-direction running animations, modded competition/pre-match identities, revised widescreen coin-toss crowds and halftime scenery, Color Boost and CRT Strength. Four-player local play, configurable controls, campaign recovery, cartridge password interoperability, exhibition shortcuts and optional AI/bug fixes remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.4.0-beta.1.md).
+
+Enable **Graphics → Running Animation → Enhanced** and hold **Y / Dash** to use the new running poses. Walking and other action clips retain their original animation. Ball Outline has been removed, including legacy saved enables.
 
 The [supported-feature inventory](docs/SUPPORTED_FEATURES.md) records actual behavior and inactive settings; [acceptance checks](docs/ACCEPTANCE_TESTS.md) separate automated evidence from pending complete-campaign and device testing. Original formation/substitution menus have [input-driven acceptance checks](docs/TEAM_CHANGES_ACCEPTANCE.md) for first-team commits, request cancellation and advancing save/reload with AI off/on. The project remains a beta; netplay is a [future design](docs/NETPLAY_DESIGN.md).
 
@@ -191,7 +193,7 @@ python -m pytest tests/test_local_multiplayer.py -q
 
 Tests need Python and pytest, with compiler/SDL2 requirements for native harnesses. Some also require Pillow. ROM-backed checks require your supported ROM and a built executable; see the individual test files for setup.
 
-The latest full project-suite run (2026-10-01) produced **227 passed, 2 failed, 2 skipped, and 7 subtests passed** in 971.41 seconds. Both failures are the existing mod appearance-nibble expectation and shared-kit warnings. Graphics checks cover presets/preview/reset, label/radar controls, real SDL software rendering from 320x240 through 4K, and renderer-reset recovery. Five real-ROM viewports passed at frames 600 and 1200 with identical guest RAM and exact original center pixels. Windows, Linux and Android `arm64-v8a`/`x86_64` builds succeeded; physical display/touch acceptance remains pending. See [graphics settings](docs/GRAPHICS_SETTINGS.md) and [acceptance records](docs/ACCEPTANCE_TESTS.md).
+The v0.3.0-beta.1 release gate fixed three failures found by the pre-release full suite: goalkeeper appearance expectations, shared kit records, and widened animation restoration. Affected unit checks passed **59 tests**, and native integration checks passed **27 tests, 1 skipped**; subsequent snapshot and advancing-replay checks also passed. These were focused reruns, with their scope recorded in the acceptance notes. The subsequent full source suite (2026-10-02), including enhanced running, passed **248 tests and 7 subtests, with 4 skipped**, in 1262.68 seconds. That full run preceded the coin-toss/mod-identity follow-up; its current focused validation is recorded in the acceptance notes. Graphics checks cover presets/preview/reset, label/radar controls, real SDL software rendering from 320x240 through 4K, and renderer-reset recovery. Five real-ROM viewports passed at frames 600 and 1200 with identical guest RAM and exact original center pixels. Windows, Linux and Android `arm64-v8a`/`x86_64` builds succeeded; physical display/touch acceptance remains pending. See [graphics settings](docs/GRAPHICS_SETTINGS.md) and [acceptance records](docs/ACCEPTANCE_TESTS.md).
 
 Final graphics verification against the updated Windows executable returned **17 passed in 68.07 seconds**, including a live graphical match replay and paused HD capture geometry.
 
@@ -208,7 +210,7 @@ The penalty-camera follow-up passed **11 focused checks** and the expanded
 captures), including actual kicks and subsequent turns at 16:10/16:9/21:9.
 Windows, Linux and Android builds succeeded.
 
-The two remaining baseline failures are an appearance-nibble expectation (`test_mod_rom_patching`) and shipped-pack kit-sharing warnings (`test_shipped_packs_validate`). The earlier menu harness linking and snapshot replay failures are fixed. Full tournament, shootout, team-change and device acceptance evidence is tracked in [ACCEPTANCE_TESTS.md](docs/ACCEPTANCE_TESTS.md). Physical four-controller matches, Android controls, physical-cartridge password comparison, and gameplay-tweak balance still need playtesting. This is not yet a fully passing 1.0 test baseline.
+The earlier appearance and shipped-pack validation failures were resolved before v0.3.0-beta.1. Full untouched tournaments, completed shootouts, physical four-controller matches, Android lifecycle/touch and gameplay-tweak balance still need acceptance; see [ACCEPTANCE_TESTS.md](docs/ACCEPTANCE_TESTS.md).
 
 Useful runtime options:
 
@@ -239,7 +241,7 @@ For example:
 
 ## Remaining work for 1.0
 
-1. Establish a fully passing regression baseline, including mod appearance and shipped-pack validation.
+1. Maintain a passing regression baseline against the exact release candidate.
 2. Playtest two-, three-, and four-player matches on physical controllers, including reconnect/focus changes and Android handhelds.
 3. Verify full tournament progression, scenarios, training, penalties, long sessions, and audio against the original game.
 4. Resolve widescreen edge behavior and clearly separate faithful presentation from experimental enhancements.

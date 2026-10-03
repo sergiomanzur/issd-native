@@ -1,3 +1,4 @@
+#include "issd_visual.h"
 #include "issd_menu.h"
 #include "issd_controls.h"
 #include "issd_match_menu.h"
@@ -362,7 +363,7 @@ bool issd_menu_internal_res_applies(void) {
 }
 
 #define MENU_VISIBLE_ROWS 15
-#define GRAPHICS_ROWS 18
+#define GRAPHICS_ROWS 20
 static int s_main_visible_rows = MENU_VISIBLE_ROWS, s_graphics_visible_rows = GRAPHICS_ROWS;
 static void menu_fit_height(int height) {
     s_main_visible_rows = (height - 44) / 12;
@@ -407,7 +408,7 @@ static void graphics_adjust(int direction) {
     case 3: g_issd_config.scaling_filter = (IssdScalingFilter)((g_issd_config.scaling_filter + direction + 4) % 4); break;
     case 4: if (issd_menu_internal_res_applies()) g_issd_config.internal_res = (IssdInternalResolution)((g_issd_config.internal_res + direction + 6) % 6); break;
     case 5: g_issd_config.overlay_scale = (g_issd_config.overlay_scale + direction + 5) % 5; break;
-    case 6: g_issd_config.ball_outline = !g_issd_config.ball_outline; break;
+    case 6: g_issd_config.color_boost = !g_issd_config.color_boost; break;
     case 7: g_issd_config.ball_shadow = !g_issd_config.ball_shadow; break;
     case 8: g_issd_config.player_markers = !g_issd_config.player_markers; break;
     case 9: g_issd_config.player_names = !g_issd_config.player_names; break;
@@ -431,6 +432,8 @@ static void graphics_adjust(int direction) {
         g_issd_config.overlay_scale = 0;
         g_issd_config.integer_scaling = g_issd_config.scanlines = false;
         break;
+    case 17: g_issd_config.enhanced_running_animation = !g_issd_config.enhanced_running_animation; break;
+    case 18: g_issd_config.crt_strength = ((g_issd_config.crt_strength / 25 + direction + 5) % 5) * 25; break;
     default: issd_menu_cancel(); return;
     }
     issd_config_save(&g_issd_config, NULL);
@@ -1021,8 +1024,8 @@ static void render_graphics_preview(uint32_t *fb, int width, int height) {
     FillBox(sample,sw,sh,sw*2/3-4,62,8,12,0xFFFFA050);
     int ballx=px+28, bally=py+12;
     if(cfg->ball_shadow) FillBox(sample,sw,sh,ballx-4,bally+9,9,3,0xFF182A20);
-    if(cfg->ball_outline) FillBox(sample,sw,sh,ballx-3,bally-3,7,7,0xFF101820);
     FillBox(sample,sw,sh,ballx-2,bally-2,5,5,0xFFFFFFFF);
+    if(cfg->color_boost) issd_visual_boost_frame(sample,(size_t)sw*sh);
     int hs=cfg->hud_scale;
     if (hs<1) hs=1;
     if (hs>3) hs=3;
@@ -1094,7 +1097,7 @@ static void render_graphics_preview(uint32_t *fb, int width, int height) {
                 }
             }
             if((cfg->scaling_filter==ISSD_FILTER_CRT || cfg->scanlines) && (y&1))
-                c=0xFF000000 | ((c&0x00FEFEFE)>>1);
+                c=issd_visual_crt_pixel(c,cfg->crt_strength);
             fb[(oy+y)*width+ox+x]=c;
         }
     }
@@ -1123,7 +1126,7 @@ static void render_graphics(uint32_t *fb, int width, int height, int bx, int by,
         snprintf(rows[4], sizeof rows[4], "Sharp Minimum: <%dX %dx%d>", m, s_native_width*m, s_native_height*m);
     else snprintf(rows[4], sizeof rows[4], "Intermediate: <%dX %dx%d>%s", m, s_native_width*m, s_native_height*m, issd_menu_internal_res_applies() ? "" : " (inactive)");
     snprintf(rows[5], sizeof rows[5], "Overlay Text: <%s>", scale);
-    snprintf(rows[6], sizeof rows[6], "Ball Outline: <%s>", g_issd_config.ball_outline ? "ON" : "OFF");
+    snprintf(rows[6], sizeof rows[6], "Color Boost: <%s>", g_issd_config.color_boost ? "ON" : "OFF");
     snprintf(rows[7], sizeof rows[7], "Ball Shadow: <%s>", g_issd_config.ball_shadow ? "ON" : "OFF");
     snprintf(rows[8], sizeof rows[8], "Player Markers: <%s>", g_issd_config.player_markers ? "ON" : "OFF");
     snprintf(rows[9], sizeof rows[9], "Player Names: <%s>", g_issd_config.player_names ? "ON" : "OFF");
@@ -1136,7 +1139,10 @@ static void render_graphics(uint32_t *fb, int width, int height, int bx, int by,
     snprintf(rows[14], sizeof rows[14], "Visual Preset: <%s>", preset[issd_config_visual_preset_id(&g_issd_config)]);
     snprintf(rows[15], sizeof rows[15], "Preview...");
     snprintf(rows[16], sizeof rows[16], "Reset Graphics");
-    snprintf(rows[17], sizeof rows[17], "Back");
+    snprintf(rows[17], sizeof rows[17], "Running Animation: <%s>",
+             g_issd_config.enhanced_running_animation ? "ENHANCED" : "ORIGINAL");
+    snprintf(rows[18], sizeof rows[18], "CRT Strength: <%d%%>", g_issd_config.crt_strength);
+    snprintf(rows[19], sizeof rows[19], "Back");
     DrawString(fb, width, height, bx + 14, by + 4, "GRAPHICS / READABILITY", 0xFFFFD700);
     menu_keep_visible();
     for (int row = g_overlay_menu.scroll; row < GRAPHICS_ROWS && row < g_overlay_menu.scroll + s_graphics_visible_rows; row++) {
@@ -1837,6 +1843,7 @@ void issd_menu_render_team_grid(uint32_t *fb, int width, int height,
 static uint32_t s_flags[42][FLAG_W * FLAG_H];
 static bool     s_flag_loaded[42];
 static bool     s_flag_ok[42];
+static char     s_flag_paths[42][512];
 
 static bool flag_load(int team_id, const char *path) {
     if (team_id < 0 || team_id >= 42 || !path || !path[0]) return false;
@@ -1874,11 +1881,47 @@ static bool flag_load(int team_id, const char *path) {
 }
 
 static void ensure_flag_loaded(int team_id) {
-    if (team_id < 0 || team_id >= 42 || s_flag_loaded[team_id]) return;
-    s_flag_loaded[team_id] = true;
-    char path[512];
-    s_flag_ok[team_id] = issd_mod_team_flag_path(team_id, path, sizeof path) &&
-                         flag_load(team_id, path);
+    if (team_id < 0 || team_id >= 42) return;
+    char path[512]={0};
+    bool found=issd_mod_team_flag_path(team_id,path,sizeof path);
+    if (s_flag_loaded[team_id] && !strcmp(path,s_flag_paths[team_id])) return;
+    s_flag_loaded[team_id]=true;
+    snprintf(s_flag_paths[team_id],sizeof s_flag_paths[team_id],"%s",path);
+    s_flag_ok[team_id]=found && flag_load(team_id,path);
+}
+
+bool issd_menu_team_flag_available(int team_id) {
+    if(team_id<0 || team_id>=42) return false;
+    ensure_flag_loaded(team_id);
+    return s_flag_ok[team_id];
+}
+
+/* Native identities move with the cartridge's own sprite objects. Clip to
+ * the logical guest viewport, including partially entering/leaving panels. */
+void issd_menu_draw_team_identity(uint32_t *fb,int width,int height,int margin,
+                                  int team,int x,int y,int room,int tall,bool flag) {
+    if(!fb || width<=0 || height<=0 || room<=0 || tall<=0 ||
+       team<0 || team>=42 || margin<0 || room>256 || tall>64) return;
+    const char *name=issd_mod_team_plate_name(team);
+    if(flag) { if(!issd_menu_team_flag_available(team)) return; }
+    else if(!name || !name[0]) return;
+    int len=name ? (int)strlen(name) : 0;
+    int dw=flag ? room : (len*8<room ? len*8 : room);
+    int dh=flag ? tall : (tall<8 ? tall : 8);
+    int top=y+(flag ? 0 : (tall-dh)/2);
+    for(int py=0;py<dh;py++) for(int px=0;px<dw;px++) {
+        int gx=x+px,gy=top+py,fx=margin+gx;
+        if(gx<0 || gx>=256 || fx<0 || fx>=width || gy<0 || gy>=height) continue;
+        uint32_t color;
+        if(flag) color=s_flags[team][(py*FLAG_H/dh)*FLAG_W+px*FLAG_W/dw];
+        else {
+            int source=px*len*8/dw;
+            unsigned ch=(unsigned char)name[source/8];
+            if(ch<32 || ch>126 || !(g_issd_font8x8[ch-32][py*8/dh] & (0x80>>(source%8)))) continue;
+            color=TEAM_PLATE_INK;
+        }
+        fb[(size_t)gy*width+fx]=color;
+    }
 }
 
 static void draw_flag(uint32_t *fb, int width, int height, int dst_x, int dst_y, int team_id) {
@@ -1954,9 +1997,6 @@ static bool on_tonights_game_screen(void) {
             g_ram[0x18] == 116 && g_ram[0x1A] == 52);
 }
 
-static bool on_prematch_presentation_screen(void) {
-    return (g_ram[0x32] == 0x06 && g_ram[0x70] == 0x0F && g_ram[0x1A] == 60);
-}
 
 void issd_menu_render_team_flags(uint32_t *fb, int width, int height, int margin) {
     if (!fb) return;
@@ -2051,50 +2091,8 @@ void issd_menu_render_team_flags(uint32_t *fb, int width, int height, int margin
         return;
     }
 
-    /* 4. Pre-Match Presentation Screen (Stadium Fly-in / Vs Banner) */
-    if (on_prematch_presentation_screen()) {
-        const int p1_team = g_ram[0x0DA0] / 2;
-        const int p2_team = g_ram[0x0EA0] / 2;
-
-        if (p1_team >= 0 && p1_team < 42) {
-            draw_flag(fb, width, height, margin + 104, 64, p1_team);
-            const char *p1_name = issd_mod_team_plate_name(p1_team);
-            if (p1_name && p1_name[0]) {
-                for (int y = 63; y <= 82; y++) {
-                    for (int x = 16; x <= 102; x++) {
-                        fb[(size_t)y * width + (margin + x)] = 0xFF4A4AFFu;
-                    }
-                }
-                int len = (int)strlen(p1_name);
-                int advance = 7;
-                if (len * advance > 84) advance = 6;
-                if (len * advance > 84) len = 84 / advance;
-                int sx = margin + 100 - len * advance;
-                draw_outlined_text(fb, width, height, sx, 66, p1_name, advance,
-                                   TEAM_PLATE_INK, TEAM_PLATE_EDGE);
-            }
-        }
-
-        if (p2_team >= 0 && p2_team < 42) {
-            draw_flag(fb, width, height, margin + 128, 64, p2_team);
-            const char *p2_name = issd_mod_team_plate_name(p2_team);
-            if (p2_name && p2_name[0]) {
-                for (int y = 63; y <= 82; y++) {
-                    for (int x = 153; x <= 239; x++) {
-                        fb[(size_t)y * width + (margin + x)] = 0xFF4A4AFFu;
-                    }
-                }
-                int len = (int)strlen(p2_name);
-                int advance = 7;
-                if (len * advance > 84) advance = 6;
-                if (len * advance > 84) len = 84 / advance;
-                int sx = margin + 156;
-                draw_outlined_text(fb, width, height, sx, 66, p2_name, advance,
-                                   TEAM_PLATE_INK, TEAM_PLATE_EDGE);
-            }
-        }
-        return;
-    }
+    /* Animated presentation identities use exact native sprite matching in
+     * issd_team_visual; stationary repainting would leave stock names behind. */
 
     /* 5. In-Match HUD Scoreboard: Live play (Mode 0x08) */
     if (g_ram[0x70] == 0x08) {

@@ -279,6 +279,14 @@ The groups are, in the order the screen pages through them: 0-5 Europe 1,
 
 ---
 
+Current sources after v0.3.0-beta.1 also replace native big-name sprites and
+flag objects in competition displays and the moving coin-toss introduction.
+The replacement follows the game's active objects and sorted team identities;
+it is clipped at the original viewport edges even in widened views. Names use
+`plate_name`; flags use the existing `flag` file. This requires no new pack
+schema. A missing flag leaves the original flag visible. These source fixes are
+not included in the published beta yet.
+
 ## 5. Roster pack reference
 
 A pack is ordinary JSON. Key order does not matter, whitespace does not
@@ -306,9 +314,9 @@ half-read.
 | `new_team` | true | **Adds** a team instead of replacing one. Leave `team_id` out; a slot is assigned and named in the log. Six are available. |
 | `team_id` | 0-35, or 36-41 for an all-star side | Required unless `new_team` is set. A typo here is why a pack "loads but does nothing". |
 | `name` | text | For your own reference and the log. |
-| `plate_name` | text, 12 max | What the **select screen's name plate** should read. The cartridge's plates are graphics, one per team, so the host draws this one instead. Leave it out and the cartridge's own stands. |
+| `plate_name` | text, 12 max | What the **select screen's name plate** and current-source native competition/pre-match big-name sprites should read. The cartridge's plates are graphics, one per team, so the host draws this one instead. Leave it out and the cartridge's own stands. |
 | `photo` | filename | A 32-bit `.bmp` beside the pack, drawn over the **squad photograph**. Any size; it is sampled into the 96x72 the frame leaves. |
-| `flag` | filename | A supported 32-bit `.bmp` beside the pack, used for the select-screen and in-game HUD flag. Empty keeps the cartridge graphic. |
+| `flag` | filename | A supported 32-bit `.bmp` beside the pack, used for select-screen/HUD flags and, in current sources, verified competition and moving pre-match flag sprites. Empty or unreadable artwork keeps the cartridge graphic. |
 | `stripes` | boolean | Uses the original jersey-detail mapping for vertical shirt stripes. Not general sprite artwork replacement. |
 | `shirt` | `"#RRGGBB"` | Shirt colour. The three shades the cartridge uses are derived from it. |
 | `shorts` | `"#RRGGBB"` | Shorts colour. |
