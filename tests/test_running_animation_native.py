@@ -14,13 +14,13 @@ ROM = ROOT / "International Superstar Soccer Deluxe (USA).sfc"
 pytestmark = pytest.mark.skipif(not EXE.exists() or not ROM.exists(), reason="needs built exe and ROM")
 
 
-def run(folder, frames, *, enabled=False, aspect=0, seed=None, script=None, extra=()):
+def run(folder, frames, *, enabled=False, aspect=0, camera=0, seed=None, script=None, extra=()):
     folder.mkdir(parents=True, exist_ok=True)
     saves = folder / "saves"
     saves.mkdir(exist_ok=True)
     cfg = folder / "isolated.cfg"
     cfg.write_text(f"aspect_ratio={aspect}\ntrue_widescreen=1\n"
-                   f"enhanced_running_animation={int(enabled)}\n", encoding="ascii")
+                   f"enhanced_running_animation={int(enabled)}\ncamera_mode={camera}\n", encoding="ascii")
     args = [str(EXE), "--headless", str(frames), "--config", str(cfg),
             "--save-dir", str(saves), "--mods-dir", str(folder / "empty-mods"),
             "--screenshot", "final.bmp", "--dump-state", "state", *extra, str(ROM)]
@@ -67,16 +67,17 @@ def test_all_real_running_midpoints(tmp_path, live_seed):
     image.resize((image.width * 2, image.height * 2), Image.Resampling.NEAREST).save(artifacts / "running-atlas.png")
 
 
-@pytest.mark.parametrize("aspect", [0, 2], ids=["classic", "widescreen"])
-def test_running_changes_pixels_without_changing_match(tmp_path, live_seed, aspect):
+@pytest.mark.parametrize("aspect,camera", [(0,0),(2,0),(2,1),(2,2)],
+                         ids=["classic","widescreen","tactical","tactical-wide"])
+def test_running_changes_pixels_without_changing_match(tmp_path, live_seed, aspect, camera):
     # Drive every direction naturally. AI running provides additional overlap/depth
     # coverage; unit tests separately pin all eight strip selectors and palettes.
     directions = ["UP,Y", "UP,RIGHT,Y", "RIGHT,Y", "DOWN,RIGHT,Y", "DOWN,Y",
                   "DOWN,LEFT,Y", "LEFT,Y", "UP,LEFT,Y"]
     script = "0 P1 B\n10 NONE\n" + "".join(f"{20+i * 60} P1 {direction}\n" for i, direction in enumerate(directions))
-    original = run(tmp_path / "original", 480, aspect=aspect, seed=live_seed, script=script,
+    original = run(tmp_path / "original", 480, aspect=aspect, camera=camera, seed=live_seed, script=script,
                    extra=("--dump-frames", "30:119", "--save-state", "480"))
-    enhanced = run(tmp_path / "enhanced", 480, enabled=True, aspect=aspect, seed=live_seed, script=script,
+    enhanced = run(tmp_path / "enhanced", 480, enabled=True, aspect=aspect, camera=camera, seed=live_seed, script=script,
                    extra=("--dump-frames", "30:119", "--save-state", "480"))
     assert (original / "state.wram").read_bytes() == (enhanced / "state.wram").read_bytes()
     # Snapshot guest payload must stay identical, including VRAM, OAM, CGRAM,
@@ -101,14 +102,15 @@ def test_running_changes_pixels_without_changing_match(tmp_path, live_seed, aspe
     assert changed > 3, "enhanced running did not reach the actual rasterized match"
 
 
-@pytest.mark.parametrize("aspect", [0, 2], ids=["classic", "widescreen"])
-def test_enhanced_running_replay_is_identical(tmp_path, live_seed, aspect):
-    record = run(tmp_path / "record", 80, enabled=True, aspect=aspect, seed=live_seed,
+@pytest.mark.parametrize("aspect,camera", [(0,0),(2,0),(2,1),(2,2)],
+                         ids=["classic","widescreen","tactical","tactical-wide"])
+def test_enhanced_running_replay_is_identical(tmp_path, live_seed, aspect, camera):
+    record = run(tmp_path / "record", 80, enabled=True, aspect=aspect, camera=camera, seed=live_seed,
                  script="0 P1 B\n10 P1 RIGHT,Y\n", extra=("--save-state", "40", "--dump-frames", "40:79"))
     # Replay uses the same held input across the restore boundary.
     replay_folder = tmp_path / "replay"
     replay_folder.mkdir()
-    result = run(replay_folder, 40, enabled=True, aspect=aspect,
+    result = run(replay_folder, 40, enabled=True, aspect=aspect, camera=camera,
                  seed=record / "saves/quicksave.sav", script="0 P1 RIGHT,Y\n",
                  extra=("--dump-frames", "0:39"))
     for offset in range(40):

@@ -563,16 +563,17 @@ static void IssdDrawPpuFrame(void) {
 
     issd_widescreen_begin(g_snes->ppu, g_ram, g_rom_data, g_rom_size,
                          g_ws_active ? g_ws_extra : 0);
+    int camera_width=SNES_WIDTH+2*(g_ws_active ? g_ws_extra : 0);
+    issd_camera_set_art_lookup(issd_hd_active() ? issd_hd_camera_texture : NULL);
+    bool tactical=issd_camera_prepare(g_snes->ppu,issd_widescreen_presented_ram(g_ram),
+        g_rom_data,g_rom_size,g_issd_config.camera_mode,camera_width,SNES_HEIGHT);
+    /* Upload tactical actor graphics before optional presentation edits. */
     if (g_issd_config.enhanced_running_animation)
         issd_running_begin(g_snes->ppu, issd_widescreen_presented_ram(g_ram),
                            g_rom_data, g_rom_size);
 
     issd_team_visual_begin(g_snes->ppu, issd_widescreen_presented_ram(g_ram),
                            g_rom_data, g_rom_size);
-    int camera_width=SNES_WIDTH+2*(g_ws_active ? g_ws_extra : 0);
-    issd_camera_set_art_lookup(issd_hd_active() ? issd_hd_camera_texture : NULL);
-    bool tactical=issd_camera_prepare(g_snes->ppu,issd_widescreen_presented_ram(g_ram),
-        g_rom_data,g_rom_size,g_issd_config.camera_mode,camera_width,SNES_HEIGHT);
     if(tactical) {
         memset(g_camera_hud,0,sizeof g_camera_hud);
         PpuBindOverlaySurface(g_snes->ppu,kPpuOverlaySource_Bg3,(uint8_t *)g_camera_hud,
