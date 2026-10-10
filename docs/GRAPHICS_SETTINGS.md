@@ -169,6 +169,20 @@ receive authored continuation; arbitrary state-dependent actions are not inferre
 [match graphics checks](GRAPHICS_MATCH_ACCEPTANCE.md) for tested transitions and
 remaining full-match coverage gaps.
 
+## Recorded replay edges
+
+New recordings keep a presentation-only companion for all 22 players alongside
+the original replay directory. It retains live positions and resolved animation
+descriptors, so actors omitted by the original narrow-view recorder can appear
+in widened replay margins. Payload fingerprints reject overwritten ring entries;
+pause/rewind use the actual selected record, paired with the native OAM frame.
+This does not change original replay data or guest RAM. New saves retain the
+companion history; older saves remain loadable but cannot recover motion that
+was never recorded. Missing history continues to suppress stale ghost players.
+
+For other views, see [camera investigation](CAMERA_INVESTIGATION.md). There is
+currently no selectable zoom, tracking type or rotated perspective.
+
 ## Penalty camera
 
 With widened gameplay enabled, the goal-facing penalty screen now extends the
@@ -239,3 +253,23 @@ the margins; the statistics card, score, team labels and native sprites keep
 their original placement and clipping. This is a scenery extension, without
 additional visible simulation or a stretched card. Unsupported/loading layouts
 retain their fallback until the verified card layout is ready.
+
+## Tactical cameras for 1.0 development
+
+Open **Graphics > Camera** and choose Classic, Tactical 80%, or Tactical Wide
+67%. Classic remains the default. The tactical choices expose 25% or 50% more
+world in each axis with the original projection and tracking. They work at 4:3
+and with the supported wider aspects. Score, timer, radar, flags and labels stay
+at their normal size. Player names, markers and ball shadows follow the field.
+
+The setting is saved as `camera_mode=0`, `1`, or `2`. Invalid values use Classic.
+Verified pitch gameplay and goal replays use the tactical renderer. Dedicated
+behind-goal penalty/shootout views, management/substitution panels, campaign
+cards, introductions and other unsupported layouts retain original scanout.
+
+Fresh replay history supplies players omitted by the cartridge recording.
+An old recording cannot recover motion it never saved. Unlisted replay auxiliary
+objects remain excluded; vertically expanded live auxiliary objects require
+prior native admission, and this evidence is cleared on save loading. Custom
+artwork retains native colors where the cartridge applies clipping/color math.
+See [validation and remaining device checks](TACTICAL_CAMERA_1_0_VALIDATION.md).

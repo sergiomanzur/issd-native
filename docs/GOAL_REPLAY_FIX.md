@@ -1,5 +1,45 @@
 # Widescreen goal replay correction (2026-10-09)
 
+## Follow-up: missing edge players (2026-10-10)
+
+The original correction below removes stale ghosts, but cannot supply players
+that the original narrow-view replay never recorded. The new implementation
+keeps a separate presentation companion for each of the 512 original directory
+entries. It records all 22 active players' positions, properties and descriptors;
+live widescreen rendering also records the resolved pose actually shown.
+
+The observer at `$8BAAFD` runs after the original payload and end link are
+written. `$8BAE80` captures the selected playback entry before its cursor moves;
+that selection is paired with the previous RAM generation used by native OAM.
+The original `$8BA997` directory reset clears the companion. A fingerprint of
+the original payload rejects ring reuse. Only omitted actors with matching
+history are restored into presentation RAM, and playback uses their recorded
+descriptors rather than advancing the live predictor. Original replay bytes,
+WRAM, native OAM and the simulation camera are unchanged.
+
+Snapshot extension version 4 retains the companion. Versions 1–3 and guest-only
+saves remain readable; old recordings cannot recover data they never captured.
+Without valid companion history the prior ghost-suppression rule still applies.
+
+A naturally scored retail goal was compared against the released beta binary.
+At frame 6420 the companion restores omitted players in the left margin. All
+131,072 guest RAM bytes and the original 256-pixel center are identical across
+released native, released wide and updated wide runs. The difference is confined
+to widened columns. Both-side multi-piece actor tests and a native/supplemental
+split sprite test pass. Pause, rewind, save/load and custom-art native checks
+passed in the affected regression run (17 passed, one missing optional fixture
+skipped). Unit checks also cover invalid state, unchanged guest memory and ring
+reuse. The black-card/menu corrections have their own native and unit tests.
+
+The first native probe exposed an interior-opcode hook that worked only in its
+unit fixture; no companion records were created in the actual compiled path.
+Moving capture to the verified `$8BAAFD` block boundary corrected that integration
+defect. Private proof and comparison images are under
+`build/reported-widescreen/`; they contain owned cartridge pixels and are not
+release resources. No new public release is claimed by this source change.
+
+## Original ghost correction
+
 Goal replays could show stationary players with frozen poses in widened margins.
 These were stale player records, not an animation interpreter that needed to run.
 

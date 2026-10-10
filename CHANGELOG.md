@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Add persistent Classic / Tactical 80% / Tactical Wide 67% camera choices for
+  1.0 development, using real expanded stadium coverage, signed actors,
+  replay player history and independently sized HUD elements. Preserve original
+  scanout for unsupported scenes and native colors during artwork color effects.
+
+- Keep black campaign/tournament cards centered in True widescreen; extend
+  their backdrop without repeating reflected lettering into the margins.
+- Preserve real edge-player positions and resolved poses alongside original
+  replay records. Restore omitted actors only from matching recorded history;
+  retain this history in saves while accepting older snapshot extensions.
+- Document camera/FOV feasibility and the fixed 2D projection limits.
+
 ## 0.5.0-beta.1 — 2026-10-10
 
 - Correct expanded stadium selection in both menu wrap directions, retain
