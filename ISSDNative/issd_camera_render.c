@@ -238,28 +238,6 @@ bool issd_camera_compose(const Ppu *p,const uint8_t *ram,uint32_t *output,
   }
   memset(art_tiles,0,sizeof art_tiles);
   memset(world_tiles,0,sizeof world_tiles);
-  /* Only destination samples contribute to the final image. This avoids
-   * shading discarded expanded-world pixels and keeps Android memory bounded. */
-  for(int y=0;y<height;y++) for(int x=0;x<width;x++) {
-    int wx=x*camera_view.w/width+camera_view.x,wy=y*camera_view.h/height+camera_view.y;
-    size_t i=(size_t)y*width+x;
-    camera_main[i]=world_pixel(p,ram,layers,wx,wy,0,camera_art+i);
-    camera_sub[i]=world_pixel(p,ram,layers,wx,wy,1,NULL);
-  }
-  memset(camera_obj,0,(size_t)width*height*sizeof *camera_obj);
-  memset(camera_native_slots,0xff,camera_piece_count*sizeof *camera_native_slots);
-  native_extras(p);
-  /* Keep all actor pieces in shared depth order, including clipped pieces.
-   * Native unmatched indicators enter immediately before their next admitted
-   * actor anchor, preserving their relative OAM ordering. */
-  size_t extra=0;
-  for(size_t i=0;i<camera_piece_count;i++) {
-    if(camera_native_slots[i]>=0)
-      while(extra<camera_extra_count && camera_extra_slots[extra]<camera_native_slots[i])
-        draw_camera_piece(p,camera_extra_pieces+extra++);
-    draw_camera_piece(p,camera_pieces+i);
-  }
-  while(extra<camera_extra_count) draw_camera_piece(p,camera_extra_pieces+extra++);
   uint32_t colors[256];bool visible_x[504],math_x[504],obj_mask_x[504];
   for(unsigned i=0;i<256;i++) {
     /* Layer six never participates in SNES color math. */
@@ -277,6 +255,29 @@ bool issd_camera_compose(const Ppu *p,const uint8_t *ram,uint32_t *output,
     math_x[x]=prevent==0 || (prevent==1 && inside) || (prevent==2 && !inside);
     obj_mask_x[x]=camera_window(p,4,wx);
   }
+  /* Only destination samples contribute to the final image. This avoids
+   * shading discarded expanded-world pixels and keeps Android memory bounded. */
+  for(int y=0;y<height;y++) for(int x=0;x<width;x++) {
+    int wx=x*camera_view.w/width+camera_view.x,wy=y*camera_view.h/height+camera_view.y;
+    size_t i=(size_t)y*width+x;
+    camera_main[i]=world_pixel(p,ram,layers,wx,wy,0,camera_art+i);
+    camera_sub[i]=math_x[x] && PPU_addSubscreen(p) ?
+        world_pixel(p,ram,layers,wx,wy,1,NULL) : backdrop();
+  }
+  memset(camera_obj,0,(size_t)width*height*sizeof *camera_obj);
+  memset(camera_native_slots,0xff,camera_piece_count*sizeof *camera_native_slots);
+  native_extras(p);
+  /* Keep all actor pieces in shared depth order, including clipped pieces.
+   * Native unmatched indicators enter immediately before their next admitted
+   * actor anchor, preserving their relative OAM ordering. */
+  size_t extra=0;
+  for(size_t i=0;i<camera_piece_count;i++) {
+    if(camera_native_slots[i]>=0)
+      while(extra<camera_extra_count && camera_extra_slots[extra]<camera_native_slots[i])
+        draw_camera_piece(p,camera_extra_pieces+extra++);
+    draw_camera_piece(p,camera_pieces+i);
+  }
+  while(extra<camera_extra_count) draw_camera_piece(p,camera_extra_pieces+extra++);
   for(int y=0;y<height;y++) for(int x=0;x<width;x++) {
     int wx=x*camera_view.w/width;
     size_t i=(size_t)y*width+x,dest=i;

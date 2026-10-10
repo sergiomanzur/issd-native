@@ -25,7 +25,6 @@ static bool profiles;
 static uint8_t profile_epoch,extra_epoch;
 static bool has_extra;
 static bool issd_stadium_has_profiles(void) { return profiles; }
-static bool issd_stadium_trace_enabled(void) { return false; }
 static void issd_stadium_gameplay_digest(uint8_t digest[32]) { memset(digest,0,32);digest[0]=profile_epoch; }
 static void issd_save_set_context_extra(const uint8_t *digest) { has_extra=digest!=NULL;extra_epoch=digest?digest[0]:0; }
 static uint32_t save_flags, password_flags;
@@ -46,17 +45,20 @@ static void issd_campaign_reset(void) { campaign_resets++; }
 static void issd_menu_refresh_continue(void) { continue_refreshes++; }
 ''' + function(main, "static void IssdRefreshSaveContext(") + r'''
 int main(void) {
-    IssdRefreshSaveContext(); assert(save_flags == 0 && !native_enabled);
+    /* The passive replay observer stays installed with gameplay extras off. */
+    IssdRefreshSaveContext(); assert(save_flags == 0 && native_enabled);
     g_issd_config.gameplay_bug_fixes = true;
     IssdRefreshSaveContext(); assert(save_flags == 8 && password_flags == 8 && native_enabled);
     assert(configure_count == 2 && cache_resets == 2 && campaign_resets == 2 && continue_refreshes == 2);
     IssdRefreshSaveContext(); assert(configure_count == 2 && cache_resets == 2);
+    g_issd_config.camera_mode=ISSD_CAMERA_TACTICAL_WIDE;
+    IssdRefreshSaveContext();assert(save_flags==8 && configure_count==2 && cache_resets==2);
     g_issd_config.gameplay_goalkeeper_ai = g_issd_config.gameplay_player_ai = true;
     IssdRefreshSaveContext(); assert(save_flags == 14);
     g_issd_config.gameplay_bug_fixes = false;
     IssdRefreshSaveContext(); assert(save_flags == 6 && native_enabled);
     g_issd_config.gameplay_goalkeeper_ai = g_issd_config.gameplay_player_ai = false;
-    IssdRefreshSaveContext(); assert(save_flags == 0 && !native_enabled);
+    IssdRefreshSaveContext(); assert(save_flags == 0 && native_enabled);
     assert(!has_extra);
     profiles=true;profile_epoch=1;
     IssdRefreshSaveContext();assert(save_flags==16&&password_flags==16&&native_enabled&&has_extra&&extra_epoch==1);
@@ -65,7 +67,7 @@ int main(void) {
     profile_epoch=2;
     IssdRefreshSaveContext();assert(configure_count==before+1&&extra_epoch==2);
     profiles=false;
-    IssdRefreshSaveContext();assert(save_flags==0&&!native_enabled&&!has_extra);
+    IssdRefreshSaveContext();assert(save_flags==0&&native_enabled&&!has_extra);
     return 0;
 }
 '''

@@ -95,6 +95,18 @@ int main(void) {
   assert(issd_camera_compose(&ppu,ram,composed,NULL,398,224));
   assert(composed[90*398+94]==0xff0000);
   issd_widescreen_end(&ppu);
+  /* An enabled math region still samples the subscreen after the fast path. */
+  fixture();ppu.inidisp=15;ppu.bgTileAdr=0x22;
+  ppu.screenEnabled[0]=1;ppu.screenEnabled[1]=2;
+  ppu.cgwsel=2;ppu.cgadsub=1;
+  memset(ppu.vram+0x2000,0,48*sizeof(uint16_t));
+  for(int row=0;row<8;row++) {ppu.vram[0x2010+row]=0xff;ppu.vram[0x2020+row]=0xff00;}
+  ppu.cgram[1]=31;ppu.cgram[2]=31<<10;
+  for(int i=0;i<16;i++) {word(0x18020+i*2,1);word(0x1a020+i*2,2);}
+  assert(issd_camera_prepare(&ppu,ram,rom,sizeof rom,ISSD_CAMERA_TACTICAL,398,224));
+  assert(issd_camera_compose(&ppu,ram,composed,NULL,398,224));
+  assert(composed[100*398+200]==0xff00ff);
+  issd_widescreen_end(&ppu);
   /* Dedicated penalty and management layouts retain original scanout. */
   word(0x70,0x0c);ppu.bgmode=9;ppu.bgXsc[0]=1;ppu.bgXsc[1]=0x10;
   assert(!issd_camera_prepare(&ppu,ram,rom,sizeof rom,ISSD_CAMERA_TACTICAL_WIDE,398,224));
