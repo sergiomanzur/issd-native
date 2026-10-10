@@ -40,7 +40,8 @@ def test_original_team_changes_visual_widths(tmp_path):
     # the visible actor must follow the incoming roster identity.
     name_exe = tmp_path / "name.exe"
     compile_c(name_exe, ROOT, [ROOT / "tests/team_changes_name_probe.c",
-        ROOT / "ISSDNative/issd_readability.c"], [ROOT / "ISSDNative"])
+        ROOT / "ISSDNative/issd_readability.c", ROOT / "ISSDNative/issd_camera.c"],
+        [ROOT / "ISSDNative"])
     names = []
     for label, ram in (("before", initial), ("after", current)):
         snapshot = tmp_path / (label + ".wram")
