@@ -18,6 +18,14 @@ int main(void) {
     issd_config_init_defaults(&g_issd_config);
     issd_config_set_default_path("graphics-test.ini");
     issd_menu_init(); issd_menu_open();
+    /* Pause actions are the first two rows beneath Resume, using the same
+     * keyboard/controller navigation as every setting. Unavailable actions
+     * stay paused and explain why instead of resetting the application. */
+    issd_menu_navigate_down(); assert(g_overlay_menu.current_item == 21);
+    issd_menu_confirm(); assert(issd_menu_is_open());
+    issd_menu_navigate_down(); assert(g_overlay_menu.current_item == 22);
+    issd_menu_confirm(); assert(issd_menu_is_open());
+    issd_menu_navigate_down(); assert(g_overlay_menu.current_item == 1);
     issd_menu_set_save_context_callback(prepare_context);
     g_overlay_menu.current_item = 20;
     issd_menu_confirm();
@@ -183,12 +191,12 @@ int main(void) {
     issd_menu_set_safe_insets(0,0,0,0);
     /* Back keeps its appended main row visible, and wrap clears scroll. */
     issd_menu_cancel(); assert(g_overlay_menu.current_item == 20);
-    assert(g_overlay_menu.scroll == 6);
+    assert(g_overlay_menu.scroll == 8);
     issd_menu_navigate_down(); assert(g_overlay_menu.current_item == 0 && g_overlay_menu.scroll == 0);
-    issd_menu_navigate_up(); assert(g_overlay_menu.current_item == 20 && g_overlay_menu.scroll == 6);
+    issd_menu_navigate_up(); assert(g_overlay_menu.current_item == 20 && g_overlay_menu.scroll == 8);
     g_issd_config.overlay_scale = 1;
     issd_menu_render_display(large,400,224);
-    issd_menu_handle_display_click(40,2+18+(20-6)*12,400,224);
+    issd_menu_handle_display_click(40,2+18+(22-8)*12,400,224);
     assert(g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS);
     /* Short displays scroll graphics rows too; Back remains clickable. */
     issd_menu_render_display(large,400,120);

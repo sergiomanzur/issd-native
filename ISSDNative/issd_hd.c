@@ -17,8 +17,8 @@
  * checked against the frame the PPU actually produced: a pixel is replaced
  * only when it still holds exactly the colour that tile would have put there.
  * Anything drawn on top changes the colour and is left alone automatically.
- * A sprite pixel that happens to match exactly is replaced, which is
- * invisible - it is the same colour either way.
+ * Main-screen ownership captured after scanout additionally protects sprites
+ * and higher backgrounds even when their RGB matches the original tile.
  *
  * Identity is the tile's graphics data plus the palette it is drawn in, so
  * the same artwork in two colour schemes is two textures. That matches how
@@ -59,10 +59,25 @@ typedef struct {
     uint16_t vScroll[4];
     uint8_t  mainLayers;      /* $212C */
     uint8_t  valid;
+    uint8_t  marginPolicy[4]; /* 0 blocked, 1 tilemap, 2 repeat, 3 mirror */
+    int stadium_id;
+    unsigned stadium_generation;
 } HdLineRegs;
 
 #define MAX_LINES 240
 static HdLineRegs s_lines[MAX_LINES];
+/* Reuse identical consecutive VRAM images instead of keeping 64 KiB for
+ * every scanline. Most frames need one image; HDMA VRAM writes get their own. */
+static uint16_t *s_vram_images[MAX_LINES];
+static unsigned s_vram_count;
+static unsigned s_line_vram[MAX_LINES];
+static uint16_t s_line_cgram[MAX_LINES][256];
+static uint8_t s_line_brightness[MAX_LINES][63];
+static uint8_t s_line_memory_valid[MAX_LINES];
+static uint8_t s_line_owner[MAX_LINES][kPpuBufWidth];
+static uint8_t s_line_owner_valid[MAX_LINES];
+static Ppu s_scanout_source;
+
 
 /* ------------------------------------------------------------- textures -- */
 
@@ -75,6 +90,11 @@ typedef struct {
 static HdTexture *s_table;
 static size_t     s_table_mask;      /* capacity - 1, capacity a power of two */
 static int        s_texture_count;
+typedef struct { HdTexture *textures; size_t count; unsigned generation; } HdStadium;
+static HdStadium s_stadiums[32];
+static int s_stadium_id = -1;
+static unsigned s_stadium_generation;
+static int s_local_texture_count;
 static char       s_pack_name[128];
 static int        s_last_hits;
 
@@ -143,6 +163,45 @@ static uint32_t *hd_load_bmp(const char *path, int *out_size) {
     }
     *out_size = w;
     return px;
+}
+
+void issd_hd_set_stadium_context(int id, unsigned generation) {
+    s_stadium_id = id >= 0 && id < 32 ? id : -1;
+    s_stadium_generation = generation;
+}
+static void hd_stadium_free(HdStadium *stadium) {
+    for (size_t i = 0; i < stadium->count; ++i) free(stadium->textures[i].pixels);
+    free(stadium->textures); memset(stadium,0,sizeof *stadium);
+}
+void issd_hd_clear_stadiums(void) {
+    for (unsigned i = 0; i < 32; ++i) hd_stadium_free(&s_stadiums[i]);
+    s_local_texture_count = 0;
+    issd_hd_set_stadium_context(-1,0);
+}
+bool issd_hd_load_stadium(int id, unsigned generation, const uint64_t *keys,
+                         const char *const *files, size_t count) {
+    if (id < 0 || id >= 32 || count > 512 || (count && (!keys || !files))) return false;
+    HdStadium candidate = {0};
+    candidate.generation = generation;
+    if (count) {
+        candidate.textures = calloc(count,sizeof *candidate.textures);
+        if (!candidate.textures) return false;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        HdTexture *texture = &candidate.textures[candidate.count++];
+        texture->key = keys[i];
+        for (size_t j = 0; j < i; ++j) {
+            if (candidate.textures[j].key == keys[i]) { hd_stadium_free(&candidate); return false; }
+        }
+        if (!files[i] || !(texture->pixels = hd_load_bmp(files[i],&texture->size))) {
+            hd_stadium_free(&candidate); return false;
+        }
+    }
+    s_local_texture_count -= (int)s_stadiums[id].count;
+    hd_stadium_free(&s_stadiums[id]);
+    s_stadiums[id] = candidate;
+    s_local_texture_count += (int)count;
+    return true;
 }
 
 static bool hd_save_bmp(const char *path, const uint32_t *px, int w, int h) {
@@ -217,6 +276,14 @@ static const HdTexture *hd_lookup(uint64_t key) {
     const HdTexture *slot = hd_table_slot(key);
     return slot->key == key ? slot : NULL;
 }
+static const HdTexture *hd_lookup_scene(uint64_t key, int id, unsigned generation) {
+    if (id >= 0 && id < 32 && s_stadiums[id].generation == generation) {
+        const HdStadium *stadium = &s_stadiums[id];
+        for (size_t i = 0; i < stadium->count; ++i)
+            if (stadium->textures[i].key == key) return &stadium->textures[i];
+    }
+    return hd_lookup(key);
+}
 
 /* --------------------------------------------------------- tile identity -- */
 
@@ -234,6 +301,8 @@ typedef struct {
     uint64_t key;
     const void *tex;
     uint32_t generation;
+    int stadium_id;
+    unsigned stadium_generation;
 } HdMemoEntry;
 
 #define HD_MEMO_SIZE 8192
@@ -638,8 +707,8 @@ int issd_hd_add_pack(const char *directory) {
     return s_texture_count;
 }
 
-bool issd_hd_active(void) { return s_texture_count > 0; }
-int  issd_hd_texture_count(void) { return s_texture_count; }
+bool issd_hd_active(void) { return s_texture_count > 0 || s_local_texture_count > 0; }
+int  issd_hd_texture_count(void) { return s_texture_count+s_local_texture_count; }
 const char *issd_hd_pack_name(void) { return s_pack_name; }
 int issd_hd_last_frame_hits(void) { return s_last_hits; }
 
@@ -665,6 +734,9 @@ void issd_hd_set_dump_dir(const char *directory) {
 
 void issd_hd_begin_frame(void) {
     s_frame++;
+    s_vram_count = 0;
+    memset(s_line_memory_valid, 0, sizeof s_line_memory_valid);
+    memset(s_line_owner_valid, 0, sizeof s_line_owner_valid);
     for (int i = 0; i < MAX_LINES; i++) s_lines[i].valid = 0;
 }
 
@@ -674,14 +746,59 @@ void issd_hd_note_line(const Ppu *ppu, int line) {
     if (!ppu || row < 0 || row >= MAX_LINES) return;
     HdLineRegs *r = &s_lines[row];
     r->bgmode = ppu->bgmode;
+    r->stadium_id = s_stadium_id;
+    r->stadium_generation = s_stadium_generation;
     memcpy(r->bgXsc, ppu->bgXsc, sizeof r->bgXsc);
     r->bgTileAdr = ppu->bgTileAdr;
     for (int i = 0; i < 4; i++) {
         r->hScroll[i] = ppu->hScroll[i];
         r->vScroll[i] = ppu->vScroll[i];
+        const unsigned bit = 1u << i;
+        r->marginPolicy[i] =
+            (ppu->wsLayerRepeat & bit) || PpuWidescreenLayerRepeatBandActive(ppu, i, row) ? 2 :
+            (ppu->wsLayerMirror & bit) ? 3 :
+            PpuWidescreenLayerExtra(ppu, i, row, 1) ? 1 : 0;
+        if (PpuWidescreenLayerStretchBandActive(ppu, i, row)) r->marginPolicy[i] = 0;
     }
     r->mainLayers = ppu->screenEnabled[0];
     r->valid = 1;
+    s_line_memory_valid[row] = 0;
+    if (issd_hd_active() || s_dump_dir) {
+        unsigned image = s_vram_count ? s_vram_count - 1 : 0;
+        if (!s_vram_count || memcmp(s_vram_images[image], ppu->vram,
+                                   sizeof ppu->vram) != 0) {
+            image = s_vram_count;
+            if (image >= MAX_LINES) return;
+            if (!s_vram_images[image])
+                s_vram_images[image] = (uint16_t *)malloc(sizeof ppu->vram);
+            if (!s_vram_images[image]) return; /* leave this line unmodified */
+            memcpy(s_vram_images[image], ppu->vram, sizeof ppu->vram);
+            s_vram_count++;
+        }
+        s_line_vram[row] = image;
+        memcpy(s_line_cgram[row], ppu->cgram, sizeof ppu->cgram);
+        memcpy(s_line_brightness[row], ppu->brightnessMult, sizeof ppu->brightnessMult);
+        s_line_memory_valid[row] = 1;
+    }
+}
+
+void issd_hd_note_rendered_line(const Ppu *ppu, int line) {
+    const int row = line - 1;
+    if (!ppu || row < 0 || row >= MAX_LINES ||
+        !(ppu->renderFlags & kPpuRenderFlags_NewRenderer) ||
+        !s_line_memory_valid[row]) return;
+    memcpy(s_line_brightness[row], ppu->brightnessMult, sizeof ppu->brightnessMult);
+    if (PPU_forcedBlank(ppu)) s_lines[row].mainLayers = 0;
+    for (int x = 0; x < kPpuBufWidth; x++)
+        s_line_owner[row][x] = (uint8_t)((ppu->bgBuffers[0].data[x] >> 8) & 15);
+    s_line_owner_valid[row] = 1;
+}
+
+static int hd_source_x(int x, unsigned policy) {
+    if (x >= 0 && x < 256) return x;
+    if (policy == 2) return (int)((unsigned)x & 255u);
+    if (policy == 3) return x < 0 ? -1 - x : 511 - x;
+    return x;
 }
 
 /* Read a tilemap entry the way the PPU does, including the 32x32 screen
@@ -716,16 +833,27 @@ void issd_hd_composite(const Ppu *ppu,
      * being asked to. */
     const bool drawing = (hi != NULL && native != NULL && scale >= 2);
     if (!drawing && !s_dump_dir) return;
-    if (drawing && !s_table) return;
+    if (drawing && !issd_hd_active()) return;
     if (native_w <= 0) native_w = 256;
     if (native_h <= 0) native_h = 224;
     s_generation++;
 
     const int hi_w = native_w * scale;
+    unsigned source_image = MAX_LINES;
 
     for (int y = 0; y < native_h && y < MAX_LINES; y++) {
         const HdLineRegs *r = &s_lines[y];
         if (!r->valid) continue;
+        if (!s_line_memory_valid[y]) continue;
+        if (source_image != s_line_vram[y]) {
+            source_image = s_line_vram[y];
+            memcpy(s_scanout_source.vram, s_vram_images[source_image], sizeof ppu->vram);
+        }
+        memcpy(s_scanout_source.cgram, s_line_cgram[y], sizeof ppu->cgram);
+        memcpy(s_scanout_source.brightnessMult, s_line_brightness[y], sizeof ppu->brightnessMult);
+        ppu = &s_scanout_source;
+        /* Palette/graphics can change between scanlines even at one address. */
+        s_generation++;
         const int mode = r->bgmode & 7;
 
         for (int layer = 0; layer < 4; layer++) {
@@ -741,14 +869,19 @@ void issd_hd_composite(const Ppu *ppu,
 
             /* Walk one tile at a time: a tile with no replacement costs one
              * lookup instead of eight. */
-            int screen_x = 0;
-            while (screen_x < 256) {
-                const unsigned sx = (unsigned)screen_x + r->hScroll[layer];
+            int screen_x = drawing ? -margin_left : 0;
+            const int screen_end = drawing ? native_w - margin_left : 256;
+            while (screen_x < screen_end) {
+                const unsigned sx = (unsigned)hd_source_x(screen_x, r->marginPolicy[layer]) + r->hScroll[layer];
                 const uint16_t tile =
                     hd_tilemap_entry(ppu, r, layer, sx, sy, tile_shift);
                 const unsigned run = tile_mask + 1u - (sx & tile_mask);
                 int end = screen_x + (int)run;
-                if (end > 256) end = 256;
+                if (end > screen_end) end = screen_end;
+                /* Margin policies can restart or reverse source X at the
+                 * native edge, even inside one hardware tile's pixel run. */
+                if (screen_x < 256 && end > 256) end = 256;
+                if (screen_x < 0 || screen_x >= 256) end = screen_x + 1;
 
                 const unsigned pal_base = hd_palette_base(mode, layer, bpp, tile);
                 unsigned py = sy & tile_mask;
@@ -764,7 +897,9 @@ void issd_hd_composite(const Ppu *ppu,
                 const HdTexture *tex = NULL;
 
                 for (int x = screen_x; x < end; x++) {
-                    unsigned px = ((unsigned)x + r->hScroll[layer]) & tile_mask;
+                    const bool in_margin = x < 0 || x >= 256;
+                    if (in_margin && !r->marginPolicy[layer]) continue;
+                    unsigned px = ((unsigned)hd_source_x(x, r->marginPolicy[layer]) + r->hScroll[layer]) & tile_mask;
                     if (tile & 0x4000) px = tile_mask - px;
                     unsigned chr = character;
                     if (big) chr = (chr + (px >> 3)) & 0x3FFu;
@@ -782,17 +917,24 @@ void issd_hd_composite(const Ppu *ppu,
                             ((uint64_t)bpp << 40);
                         HdMemoEntry *m =
                             &s_memo[(tag ^ (tag >> 17)) & (HD_MEMO_SIZE - 1)];
-                        if (m->generation != s_generation || m->tag != tag) {
+                        if (m->generation != s_generation || m->tag != tag ||
+                            m->stadium_id != r->stadium_id || m->stadium_generation != r->stadium_generation) {
                             m->generation = s_generation;
                             m->tag = tag;
+                            m->stadium_id = r->stadium_id;
+                            m->stadium_generation = r->stadium_generation;
                             m->key = hd_tile_key(ppu, tileadr, chr, bpp, pal_base);
-                            m->tex = s_table ? (const void *)hd_lookup(m->key) : NULL;
+                            m->tex = hd_lookup_scene(m->key,r->stadium_id,r->stadium_generation);
                             if (s_dump_dir)
                                 hd_dump_tile(ppu, m->key, tileadr, chr, bpp, pal_base);
                         }
                         tex = (const HdTexture *)m->tex;
                     }
                     if (!drawing || !tex) continue;
+                    const int owner_x = x + kPpuExtraLeftRight;
+                    if (s_line_owner_valid[y] &&
+                        (owner_x < 0 || owner_x >= kPpuBufWidth ||
+                         s_line_owner[y][owner_x] != layer)) continue;
 
                     const unsigned pixel =
                         hd_tile_pixel(ppu, tileadr, chr, bpp, px & 7u, py & 7u);
@@ -817,7 +959,8 @@ void issd_hd_composite(const Ppu *ppu,
                             &tex->pixels[(size_t)(ty * ts + v) * tex->size + tx * ts];
                         for (int sx2 = 0; sx2 < scale; sx2++) {
                             int u = (sx2 * ts) / scale;
-                            if (tile & 0x4000) u = ts - 1 - u;
+                            if (((tile & 0x4000) != 0) ^
+                                (in_margin && r->marginPolicy[layer] == 3)) u = ts - 1 - u;
                             const uint32_t t = src[u];
                             if (t >> 24) dst[sx2] = t & 0xFFFFFFu;
                         }

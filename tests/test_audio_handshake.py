@@ -33,7 +33,7 @@ class AudioHandshakeTest(unittest.TestCase):
                 "-Wl,--gc-sections", "-o", str(executable),
             ], check=True)
             for scenario in ("cleared-command", "queued-release", "word-echo",
-                             "cleared-word", "post-echo-clear"):
+                             "cleared-word", "post-echo-clear", "startup-delay"):
                 with self.subTest(scenario=scenario):
                     result = subprocess.run([str(executable), scenario], capture_output=True, text=True)
                     self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

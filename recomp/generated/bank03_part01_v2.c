@@ -155,7 +155,7 @@ RecompReturn CODE_838EAE_M1X1(CpuState *cpu) {
     cpu->_flag_Z = (((_v6 & 0xFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v6 & 0xFF)) & 0x80) != 0) ? 1 : 0;
     cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint8 _v7 = 0x80;
+    uint8 _v7 = cpu_read8(cpu, 0x03, (uint16)(0x8eba));
     uint16 _v8 = cpu_read_a16(cpu);
     uint8 _v9;
     if (cpu->_flag_D) {
@@ -5922,7 +5922,7 @@ RecompReturn bank_03_8ABF_M0X0(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 5;
     cpu->master_cycles += 40;
-    uint16 _v35 = 0x708;
+    uint16 _v35 = cpu_read16(cpu, 0x03, (uint16)(0x8b28));
     uint16 _v36 = cpu_read_a16(cpu);
     uint32 _tc36_35 = (uint32)(_v36 & 0xFFFF) - (uint32)(_v35 & 0xFFFF);
     cpu->_flag_C = ((_v36 & 0xFFFF) >= (_v35 & 0xFFFF)) ? 1 : 0;
@@ -7673,7 +7673,7 @@ RecompReturn bank_03_8DDC_M0X0(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 5;
     cpu->master_cycles += 40;
-    uint16 _v19 = 0x380;
+    uint16 _v19 = cpu_read16(cpu, 0x03, (uint16)(0x8e1b));
     uint16 _v20 = cpu_read_y16(cpu);
     uint32 _tc20_19 = (uint32)(_v20 & 0xFFFF) - (uint32)(_v19 & 0xFFFF);
     cpu->_flag_C = ((_v20 & 0xFFFF) >= (_v19 & 0xFFFF)) ? 1 : 0;
@@ -10518,7 +10518,7 @@ RecompReturn bank_03_8EB5_M0X0(CpuState *cpu) {
     cpu->_flag_Z = (((_v1 & 0xFFFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v1 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
     cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v2 = 0x180;
+    uint16 _v2 = cpu_read16(cpu, 0x03, (uint16)(0x8eba));
     uint16 _v3 = cpu_read_a16(cpu);
     uint16 _v4;
     if (cpu->_flag_D) {
@@ -10600,7 +10600,7 @@ RecompReturn bank_03_8EB5_M0X0(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 5;
     cpu->master_cycles += 40;
-    uint16 _v11 = 0x180;
+    uint16 _v11 = cpu_read16(cpu, 0x03, (uint16)(0x8ecd));
     uint16 _v12 = cpu_read_a16(cpu);
     uint32 _tc12_11 = (uint32)(_v12 & 0xFFFF) - (uint32)(_v11 & 0xFFFF);
     cpu->_flag_C = ((_v12 & 0xFFFF) >= (_v11 & 0xFFFF)) ? 1 : 0;
@@ -10635,7 +10635,7 @@ RecompReturn bank_03_8EB5_M0X0(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 5;
     cpu->master_cycles += 40;
-    uint16 _v14 = 0x80;
+    uint16 _v14 = cpu_read16(cpu, 0x03, (uint16)(0x8ed7));
     uint16 _v15 = cpu_read_a16(cpu);
     uint32 _tc15_14 = (uint32)(_v15 & 0xFFFF) - (uint32)(_v14 & 0xFFFF);
     cpu->_flag_C = ((_v15 & 0xFFFF) >= (_v14 & 0xFFFF)) ? 1 : 0;
@@ -10653,7 +10653,7 @@ RecompReturn bank_03_8EB5_M0X0(CpuState *cpu) {
     cpu->coprocessor_master_cycles = cpu->master_cycles;
     cpu->cycles += 5;
     cpu->master_cycles += 40;
-    uint16 _v16 = 0x200;
+    uint16 _v16 = cpu_read16(cpu, 0x03, (uint16)(0x8edc));
     uint16 _v17 = cpu_read_a16(cpu);
     uint32 _tc17_16 = (uint32)(_v17 & 0xFFFF) - (uint32)(_v16 & 0xFFFF);
     cpu->_flag_C = ((_v17 & 0xFFFF) >= (_v16 & 0xFFFF)) ? 1 : 0;
@@ -12514,7 +12514,7 @@ RecompReturn bank_03_8BAB_M0X0(CpuState *cpu) {
     cpu->_flag_Z = (((_v76 & 0xFFFF)) == 0) ? 1 : 0;
     cpu->_flag_N = ((((_v76 & 0xFFFF)) & 0x8000) != 0) ? 1 : 0;
     cpu->P = (uint8)((cpu->P & ~0x82) | (cpu->_flag_Z ? 0x02 : 0) | (cpu->_flag_N ? 0x80 : 0));
-    uint16 _v77 = 0x700;
+    uint16 _v77 = cpu_read16(cpu, 0x03, (uint16)(0x8c12));
     uint16 _v78 = cpu_read_a16(cpu);
     uint32 _tc78_77 = (uint32)(_v78 & 0xFFFF) - (uint32)(_v77 & 0xFFFF);
     cpu->_flag_C = ((_v78 & 0xFFFF) >= (_v77 & 0xFFFF)) ? 1 : 0;

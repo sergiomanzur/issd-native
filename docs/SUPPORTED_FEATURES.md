@@ -1,7 +1,7 @@
 # Supported features and settings
 
-This is the source-based capability audit for the **v0.4.0-beta.1**, updated
-October 3, 2026. Control remapping, touch layout, lifecycle, exhibition shortcuts,
+This is the source-based capability audit for **v0.5.0-beta.1**, updated
+October 10, 2026. Control remapping, touch layout, lifecycle, exhibition shortcuts,
 original bug fixes and graphics/readability improvements describe this beta's
 runtime implementation. This inventory takes
 precedence over aspirational descriptions in older enhancement,
@@ -12,13 +12,33 @@ setting has no corresponding runtime behavior. **Planned** means no delivered
 implementation was found. See [acceptance checks](ACCEPTANCE_TESTS.md) for what
 has actually been tested and what still needs hardware or complete playthroughs.
 
+Current source also adds direct pause-menu Restart Match and Back to Main Menu
+actions using compatible session snapshots, and corrects blue wallpaper after
+stadium loading and authored vertical stadium boundary padding. See
+[pause action limits](MATCH_SHORTCUTS.md) and [graphics settings](GRAPHICS_SETTINGS.md).
+
+The background audit covers the eight original stadium constructors with Liga
+MX enabled. Separate HD checks cover scanout ownership and replacements.
+Added Mexico logical stadium slots 8–11 now pass original Exhibition menu
+selection, live play and native save/reload. Slot 9 also completes a naturally
+timed match through checkpoint reloads and advancing goal replay at four aspect
+ratios. Added slots retain their logical IDs but inherit the original match
+layout `ID & 7` when no independent profile is supplied. The new bounded
+`stadium_profile` path supports shortened pitches, authored native maps/artwork
+and stadium-local HD sets. Two same-template profiles completed uninterrupted
+natural matches. See [independent stadium acceptance](INDEPENDENT_STADIUM_ACCEPTANCE.md)
+for geometry, resource and platform limits.
+See [added stadium acceptance](EXTRA_STADIUM_ACCEPTANCE.md). Current
+HD fixes preserve scanout data, protect player pixels and extend detail into
+eligible margins. See the acceptance record for the precise coverage.
+
 ## Game, persistence, and input
 
 | Advertised capability | Status and actual behavior | Source and evidence |
 | --- | --- | --- |
 | Native ISS Deluxe runtime | Partial. Original cartridge code runs through translated routines, interpreter fallback, native hardware models, and HLE replacements. It is not a cycle-accurate SNES emulator or a proven complete recreation. Retail USA, headerless 2 MiB ROM is the supported baseline; ROM is not distributed. | `ISSDNative/main.c`, `recomp/generated/`, `deps/snesrecomp/runner/src/`; `test_boot_reaches_main_loop.py`, `test_headless_match.py`, runtime interrupt tests |
-| Original game modes, Cup and World Series | Partial. Native menu and gameplay paths run, including original committed results and terminal tables. A fresh accelerated nine-match Cup completes native progression and Continue after every result; World terminal fixtures prove specific transitions. Other scenarios, difficulties, teams, full World Series and untouched tournaments remain unverified. First-team original formation/substitution commits, request cancellation and advancing save/reload are covered with AI off/on; both-team menus, replacement limits, halftime/extra-time changes, training, scenarios and completed shootouts still need dedicated acceptance. Accelerated Cup-final graphics checks cover original period/extra-time transitions, pause/replay and shootout entry. | `test_campaign_full_acceptance.py`, `test_campaign_transitions.py`, `test_game_acceptance.py`, `test_match_visual_acceptance.py`; [match graphics checks](GRAPHICS_MATCH_ACCEPTANCE.md), [cartridge trace](CAMPAIGN_CARTRIDGE_FLOW.md), [team-change checks](TEAM_CHANGES_ACCEPTANCE.md) |
-| Continue and campaign autosave | Delivered for verified Cup/World setup, results, completion, and original password import checkpoints. Saves do not occur continuously during a match, replay, halftime, or ceremony. A failed write leaves earlier committed saves intact; the observed transition is consumed, so retry occurs at a later verified checkpoint rather than every frame. | `issd_campaign.c`, `issd_save.c`, main integration; campaign save/transition tests |
+| Original game modes, Cup and World Series | Partial. Original nine-match Cup and 35-match World progression and Continue pass accelerated acceptance. World also completes all 35 naturally timed matches in one process without reloads/state edits, with all-round and completion restoration. Ordinary and sudden-death Cup shootouts complete with original winner/champion and persistence. Both controller sides, original three-replacement limit, halftime and extra-time substitutions pass advancing replay. Natural Cup qualifying elimination passes continuous execution. Full untouched winning Cup, physical controls, alternate teams/settings, scenarios and training remain open. | [shootouts](SHOOTOUT_ACCEPTANCE.md), [substitution flows](SUBSTITUTION_FLOW_ACCEPTANCE.md), [continuous campaigns](CONTINUOUS_CAMPAIGN_ACCEPTANCE.md), [cartridge investigation](GHIDRA_INVESTIGATION.md) |
+| Continue and campaign autosave | Delivered for verified Cup/World setup, results, completion, and original password import checkpoints, including the settled terminal shootout ceremony before its direct title exit. Active match, replay, halftime and unfinished ceremonies do not create checkpoints. A failed write leaves earlier committed saves intact; the observed transition is consumed, so retry occurs at a later verified checkpoint rather than every frame. | `issd_campaign.c`, `issd_save.c`, main integration; campaign save/transition and completed-shootout tests |
 | Backup recovery and compatibility | Delivered. Current plus two backup generations, integrity checks and pure snapshot validation before publication/load; ROM/mod/debug/gameplay context must match. Successful Continue restores a snapshot, including between-match campaign data. Incompatible saves are preserved and explained, not converted. | `issd_save.c`, `issd_snapshot.c`; `test_campaign_saves.py`, `test_snapshot_transactional.py` |
 | Manual saves | Delivered. Quicksave and eight numbered slots; validated envelope and transactional snapshot load. Legacy raw versions 4–8 require explicit approval (`--allow-legacy-save` for CLI), and lack modern context guarantees. | `issd_save.c`, `main.c`, `issd_menu.c`; save, transactional, replay/video tests |
 | Original password bridge | Delivered for six verified retail formats. Export uses original cartridge encoding in private memory. Import validates then queues symbols to the original Password screen; the guest applies the campaign. Modified ROM or active gameplay/debug compatibility flags disable the bridge. It is not an arbitrary snapshot-to-password converter. | `issd_password.c`, `issd_password_ui.c`; codec, flow, UI tests |
@@ -49,7 +69,7 @@ has actually been tested and what still needs hardware or complete playthroughs.
 | Widened coin-toss presentation | Current sources extend wider authored BG1 scenery sections for 16:10, 16:9 and 21:9, retaining whole close-up fans and the native vertical scroll. Native panels/action stay clipped to the original view; no new stadium artwork or gameplay. | `issd_widescreen.c`; coin native acceptance tests |
 | Ordered mods | Delivered last-enabled pack wins collisions. Roster/name/stat/team data, formations, kits/stripes/away appearance, palette variants, flags, team/stadium plates, photos and supported BMP background tiles are implemented. Not arbitrary scripts, expanded game rules, or unrestricted replacement assets. | `issd_mod.c`, `issd_mod_rom.c`, `issd_mod.h`, `issd_hd.c`; mod JSON/ROM/stack and formation tests |
 | Roster/stat editing | Partial. Engine storage limits still apply: 42 team slots, existing All-Stars reused for added teams, 20 roster positions, short names with restricted character repertoire, quantized stat steps. Exposed `hair_style` data is not implemented as a distinct native hairstyle renderer. | `issd_mod.c`, Mod Studio; mod ROM/JSON tests |
-| Stadium and HD texture packs | Partial. Visual stadium dimensions/appearance and replacement backgrounds do not establish changed playable pitch boundaries. HD replacement is for supported background tiles; no general HD sprite or Mode 7 replacement or automatic wide-margin asset creation. | `issd_mod.c`, `issd_hd.c`; HD/mod tests |
+| Stadium and HD texture packs | Partial. Up to 32 logical entries. Legacy entries inherit layout ID & 7. Independent profiles can shorten template pitches and supply native maps, artwork, palettes and local HD sets; widths, scenery and resource budgets remain constrained. Display yards alone do not change playable boundaries. No general HD sprite or Mode 7 replacement. | [independent stadium acceptance](INDEPENDENT_STADIUM_ACCEPTANCE.md), [legacy added stadium acceptance](EXTRA_STADIUM_ACCEPTANCE.md); native/editor tests |
 | Mod Studio | Delivered Python editor/import/export and previews with tests; standalone packaged Studio executable is a separate build artifact, not guaranteed by runtime packaging. | `tools/mod_studio/`; Studio tests |
 | ROM/config/save roots, launcher | Delivered explicit CLI paths and persistent per-user roots, with local-config compatibility. Windows launcher and Android document selection avoid requiring writable install directories. Save context is based on effective ROM/flags, not presentation settings. | `main.c`, `issd_config.c`, `issd_save.c`, launcher/Android sources; config roots, launcher, save tests |
 | Headless and capture tools | Delivered bounded headless frames, scripted input/auto-start, screenshots, frame/state/tile dumps, CLI save/load/Continue and password symbol import/export. These are diagnostics and automation, not bots capable of certifying complete tournaments. Screenshot scale is capture output sizing. | `main.c`, input script code; headless, password flow, replay and capture tests |

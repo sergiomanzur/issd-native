@@ -23,7 +23,19 @@ sequenceDiagram
     DSP-->>CPU: 32 kHz Stereo Audio Stream
 ```
 
-In *ISSD Native*, this is executed in real-time via `spc_player.c` and synchronized deterministically with the video frame pacing (`RtlRenderAudio`).
+ISSD Native executes the cartridge's SPC700 driver and DSP directly. The game
+frame supplies the guest clock; `RtlRenderAudio` consumes and resamples queued
+native PCM to the obtained device rate without advancing the SPC.
+
+CPU execution credit is bounded to the current frame. Blocking sound-transfer
+handshakes can advance SPC further to obtain a real acknowledgement. During
+active realtime playback, port writes apply FIFO backpressure before the next
+burst: the game thread waits with the APU mutex released so the device callback
+can drain queued samples. This preserves PCM during title/commentary uploads
+that execute more than one frame's instruction budget in a single host frame.
+Headless, paused-device and fast-forward paths do not wait for a realtime
+consumer. A stalled device consumes at most one 250 ms wait budget until
+consumption resumes; it cannot impose that delay for every upload word.
 
 ---
 
@@ -36,7 +48,12 @@ Communication between the main CPU and the SPC-700 occurs through 4 hardware reg
 - **`$2143` (SFX Channel 2 / Volume Register):** Secondary audio effects and pan settings.
 
 ### Auto-Ack Fallback in Host Runtime
-During high CPU load or headless simulation runs, the host engine provides an auto-acknowledge safety net in `ISSDNative/main.c` (`[apu] port echo timeout auto-acked`) to ensure that missing SPC cycles never hang the main 65816 execution thread.
+`RtlApuWriteWaitEcho` in `common_rtl.c` waits for the real SPC output for up to
+1,048,576 SPC cycles. The cartridge startup delay needs approximately 307,200
+cycles, exceeding the former 262,144-cycle budget. Normal startup therefore
+now receives its genuine acknowledgement. The legacy timeout diagnostic and
+fallback remain for an unresponsive driver; seeing `auto-acked` indicates a
+protocol failure to investigate, rather than successful audio validation.
 
 ---
 

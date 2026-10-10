@@ -24,6 +24,12 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
+
+try:
+    from .stadium_profile import validate_pack_data
+except ImportError:
+    from stadium_profile import validate_pack_data
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -98,6 +104,7 @@ class Report:
     def __init__(self):
         self.errors = []
         self.warnings = []
+        self.diagnostics = []
 
     def error(self, where, message):
         self.errors.append("%s: %s" % (where, message))
@@ -416,6 +423,11 @@ def validate(path, report):
         report.error(path, "line %d: %s" % (exc.lineno, exc.msg))
         return
 
+    validate_data(pack, report, Path(path).resolve().parent, path)
+
+
+def validate_data(pack, report, pack_dir, path='<draft>'):
+    """Check in-memory drafts using the actual pack directory for resources."""
     if not isinstance(pack, dict):
         report.error(path, "the file must hold one object")
         return
@@ -432,6 +444,7 @@ def validate(path, report):
         report.error(path, '"stadiums" must be an array')
     check_stadium_count(report, path, pack,
                         stadiums if isinstance(stadiums, list) else [])
+    validate_pack_data(pack, Path(pack_dir).resolve(), report)
 
     teams = pack.get("teams")
     if teams is None:
@@ -442,7 +455,7 @@ def validate(path, report):
     if not isinstance(teams, list):
         report.error(path, '"teams" must be an array')
         return
-    if not teams:
+    if not teams and not stadiums:
         report.warn(path, '"teams" is empty, so the pack changes nothing')
 
     formations = known_formations()

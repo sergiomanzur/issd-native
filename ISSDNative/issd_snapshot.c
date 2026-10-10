@@ -2,6 +2,7 @@
 #include "issd_animation.h"
 #include "issd_pose_history.h"
 #include "issd_widescreen.h"
+#include "issd_stadium_scene.h"
 #include "snes/snes.h"
 #include "common_rtl.h"
 #include "common_cpu_infra.h"
@@ -15,8 +16,10 @@ extern int g_interp_apu_driving;
 /* Explicit little-endian fields; never persist CpuState's RAM pointer or ABI
  * padding. This extension is independent of the runner's v4-v8 guest schema. */
 enum { CORE_SIZE = 128, EXTRA_SIZE = ISSD_SNAPSHOT_EXTRA_SIZE,
-       EXTRA_MAGIC = 0x58445349, EXTRA_VERSION = 2 };
+       EXTRA_MAGIC = 0x58445349, EXTRA_VERSION = 3 };
 static bool presentation_loaded;
+static bool artwork_identity_loaded;
+static uint8_t artwork_identity[16];
 extern Snes *g_snes;
 static void put(uint8_t *p, uint64_t value, unsigned count) {
     for (unsigned i = 0; i < count; ++i) p[i] = (uint8_t)(value >> (i * 8));
@@ -71,6 +74,7 @@ void issd_snapshot_save_extra(SaveLoadInfo *sli) {
     data[108] = tail.valid;
     data[109] = tail.hrv;
     put(data + 110, tail.entry_s, 2);
+    if (g_snes) issd_stadium_scene_art_identity(g_snes->ram,data+112);
     issd_animation_save_state(data + CORE_SIZE);
     issd_pose_history_save_state(data + CORE_SIZE + ISSD_ANIMATION_STATE_SIZE);
     sli->func(sli, data, sizeof(data));
@@ -81,7 +85,7 @@ bool issd_snapshot_validate_extra(const void *blob, size_t size, uint32_t versio
     if (!data || version < 5 || size < CORE_SIZE ||
         get(data, 4) != EXTRA_MAGIC ||
         !((get(data + 4, 4) == 1 && size == CORE_SIZE) ||
-          (get(data + 4, 4) == EXTRA_VERSION && size == EXTRA_SIZE)) ||
+          ((get(data + 4, 4) == 2 || get(data + 4, 4) == EXTRA_VERSION) && size == EXTRA_SIZE)) ||
         get(data + 8, 4) != size || get(data + 12, 4) > INT_MAX)
         return false;
     if (data[28] != 0 && data[28] != 2 && data[28] != 3) return false;
@@ -91,8 +95,9 @@ bool issd_snapshot_validate_extra(const void *blob, size_t size, uint32_t versio
         (data[109] != 0 && data[109] != 2 && data[109] != 3))
         return false;
     if (data[104] && get(data + 96, 8) > get(data + 48, 8)) return false;
-    for (unsigned i = 112; i < CORE_SIZE; ++i)
-        if (data[i]) return false;
+    if (get(data+4,4)<3)
+        for (unsigned i = 112; i < CORE_SIZE; ++i)
+            if (data[i]) return false;
     if (size == EXTRA_SIZE &&
         (!issd_animation_validate_state(data + CORE_SIZE, ISSD_ANIMATION_STATE_SIZE) ||
          !issd_pose_history_validate_state(data + CORE_SIZE + ISSD_ANIMATION_STATE_SIZE, ISSD_POSE_HISTORY_STATE_SIZE)))
@@ -109,6 +114,8 @@ void issd_snapshot_load_extra(SaveLoadInfo *sli, uint32_t version) {
     /* The runner already accepted the whole chunk through pure preflight. */
     if (!issd_snapshot_validate_extra(data, size, version)) return;
     presentation_loaded = size == EXTRA_SIZE;
+    artwork_identity_loaded = get(data+4,4)==3;
+    if (artwork_identity_loaded) memcpy(artwork_identity,data+112,16);
     if (presentation_loaded) {
         issd_animation_load_state(data + CORE_SIZE, ISSD_ANIMATION_STATE_SIZE);
         issd_pose_history_load_state(data + CORE_SIZE + ISSD_ANIMATION_STATE_SIZE, ISSD_POSE_HISTORY_STATE_SIZE);
@@ -157,6 +164,8 @@ void issd_snapshot_on_loaded(uint32_t version) {
         issd_pose_history_reset();
     }
     presentation_loaded = false;
+    issd_stadium_scene_saved_art(artwork_identity,artwork_identity_loaded);
+    artwork_identity_loaded = false;
     if (g_snes) issd_widescreen_rebase(g_snes->ppu, g_snes->ram);
     interp_bridge_reset_dynamic_cache();
     g_interp_apu_driving = 0;

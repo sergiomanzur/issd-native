@@ -10,7 +10,10 @@ static uint8_t *ram;
 static const IssdConfig *config;
 static size_t (*save_memory)(void *, size_t);
 static bool (*load_memory)(const void *, size_t);
-static Checkpoint setup, kickoff, drill;
+static bool (*main_menu_fallback)(void);
+static Checkpoint setup, kickoff, drill, restart_point, main_menu;
+static bool restart_waiting, restart_boundary;
+static unsigned restart_flags;
 static bool boundary_seen, waiting_kickoff;
 static bool frame_healthy;
 static char error[96];
@@ -53,13 +56,15 @@ static bool restore_data(const Checkpoint *point) {
 static bool restore(const Checkpoint *point) { return admit_restore(point) && restore_data(point); }
 void issd_match_init(uint8_t *memory, const IssdConfig *cfg,
                      size_t (*save)(void *, size_t), bool (*load)(const void *, size_t)) {
-    issd_match_reset(); ram = memory; config = cfg; save_memory = save; load_memory = load;
+    issd_match_reset_context(); ram = memory; config = cfg; save_memory = save; load_memory = load;
 }
 void issd_match_reset(void) {
-    clear(&setup); clear(&kickoff); clear(&drill);
+    clear(&setup); clear(&kickoff); clear(&drill); clear(&restart_point);
+    restart_waiting = restart_boundary = false;
     boundary_seen = waiting_kickoff = false; error[0] = 0;
     frame_healthy = false;
 }
+void issd_match_reset_context(void) { clear(&main_menu); issd_match_reset(); }
 bool issd_match_has_setup(void) { return allowed() && setup.data != NULL; }
 bool issd_match_has_kickoff(void) { return allowed() && kickoff.data != NULL; }
 bool issd_match_has_drill(void) { return allowed() && drill.data != NULL; }
@@ -85,6 +90,23 @@ static void apply_rules(void) {
 int issd_match_tick(bool healthy) {
     frame_healthy = healthy;
     if (!healthy || !ram) return 0;
+    /* $A49D72 is the original eight-item main-menu input loop. Other
+     * settings use the same global mode/submode and must never be captured. */
+    if (!main_menu.data && issd_match_at_main_menu())
+        capture(&main_menu);
+    bool start = word(0x32) == 6 && word(0x70) == 15 && word(0x72) == 0;
+    if (start && !restart_boundary) {
+        clear(&restart_point);
+        restart_flags = word(0x1648);
+        /* Mask $24 identifies International Cup/World Series. Scenario and training
+         * constructors have different result semantics and are excluded. */
+        restart_waiting = restart_flags == 0 || (restart_flags & 0x24) == 4 || (restart_flags & 0x24) == 0x20;
+    }
+    restart_boundary = start;
+    if (restart_waiting && word(0x32) == 6 && word(0x70) == 8 &&
+        word(0xa8) == 0 && word(0xde07) == restart_flags) {
+        if (capture(&restart_point)) restart_waiting = false;
+    }
     bool boundary = at_setup();
     if (boundary && !boundary_seen) {
         boundary_seen = true;
@@ -100,6 +122,38 @@ int issd_match_tick(bool healthy) {
     return 0;
 }
 bool issd_match_rematch(void) { return restore(&kickoff); }
+bool issd_match_can_restart(void) {
+    return ram && restart_point.data && word(0x32) == 6 && word(0x70) == 8 &&
+           word(0xde07) == restart_flags;
+}
+bool issd_match_restart(void) {
+    if (!issd_match_can_restart()) return fail("No kickoff captured for this match");
+    if (!frame_healthy) return fail("Wait for a healthy match frame");
+    return restore_data(&restart_point);
+}
+bool issd_match_has_main_menu(void) { return main_menu.data != NULL; }
+bool issd_match_at_main_menu(void) {
+    return ram && word(0x32) == 6 && word(0x70) == 12 &&
+           word(0x1538) == 0x9d72 && word(0x153a) == 0xa4;
+}
+bool issd_match_can_back_main(void) { return main_menu.data != NULL || main_menu_fallback != NULL; }
+void issd_match_set_main_menu_fallback(bool (*request)(void)) { main_menu_fallback = request; }
+bool issd_match_back_main(void) {
+    /* A loaded Continue stays paused before its first verified frame. Returning
+     * replaces that resident state with a separately healthy captured menu or
+     * boots the original menu through the host; it never captures current RAM. */
+    if (main_menu_fallback && (!main_menu.data || !frame_healthy)) {
+        if (!main_menu_fallback()) return fail("Main menu return could not start");
+        error[0] = 0; return true;
+    }
+    if (!main_menu.data) return fail("Visit the game main menu first");
+    if (!frame_healthy) return fail("Wait for a healthy frame");
+    if (!restore_data(&main_menu)) return false;
+    /* Host restore resets campaign observation, not the saved checkpoint.
+     * Reset resident shortcuts so a departed match cannot be replayed. */
+    issd_match_reset();
+    return true;
+}
 bool issd_match_mark_drill(bool healthy) {
     if (!healthy || !issd_match_is_live()) return fail("Mark a drill during a live exhibition");
     if (!capture(&drill)) return false;

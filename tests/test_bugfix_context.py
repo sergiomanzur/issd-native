@@ -12,12 +12,22 @@ def test_bugfix_setting_refreshes_save_context(tmp_path):
 #include <assert.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
+#include <string.h>
 #include "issd_config.h"
 IssdConfig g_issd_config;
 static uint8_t rom[1];
 static uint8_t *g_base_rom_data = rom, *g_rom_data = rom;
 static size_t g_rom_size = 1;
 static uint32_t g_save_gameplay_flags = UINT32_MAX;
+static uint8_t g_save_stadium_digest[32];
+static bool profiles;
+static uint8_t profile_epoch,extra_epoch;
+static bool has_extra;
+static bool issd_stadium_has_profiles(void) { return profiles; }
+static bool issd_stadium_trace_enabled(void) { return false; }
+static void issd_stadium_gameplay_digest(uint8_t digest[32]) { memset(digest,0,32);digest[0]=profile_epoch; }
+static void issd_save_set_context_extra(const uint8_t *digest) { has_extra=digest!=NULL;extra_epoch=digest?digest[0]:0; }
 static uint32_t save_flags, password_flags;
 static unsigned configure_count, cache_resets, campaign_resets, continue_refreshes;
 static int native_enabled;
@@ -31,7 +41,7 @@ static void issd_save_set_context(const void *a, size_t b, const void *c, size_t
 static void issd_password_set_context(const void *a, size_t b, const void *c, size_t d, uint32_t flags) {
     (void)a;(void)b;(void)c;(void)d;password_flags = flags;
 }
-static void issd_match_reset(void) { cache_resets++; }
+static void issd_match_reset_context(void) { cache_resets++; }
 static void issd_campaign_reset(void) { campaign_resets++; }
 static void issd_menu_refresh_continue(void) { continue_refreshes++; }
 ''' + function(main, "static void IssdRefreshSaveContext(") + r'''
@@ -47,6 +57,15 @@ int main(void) {
     IssdRefreshSaveContext(); assert(save_flags == 6 && native_enabled);
     g_issd_config.gameplay_goalkeeper_ai = g_issd_config.gameplay_player_ai = false;
     IssdRefreshSaveContext(); assert(save_flags == 0 && !native_enabled);
+    assert(!has_extra);
+    profiles=true;profile_epoch=1;
+    IssdRefreshSaveContext();assert(save_flags==16&&password_flags==16&&native_enabled&&has_extra&&extra_epoch==1);
+    unsigned before=configure_count;
+    IssdRefreshSaveContext();assert(configure_count==before);
+    profile_epoch=2;
+    IssdRefreshSaveContext();assert(configure_count==before+1&&extra_epoch==2);
+    profiles=false;
+    IssdRefreshSaveContext();assert(save_flags==0&&!native_enabled&&!has_extra);
     return 0;
 }
 '''

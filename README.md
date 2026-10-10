@@ -4,7 +4,7 @@ A native recompilation and modernization of **International Superstar Soccer Del
 
 The goal is to preserve the original gameplay while adding modern controls, presentation options, saves, and editable mod packs. This is a **beta project working toward 1.0**; recompilation coverage does not establish complete gameplay or hardware fidelity.
 
-The current release is **[v0.4.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.4.0-beta.1)**, a GitHub prerelease for Windows and Android. It adds optional eight-direction running animations, modded competition/pre-match identities, revised widescreen coin-toss crowds and halftime scenery, Color Boost and CRT Strength. Four-player local play, configurable controls, campaign recovery, cartridge password interoperability, exhibition shortcuts and optional AI/bug fixes remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.4.0-beta.1.md).
+The current release is **[v0.5.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.5.0-beta.1)**, a GitHub prerelease for Windows, Linux and Android. It includes audio timing, shootout/persistence, substitution and widescreen replay fixes, bounded independent stadium profiles, and the improved Mod Studio with two example stadiums. Four-player local play, configurable controls, campaign recovery, cartridge password interoperability, exhibition shortcuts and optional AI/bug fixes remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.5.0-beta.1.md).
 
 Enable **Graphics → Running Animation → Enhanced** and hold **Y / Dash** to use the new running poses. Walking and other action clips retain their original animation. Ball Outline has been removed, including legacy saved enables.
 
@@ -16,7 +16,7 @@ The [supported-feature inventory](docs/SUPPORTED_FEATURES.md) records actual beh
 | --- | --- |
 | Windows x86-64 | Release packages and a native CMake build. Current multiplayer, campaign saves, and password bridge built and tested here. |
 | Android 8.0+ | APK releases, ROM/mod import, touch controls, and overlay navigation. Build targets are `arm64-v8a` and `x86_64`. The new multiplayer changes still need an Android device playtest. |
-| Linux x86-64 | CMake preset using system SDL2. Current source built under Ubuntu 24.04, with a headless save/load smoke check. |
+| Linux x86-64 | Release archive and CMake preset using system SDL2. Tested under Ubuntu 24.04 with headless startup, custom stadiums and save/load checks. |
 | SteamOS / Steam Deck | Build target using the Steam Linux Runtime 3.0 “sniper” SDK, a launcher script, and Deck-specific first-run settings. |
 | macOS | No validated port or release package at present. |
 
@@ -34,7 +34,7 @@ Current Windows, Linux, and Android builds succeed; gameplay and controller regr
 - **Password bridge:** Native entry/export for all six original Cup/World Series password formats, original checksum validation and restoration, and autosave after import. Requires unmodified retail gameplay. See [the password guide](docs/PASSWORD_BRIDGE.md).
 - **Save states:** Quicksave/quickload and eight numbered slots with integrity and gameplay compatibility checks. New snapshots preserve native CPU/timing and multitap state. Older v4–v8 raw snapshots require a compatibility warning and explicit confirmation.
 - **Presentation:** Window-size presets, actual resolution reporting, independent integer scaling, 4:3/square-pixel/Authentic 320 and wider views, nearest/linear/Sharp/CRT filters, sharp scalable overlays, Original/Sharp/Enhanced presets with a sample preview/reset, and optional ball/player/radar readability with label size and radar placement/opacity controls. See [graphics settings](docs/GRAPHICS_SETTINGS.md).
-- **Modding:** Ordered roster/formation/kit/stadium packs, striped and away kits, custom flags, team plates, squad photos, and BMP background tile replacements. ISSD Mod Studio provides a visual editor.
+- **Modding:** Ordered roster/formation/kit/stadium packs, striped and away kits, custom flags, team plates, squad photos, and BMP background tile replacements. Bounded independent stadium profiles add shortened pitches, native artwork and local HD sets. Mod Studio provides compiled previews, image import, history, portable export and isolated Test/Stop.
 - **Gameplay tweaks:** Stackable, persistent goalkeeper shot tracking and formation/substitution-aware player positioning, controlled from the new **Gameplay Tweaks** overlay page. Both default off and apply live. See [the gameplay tweaks guide](docs/GAMEPLAY_TWEAKS.md).
 - **Original bug fixes:** One persistent master toggle for six verified corrections, with original behavior when Off and save compatibility checks. Reported glitches without a verified cause remain unresolved. See [the bug-fix guide](docs/ORIGINAL_BUG_FIXES.md).
 - **Developer tools:** Headless simulation, screenshots, RAM/state dumps, frame-based input scripts, ROM verification, and regression tests.
@@ -136,6 +136,10 @@ python tools/mod_studio_launch.py
 
 See [Mod Studio](tools/mod_studio/README.md) for building its standalone Windows executable and importing cartridge data. See [the modding guide](docs/MODDING.md) for pack schemas, limits, validation, and HD tile capture/replacement.
 
+For independent stadium authoring, open `mods/independent_stadium_example/mod.json`
+in Mod Studio. MEADOW and HARBOR demonstrate different pitch lengths and new
+artwork using the same scenery template. See [measured acceptance and limits](docs/INDEPENDENT_STADIUM_ACCEPTANCE.md).
+
 ## Building from source
 
 The generated C sources and SNESRecomp runner are checked into this repository; a normal build does not require regenerating the recompilation. Desktop builds require a C11/C++17 compiler, SDL2 development files, Ninja, and CMake 3.20+ (3.21+ for the supplied presets).
@@ -193,7 +197,7 @@ python -m pytest tests/test_local_multiplayer.py -q
 
 Tests need Python and pytest, with compiler/SDL2 requirements for native harnesses. Some also require Pillow. ROM-backed checks require your supported ROM and a built executable; see the individual test files for setup.
 
-The v0.3.0-beta.1 release gate fixed three failures found by the pre-release full suite: goalkeeper appearance expectations, shared kit records, and widened animation restoration. Affected unit checks passed **59 tests**, and native integration checks passed **27 tests, 1 skipped**; subsequent snapshot and advancing-replay checks also passed. These were focused reruns, with their scope recorded in the acceptance notes. The subsequent full source suite (2026-10-02), including enhanced running, passed **248 tests and 7 subtests, with 4 skipped**, in 1262.68 seconds. That full run preceded the coin-toss/mod-identity follow-up; its current focused validation is recorded in the acceptance notes. Graphics checks cover presets/preview/reset, label/radar controls, real SDL software rendering from 320x240 through 4K, and renderer-reset recovery. Five real-ROM viewports passed at frames 600 and 1200 with identical guest RAM and exact original center pixels. Windows, Linux and Android `arm64-v8a`/`x86_64` builds succeeded; physical display/touch acceptance remains pending. See [graphics settings](docs/GRAPHICS_SETTINGS.md) and [acceptance records](docs/ACCEPTANCE_TESTS.md).
+The [v0.5.0-beta.1 release validation](docs/RELEASE_VALIDATION_2026_10_10.md) records the current regression suite, Windows/Linux/Android builds, clean extracted-package checks and Android signing/version compatibility. The [acceptance records](docs/ACCEPTANCE_TESTS.md) distinguish uninterrupted natural campaign/custom-stadium runs from controlled or accelerated fixtures. Physical display/touch and four-controller device acceptance remain pending. See [graphics settings](docs/GRAPHICS_SETTINGS.md) and the [supported features and limitations](docs/SUPPORTED_FEATURES.md).
 
 Final graphics verification against the updated Windows executable returned **17 passed in 68.07 seconds**, including a live graphical match replay and paused HD capture geometry.
 
@@ -210,7 +214,7 @@ The penalty-camera follow-up passed **11 focused checks** and the expanded
 captures), including actual kicks and subsequent turns at 16:10/16:9/21:9.
 Windows, Linux and Android builds succeeded.
 
-The earlier appearance and shipped-pack validation failures were resolved before v0.3.0-beta.1. Full untouched tournaments, completed shootouts, physical four-controller matches, Android lifecycle/touch and gameplay-tweak balance still need acceptance; see [ACCEPTANCE_TESTS.md](docs/ACCEPTANCE_TESTS.md).
+The earlier appearance and shipped-pack validation failures were resolved before v0.3.0-beta.1. Original ordinary and sudden-death shootout completion, autosave and Continue now pass automated acceptance; both-side substitution, replacement-limit and halftime/extra-time flows also pass. An uninterrupted, naturally timed 35-match World Series completes with all-round restoration. Full untouched winning Cup campaigns, physical four-controller matches, Android lifecycle/touch and gameplay-tweak balance still need acceptance; see [ACCEPTANCE_TESTS.md](docs/ACCEPTANCE_TESTS.md).
 
 Useful runtime options:
 

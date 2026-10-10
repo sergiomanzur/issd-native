@@ -29,7 +29,7 @@ TEAM_KEYS = ("new_team", "team_id", "name", "short_name", "country_code",
              "plate_name", "photo", "formation", "tactics",
              "shirt", "shorts", "socks", "kit_record", "players")
 STADIUM_KEYS = ("stadium_id", "name", "display_name", "pitch_length",
-                "pitch_width")
+                "pitch_width", "stadium_profile")
 PACK_KEYS = ("name", "author", "version", "description", "stadium_count",
              "unlock_bonus_teams", "teams", "stadiums")
 
@@ -211,3 +211,26 @@ def shade(rgb: tuple[int, int, int], num: int, den: int = 100) -> tuple[int, int
 
 def clone_team(team: dict) -> OrderedDict:
     return copy.deepcopy(team)
+
+
+def free_stadium_id(pack: dict) -> int:
+    used = {stadium.get('stadium_id') for stadium in pack.get('stadiums', [])
+            if isinstance(stadium, dict) and
+            type(stadium.get('stadium_id')) is int}
+    for identity in range(repo.STOCK_STADIUMS, repo.STADIUM_MAX):
+        if identity not in used:
+            return identity
+    raise ValueError('All 32 stadium slots are occupied; delete an added stadium first')
+
+
+def clone_stadium(stadium: dict, pack: dict, pack_dir=None) -> OrderedDict:
+    identity = free_stadium_id(pack)  # Reserve before touching data or assets.
+    result = copy.deepcopy(stadium)
+    profile = result.get('stadium_profile')
+    if isinstance(profile, dict) and profile.get('artwork'):
+        # Never create a superficially independent clone sharing mutable art.
+        # The validated asset compiler supplies this operation in task 5.
+        from .stadium_assets import clone_artwork
+        profile['artwork'] = clone_artwork(profile['artwork'], pack_dir, identity)
+    result['stadium_id'] = identity
+    return result

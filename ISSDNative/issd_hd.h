@@ -32,6 +32,12 @@ int  issd_hd_load_pack(const char *directory);
 /* Packs stack. Later ones win a tile the earlier ones also replace, so a
  * small pack can sit on top of a big one and override a few tiles. */
 void issd_hd_clear(void);
+/* Local artwork takes precedence only in the matching stadium generation.
+ * Loading is atomic; global packs and other stadiums remain independent. */
+bool issd_hd_load_stadium(int id, unsigned generation, const uint64_t *keys,
+                         const char *const *files, size_t count);
+void issd_hd_clear_stadiums(void);
+void issd_hd_set_stadium_context(int id, unsigned generation);
 int  issd_hd_add_pack(const char *directory);
 
 /* Which of the available packs are switched on, and in what order. The
@@ -70,13 +76,18 @@ void issd_hd_set_dump_dir(const char *directory);
  * through several screens can yield a pack for just the last one. */
 void issd_hd_set_dump_start(unsigned frame);
 
-/* Record the registers a scanline will be drawn with. Call once per line,
+/* Record the registers, VRAM and palette a scanline will be drawn with.
+ * The later compositor uses these snapshots after presentation edits restore
+ * emulated memory. Call once per line,
  * after that line's HDMA has been applied and before the line is rendered;
  * `line` is the PPU's line counter, which draws screen row line - 1. The
  * title screen changes background mode partway down the frame, so the state
  * at the end of the frame does not describe the top of it. */
 void issd_hd_begin_frame(void);
 void issd_hd_note_line(const Ppu *ppu, int line);
+/* Immediately after ppu_runLine, capture main-screen pixel ownership from
+ * the new renderer. Same-colour sprites/upper layers must not receive BG art. */
+void issd_hd_note_rendered_line(const Ppu *ppu, int line);
 
 /* Composite replacements into an already-scaled frame.
  *

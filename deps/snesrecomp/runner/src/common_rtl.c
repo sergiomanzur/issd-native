@@ -148,6 +148,13 @@ static void rtl_sync_apu_frame_boundary(void);
 
 static uint64_t rtl_apu_guest_cycle(void) {
   uint64_t within = g_cpu.master_cycles - g_apu_frame_start_master;
+  /* Recompiled uploads can execute many frames' instruction budget inside
+   * one host frame. Execution cost is only a within-frame timestamp, not
+   * extra elapsed frames: allowing it past the boundary rewinds guest time
+   * on the next frame and repeatedly rebases CPU port writes ahead of SPC.
+   * Blocking device handshakes advance SPC separately until acknowledged. */
+  if (within > RTL_MASTER_CYCLES_PER_FRAME)
+    within = RTL_MASTER_CYCLES_PER_FRAME;
   return (uint64_t)snes_frame_counter * RTL_APU_CYCLES_PER_FRAME +
          within * RTL_APU_CYCLES_PER_FRAME /
              RTL_MASTER_CYCLES_PER_FRAME;
@@ -351,7 +358,9 @@ void RtlReset(int mode) {
   g_audio_recovery_anchor_r = 0;
   g_audio_last_output_l = 0;
   g_audio_last_output_r = 0;
-  g_spc_player->initialize(g_spc_player);
+  // Native APU games run the cartridge SPC directly and have no host player.
+  if (g_spc_player)
+    g_spc_player->initialize(g_spc_player);
   RtlApuUnlock();
 }
 
@@ -1215,9 +1224,21 @@ void rtl_accumulate_apu_catchup(void) {
 uint64_t apuw_prof_calls = 0;
 double apuw_prof_ms = 0.0;
 #endif
+static void (*g_audio_producer_wait)(void);
+
+void RtlAudioSetProducerWait(void (*wait)(void)) {
+  g_audio_producer_wait = wait;
+}
+
+static void rtl_audio_wait_for_consumer(void) {
+  if (!g_audio_fast_forward && g_audio_producer_wait)
+    g_audio_producer_wait();
+}
+
 void RtlApuWrite(uint16 adr, uint8 val) {
   assert(adr >= APUI00 && adr <= APUI03);
   uint8_t port = (uint8_t)(adr & 3);
+  rtl_audio_wait_for_consumer();
 #ifdef SNESRECOMP_INTERP_PROFILE
   { extern uint64_t apuw_prof_calls; extern double apuw_prof_ms;
     clock_t _t0 = clock();
@@ -1266,6 +1287,9 @@ bool RtlApuWriteWaitEcho(CpuState *cpu, uint16 adr, uint16 val, bool wide) {
   assert(adr >= APUI00 && adr <= APUI03);
   uint8_t port = (uint8_t)(adr & 3);
 
+  /* Bulk sound transfers advance SPC beyond one frame. Give the realtime
+   * consumer room before the next burst, outside its required APU mutex. */
+  rtl_audio_wait_for_consumer();
   RtlApuLock();
   /* Retire earlier bus writes at their guest times. Flattening the queue here
    * can hide a command's zero release from the SPC before the next command
@@ -1277,7 +1301,10 @@ bool RtlApuWriteWaitEcho(CpuState *cpu, uint16 adr, uint16 val, bool wide) {
   apu_writePortNow(g_snes->apu, port, (uint8_t)val);
 
   bool echoed = false;
-  uint32_t remaining = 262144;
+  /* The cartridge driver can defer startup commands for 75 timer-0 ticks
+   * (307200 SPC cycles). Keep a bounded wait, but allow real initialization
+   * to acknowledge instead of fabricating success before it becomes ready. */
+  uint32_t remaining = 1u << 20;
   while (remaining-- != 0) {
     uint16_t observed = g_snes->apu->outPorts[port];
     if (wide)

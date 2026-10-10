@@ -38,6 +38,8 @@
 #include "issd_campaign.h"
 #include "issd_snapshot.h"
 #include "issd_mod.h"
+#include "issd_stadium_scene.h"
+#include "issd_stadium_assets.h"
 #include "issd_menu.h"
 #include "issd_password_ui.h"
 #include "issd_password.h"
@@ -81,6 +83,39 @@ void RtlApuLock(void) {
 
 void RtlApuUnlock(void) {
     if (g_apu_mutex) SDL_UnlockMutex(g_apu_mutex);
+}
+
+static bool g_audio_producer_wait_enabled;
+static bool g_audio_producer_stalled;
+static uint32_t g_audio_producer_stalled_read;
+
+static void IssdWaitForAudioProducer(void) {
+    if (!g_audio_producer_wait_enabled || !g_snes || !g_snes->apu) return;
+    /* Keep half the native FIFO free for a bounded SPC acknowledgement or
+     * sync burst. Wait on consumption, not on a second emulation clock. */
+    uint32_t start = SDL_GetTicks();
+    for (;;) {
+        RtlApuLock();
+        uint32_t queued = dsp_available(g_snes->apu->dsp);
+        uint32_t read = g_snes->apu->dsp->sampleRead;
+        RtlApuUnlock();
+        if (queued < 4096) {
+            g_audio_producer_stalled = false;
+            return;
+        }
+        if (g_audio_producer_stalled && read == g_audio_producer_stalled_read)
+            return;
+        g_audio_producer_stalled = false;
+        if (SDL_GetTicks() - start >= 250) {
+            /* One stall budget, not another 250 ms for every upload word.
+             * Resume pacing only after the consumer makes progress. */
+            g_audio_producer_stalled_read = read;
+            g_audio_producer_stalled = true;
+            return;
+        }
+        /* A disconnected/stalled device cannot block a game frame forever. */
+        SDL_Delay(1);
+    }
 }
 
 #ifdef _WIN32
@@ -173,6 +208,8 @@ static bool g_running = true;
 static bool g_restart_requested = false;
 static bool g_headless = false;
 static bool g_continue_requested = false;
+static bool g_main_menu_requested, g_main_menu_returning;
+static unsigned g_main_menu_return_frames;
 static bool g_allow_legacy_save = false;
 static bool g_frame_healthy = false;
 static bool g_touch_release_guard = false;
@@ -182,6 +219,9 @@ static bool g_legacy_quick_confirm = false;
 static uint8_t *g_base_rom_data = NULL;
 static char g_applied_team_names[ISSD_ROM_TEAMS + ISSD_MAX_ADDED_TEAMS][64];
 static uint32_t g_save_gameplay_flags = UINT32_MAX;
+static uint8_t g_save_stadium_digest[32];
+static int g_render_stadium_id = -1;
+static unsigned g_render_stadium_generation;
 static char g_password_error[160];
 static int g_target_frames = -1;
 static const char *g_screenshot_path = NULL;
@@ -240,25 +280,60 @@ static void IssdCaptureAppliedTeamNames(void) {
 static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc);
 static void IssdConfigureGameplayHooks(void);
 static void IssdResetMenuInput(void);
+static void IssdLoadStadiumHd(void) {
+    issd_hd_clear_stadiums();
+    for (unsigned id = 0; id < 32; ++id) {
+        const IssdStadiumAssets *assets = issd_stadium_assets(id);
+        if (!assets || !assets->hd_count) continue;
+        uint64_t keys[512];
+        const char *files[512];
+        for (size_t i = 0; i < assets->hd_count; ++i) {
+            keys[i] = assets->hd[i].key;
+            files[i] = assets->hd[i].filename;
+        }
+        if (!issd_hd_load_stadium((int)id,issd_stadium_generation(),keys,files,assets->hd_count))
+            Die("Cannot load stadium-local artwork");
+    }
+    g_render_stadium_id = -1;
+    g_render_stadium_generation = 0;
+    issd_widescreen_reset();
+}
 static void IssdRefreshSaveContext(void) {
     uint32_t flags = g_issd_config.debug_unhooked_code ? 1u : 0u;
     if (g_issd_config.gameplay_goalkeeper_ai) flags |= 2u;
     if (g_issd_config.gameplay_player_ai) flags |= 4u;
     if (g_issd_config.gameplay_bug_fixes) flags |= 8u;
-    cpu_set_native_block_hook((flags & 14u) ? IssdGameplayNativeBlock : NULL);
-    if (g_base_rom_data && g_rom_data && flags != g_save_gameplay_flags) {
+    if (issd_stadium_has_profiles()) flags |= 16u;
+    uint8_t stadium_digest[32] = {0};
+    if (flags & 16u) issd_stadium_gameplay_digest(stadium_digest);
+    cpu_set_native_block_hook(((flags & 30u) || issd_stadium_trace_enabled()) ? IssdGameplayNativeBlock : NULL);
+    if (g_base_rom_data && g_rom_data &&
+        (flags != g_save_gameplay_flags || memcmp(stadium_digest,g_save_stadium_digest,32))) {
         IssdConfigureGameplayHooks();
         issd_bugfix_keeper_begin_loop();
+        issd_save_set_context_extra((flags & 16u) ? stadium_digest : NULL);
         issd_save_set_context(g_base_rom_data, g_rom_size, g_rom_data, g_rom_size, flags);
         issd_password_set_context(g_base_rom_data, g_rom_size, g_rom_data, g_rom_size, flags);
         g_save_gameplay_flags = flags;
-        issd_match_reset();
+        memcpy(g_save_stadium_digest,stadium_digest,32);
+        issd_match_reset_context();
         issd_campaign_reset();
         issd_menu_refresh_continue();
     }
 }
 
 static void IssdSaveLoaded(void) {
+    if (!issd_stadium_scene_restore(g_snes ? g_snes->cart : NULL, g_ram,
+                                    g_rom_data, g_rom_size))
+        Die("Cannot restore the stadium cartridge view");
+    unsigned logical_id = g_ram[0x1fa2] | (unsigned)g_ram[0x1fa3] << 8;
+    unsigned mode = g_ram[0x70] | (unsigned)g_ram[0x71] << 8;
+    g_render_stadium_id = issd_stadium_profile(logical_id) && g_ram[0x86] != 8 &&
+        (mode == 4 || mode == 6 || mode == 8 || mode == 0x13) ? (int)logical_id : -1;
+    g_render_stadium_generation = g_render_stadium_id >= 0 ? issd_stadium_generation() : 0;
+    issd_hd_set_stadium_context(g_render_stadium_id,g_render_stadium_generation);
+    /* issd_snapshot already restored animation and rebased presentation. Keep
+     * that state; a full reset here discards the snapshot's edge animation. */
     issd_bugfix_keeper_begin_loop();
     g_pad1_state = 0;
     issd_input_block_held();
@@ -281,7 +356,15 @@ static bool IssdMatchRestore(const void *data, size_t size) {
     return true;
 }
 
+static bool IssdRequestMainMenu(void) {
+    if (g_main_menu_requested || g_main_menu_returning) return true;
+    g_main_menu_requested = true;
+    return true;
+}
+
 static bool IssdMatchAction(const char *name) {
+    if (!strcmp(name, "restart-match")) return issd_match_restart();
+    if (!strcmp(name, "back-main")) return issd_match_back_main();
     if (!strcmp(name, "rematch")) return issd_match_rematch();
     if (!strcmp(name, "mark-drill")) return issd_match_mark_drill(g_frame_healthy);
     if (!strcmp(name, "restart-drill")) return issd_match_restart_drill();
@@ -297,7 +380,7 @@ static void IssdParseMatchAction(const char *value) {
     if (value[0] < '0' || value[0] > '9' || frame > UINT32_MAX || *end != ':' || g_match_action_count >= 16)
         Die("Invalid --match-action; expected FRAME:ACTION (maximum 16)");
     const char *name = end + 1;
-    const char *names[] = {"rematch","mark-drill","restart-drill","save-favorite","play-favorite","start-rules"};
+    const char *names[] = {"restart-match","back-main","rematch","mark-drill","restart-drill","save-favorite","play-favorite","start-rules"};
     bool valid = false;
     for (unsigned i = 0; i < sizeof names/sizeof names[0]; ++i) if (!strcmp(name,names[i])) valid = true;
     if (!valid) Die("Unknown --match-action action");
@@ -459,6 +542,18 @@ static void SDLCALL SdlAudioCallback(void *userdata, Uint8 *stream, int len) {
 
 static void IssdDrawPpuFrame(void) {
     if (!g_snes || !g_snes->ppu) return;
+    issd_stadium_scene_refresh_art(g_snes->ppu,g_ram);
+    unsigned logical_id = g_ram[0x1fa2] | (unsigned)g_ram[0x1fa3] << 8;
+    unsigned mode = g_ram[0x70] | (unsigned)g_ram[0x71] << 8;
+    int stadium_id = issd_stadium_profile(logical_id) && g_ram[0x86] != 8 &&
+        (mode == 4 || mode == 6 || mode == 8 || mode == 0x13) ? (int)logical_id : -1;
+    unsigned generation = stadium_id >= 0 ? issd_stadium_generation() : 0;
+    if (stadium_id != g_render_stadium_id || generation != g_render_stadium_generation) {
+        issd_widescreen_reset();
+        g_render_stadium_id = stadium_id;
+        g_render_stadium_generation = generation;
+    }
+    issd_hd_set_stadium_context(stadium_id,generation);
 
     issd_widescreen_begin(g_snes->ppu, g_ram, g_rom_data, g_rom_size,
                          g_ws_active ? g_ws_extra : 0);
@@ -485,7 +580,9 @@ static void IssdDrawPpuFrame(void) {
          * replacement pass needs are the ones in force right now, and
          * the title screen changes background mode partway down. */
         issd_hd_note_line(g_snes->ppu, line);
+        if (line == 1) issd_stadium_trace_ppu(g_ram);
         ppu_runLine(g_snes->ppu, line);
+        issd_hd_note_rendered_line(g_snes->ppu, line);
     }
     ppu_handleVblank(g_snes->ppu);
     if (g_issd_config.color_boost)
@@ -649,13 +746,41 @@ static void IssdGameplayDecision(CpuState *cpu, uint32_t pc, bool native) {
         cpu_write16(cpu, 0, cpu->D + 0x50, old_x); cpu_write16(cpu, 0, cpu->D + 0x52, old_y);
     }
 }
-static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc) { IssdGameplayDecision(cpu, pc, true); }
-static void IssdGameplayInterpreted(CpuState *cpu, uint32_t pc) { IssdGameplayDecision(cpu, pc, false); }
+static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc) {
+    issd_stadium_scene_transfer(g_snes ? g_snes->ppu : NULL,cpu->ram,pc);
+    if (!issd_stadium_scene_opcode(g_snes ? g_snes->cart : NULL, cpu->ram,
+                                  g_rom_data, g_rom_size, pc))
+        Die("Cannot construct the selected stadium profile");
+    issd_stadium_trace_opcode(cpu->ram, pc);
+    IssdGameplayDecision(cpu, pc, true);
+}
+static void IssdGameplayInterpreted(CpuState *cpu, uint32_t pc) {
+    issd_stadium_scene_transfer(g_snes ? g_snes->ppu : NULL,cpu->ram,pc);
+    if (!issd_stadium_scene_opcode(g_snes ? g_snes->cart : NULL, cpu->ram,
+                                  g_rom_data, g_rom_size, pc))
+        Die("Cannot construct the selected stadium profile");
+    issd_stadium_trace_opcode(cpu->ram, pc);
+    IssdGameplayDecision(cpu, pc, false);
+}
 static void IssdConfigureGameplayHooks(void) {
     /* This runner owns the gameplay opcode policy slots. Unregister disabled
      * policies entirely so original execution avoids callback/sync overhead. */
-    cpu_set_native_block_hook((g_issd_config.gameplay_goalkeeper_ai || g_issd_config.gameplay_player_ai || g_issd_config.gameplay_bug_fixes) ? IssdGameplayNativeBlock : NULL);
+    cpu_set_native_block_hook((g_issd_config.gameplay_goalkeeper_ai || g_issd_config.gameplay_player_ai || g_issd_config.gameplay_bug_fixes || issd_stadium_has_profiles() || issd_stadium_trace_enabled()) ? IssdGameplayNativeBlock : NULL);
     interp_bridge_set_pre_opcode_hook(0, NULL);
+    if (issd_stadium_trace_enabled() || issd_stadium_has_profiles()) {
+        static const uint32_t trace_pcs[] = {
+            0x85a50a, 0xa4e0b3, 0x8bdb65, 0x98f205, 0xa4d7ce, 0xa4d6b2, 0xa4d6c5,
+            0x8b8cec, 0x8b8dc0, 0x8b8dc1, 0x80bbe4, 0x80b909, 0x80b90d, 0x808db8,
+            0x8b85e3, 0x8b86e9, 0x83b165, 0x83b082, 0x8b8ceb, 0x8b8cc4, 0x80b518, 0x8b8000};
+        for (unsigned i = 0; i < sizeof trace_pcs / sizeof trace_pcs[0]; ++i)
+            interp_bridge_set_pre_opcode_hook(trace_pcs[i], IssdGameplayInterpreted);
+    }
+    if (issd_stadium_trace_enabled()) {
+        /* Diagnostic chunk boundaries; avoid policy callbacks when tracing
+         * is disabled. Their observer never changes original transfer state. */
+        interp_bridge_set_pre_opcode_hook(0x80b8ba,IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0x80b90f,IssdGameplayInterpreted);
+    }
     if (g_issd_config.gameplay_bug_fixes) {
         interp_bridge_set_pre_opcode_hook(0x848048, IssdGameplayInterpreted);
         interp_bridge_set_pre_opcode_hook(0x8485D1, IssdGameplayInterpreted);
@@ -1971,6 +2096,7 @@ int main(int argc, char **argv) {
     issd_save_set_snapshot_validator(RtlValidateSnapshotFromMemory);
     issd_save_set_load_callback(IssdExternalSaveLoaded);
     issd_match_init(g_ram, &g_issd_config, RtlSaveSnapshotToMemory, IssdMatchRestore);
+    issd_match_set_main_menu_fallback(IssdRequestMainMenu);
     issd_mod_init();
     const char *mods_dir = g_issd_config.mods_dir[0] ? g_issd_config.mods_dir : "mods";
     if (cli_mods_dir && cli_mods_dir[0]) {
@@ -2080,6 +2206,8 @@ int main(int argc, char **argv) {
     issd_mod_rom_set_image(rom_data, rom_size);
     issd_mod_enable_from_list(g_issd_config.active_mod_packs);
     issd_mod_reapply();
+    if (!issd_stadium_rebuild_registry()) Die("Invalid stadium profile resources");
+    IssdLoadStadiumHd();
     IssdCaptureAppliedTeamNames();
     IssdRefreshSaveContext();
     if (!issd_save_init()) {
@@ -2231,6 +2359,8 @@ int main(int argc, char **argv) {
         audio_dev = SDL_OpenAudioDevice(NULL, 0, &wanted_spec, &obtained_spec, 0);
         if (audio_dev) {
             RtlSetAudioOutputRate(obtained_spec.freq);
+            RtlAudioSetProducerWait(IssdWaitForAudioProducer);
+            g_audio_producer_wait_enabled = true;
             g_audio_frames_per_block = (534 * obtained_spec.freq + 32040 / 2) / 32040;
             s_audio_block_avail = 0;
             s_audio_block_pos = 0;
@@ -2292,6 +2422,7 @@ int main(int argc, char **argv) {
 
         uint64_t now = SDL_GetPerformanceCounter();
         if (g_app_background) {
+            g_audio_producer_wait_enabled = false;
             if (audio_dev && !audio_paused) SDL_PauseAudioDevice(audio_dev, 1);
             audio_paused = true;
             next_sim_time = next_render_time = now;
@@ -2320,8 +2451,12 @@ int main(int argc, char **argv) {
             applied_vsync = g_issd_config.vsync;
         }
         IssdRefreshSaveContext();
-        if (audio_dev && audio_paused != issd_menu_is_open()) {
-            audio_paused = issd_menu_is_open();
+        /* Native SPC hardware is reset and advanced internally during return.
+         * Keep its audio consumer paused until the verified menu is reached. */
+        bool should_pause_audio = issd_menu_is_open() || g_main_menu_requested || g_main_menu_returning;
+        g_audio_producer_wait_enabled = audio_dev && !should_pause_audio;
+        if (audio_dev && audio_paused != should_pause_audio) {
+            audio_paused = should_pause_audio;
             SDL_PauseAudioDevice(audio_dev, audio_paused);
         }
 
@@ -2348,11 +2483,30 @@ int main(int argc, char **argv) {
 
         /* Simulation Tick: Paced deterministically at 60 Hz */
         bool frame_simulated = false;
+        if (g_main_menu_returning && issd_menu_is_open()) issd_menu_close();
+        if (g_main_menu_requested) {
+            g_main_menu_requested = false;
+            g_main_menu_returning = true;
+            g_main_menu_return_frames = 0;
+            /* Reset runtime/hardware before entering the cartridge reset
+             * vector: a live SPC is not the IPL upload target. Mode 1 retains
+             * SRAM; campaign files and compatibility context stay untouched. */
+            RtlReset(1);
+            IssdBootReset();
+            issd_campaign_reset();
+            issd_match_reset_context();
+            IssdResetMenuInput();
+            issd_menu_close();
+            issd_menu_notify("Returning to main menu...", 1800);
+        }
         if (g_restart_requested) {
             g_restart_requested = false;
             printf("[ISSD Native] Performing in-process soft reset...\n");
             issd_mod_enable_from_list(g_issd_config.active_mod_packs);
+            issd_stadium_scene_reset(g_snes ? g_snes->cart : NULL);
             issd_mod_reapply();
+            if (!issd_stadium_rebuild_registry()) Die("Invalid stadium profile resources");
+            IssdLoadStadiumHd();
             if (!g_snes || !g_snes->cart ||
                 !issd_mod_copy_applied_rom(g_snes->cart->rom, g_snes->cart->romSize))
                 Die("Cannot synchronize the applied cartridge image");
@@ -2366,7 +2520,7 @@ int main(int argc, char **argv) {
             issd_menu_notify(summary, 300);
             IssdBootReset();
             issd_campaign_reset();
-            issd_match_reset();
+            issd_match_reset_context();
             frame_count = 0;
             continue;
         }
@@ -2462,8 +2616,20 @@ int main(int argc, char **argv) {
                         if (issd_script_players() & (1u << player))
                             pads[player] = (uint16_t)issd_script_mask_player(frame_count, player);
                 }
+                if (g_main_menu_returning) {
+                    /* Original START presses leave boot/title. Once the guest
+                     * reaches its menu dispatcher, NONE prevents selecting a game.
+                     * Override every input source, including acceptance scripts. */
+                    memset(pads, 0, sizeof pads);
+                    connected = 1;
+                    unsigned mode = g_ram[0x32] | (unsigned)g_ram[0x33] << 8;
+                    if (mode != 6 && g_main_menu_return_frames >= 60 &&
+                        g_main_menu_return_frames % 60 < 10)
+                        pads[0] = 1u << 3;
+                }
                 uint64_t _rf_t0 = SDL_GetPerformanceCounter();
                 g_frame_healthy = false;
+                issd_stadium_trace_set_frame(frame_count);
                 RtlRunFrameControllers(pads, connected, true);
                 uint64_t _rf_t1 = SDL_GetPerformanceCounter();
                 double _rf_sec = (double)(_rf_t1 - _rf_t0) / perf_freq;
@@ -2488,6 +2654,21 @@ int main(int argc, char **argv) {
                 g_frame_healthy = g_frame_healthy && !g_watchdog_tripped &&
                                   g_cpu.S == 0x01AF && !g_ram[0x3c] && !g_ram[0x3d];
                 int match_capture = issd_match_tick(g_frame_healthy);
+                if (g_main_menu_returning) {
+                    g_main_menu_return_frames++;
+                    if (g_frame_healthy && issd_match_at_main_menu()) {
+                        g_main_menu_returning = false;
+                        IssdResetMenuInput();
+                        issd_menu_notify("Returned to main menu", 150);
+                        fprintf(stderr, "[MainMenuReturn] ready frame=%u elapsed=%u\n",
+                                frame_count, g_main_menu_return_frames);
+                    } else if (g_main_menu_return_frames >= 1800) {
+                        g_main_menu_returning = false;
+                        IssdResetMenuInput();
+                        issd_menu_notify("Main menu return timed out", 300);
+                        fprintf(stderr, "[MainMenuReturn] timed out\n");
+                    }
+                }
                 if (match_capture)
                     fprintf(stderr, "[Match] %s frame=%u\n",
                             match_capture == ISSD_MATCH_CAPTURE_SETUP ? "setup" : "kickoff", frame_count);
@@ -2518,7 +2699,7 @@ int main(int argc, char **argv) {
                 /* Over the game, not inside the menu: the one thing the
                  * player has to see after a restart is whether the mods
                  * they restarted for actually applied. */
-                if (g_headless) issd_menu_render_notification(g_pixel_buffer, cur_render_w,
+                if (g_headless && !g_main_menu_returning) issd_menu_render_notification(g_pixel_buffer, cur_render_w,
                                               cur_render_h);
                 issd_menu_render_stadium_plate(g_pixel_buffer, cur_render_w,
                                               cur_render_h,
@@ -2535,6 +2716,13 @@ int main(int argc, char **argv) {
                 issd_menu_render_team_flags(g_pixel_buffer, cur_render_w,
                                             cur_render_h,
                                             g_ws_active ? g_ws_extra : 0);
+                if (g_main_menu_returning) {
+                    /* The destination is the native menu; show progress while
+                     * original startup screens are being advanced internally. */
+                    for (size_t pixel = 0; pixel < (size_t)cur_render_w * cur_render_h; pixel++)
+                        g_pixel_buffer[pixel] = 0xff101820u;
+                    if (g_headless) issd_menu_render_notification(g_pixel_buffer, cur_render_w, cur_render_h);
+                }
                 if (g_dump_first >= 0 && (int)frame_count >= g_dump_first && (int)frame_count <= g_dump_last) {
                     char nm[64];
                     snprintf(nm, sizeof(nm), "f_%05u.bmp", frame_count);
@@ -2842,6 +3030,7 @@ int main(int argc, char **argv) {
     }
 
     if (g_apu_mutex) SDL_DestroyMutex(g_apu_mutex);
+    issd_stadium_scene_reset(g_snes ? g_snes->cart : NULL);
     free(rom_data);
     free(g_base_rom_data);
     printf("[Shutdown] Clean exit complete.\n");

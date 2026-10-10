@@ -1,9 +1,8 @@
 # Stadium profile v1 implementation contract
 
-This is the implementation target established by the 2026-10-09 read-only
-investigation. It is not an acceptance certificate. Geometry consumers, scenery
-overlap, transfer timing and native play must pass the implementation plan's
-checks before profiles are offered as supported features.
+This contract records the bounded implementation established by the 2026-10-09
+investigation. Measured implementation coverage and its limits are recorded in
+[Independent stadium acceptance](INDEPENDENT_STADIUM_ACCEPTANCE.md).
 
 ## Coordinates and geometry
 
@@ -164,6 +163,15 @@ keyed by logical stadium, profile generation and tile key and falls back to enab
 native art. Existing square, 32-bit BMP, edge-multiple-of-eight limits apply.
 Native artwork remains visible at 1X without any HD setting.
 
+Editor-generated manifests also retain `generated_geometry`, a `geometry`
+length/width tag, and upload metadata `palette_bank`, optional `placement`
+(`layer`, `x`, `y` in native pixels), `image_width`, `image_height`, and
+`hd_keys`. The tag rejects stale generated maps. Recompilation reapplies stored
+placements with copy-on-write metatile deduplication; overflow rejects the new
+directory. The editor rejects moving/resizing an existing placement and sharing
+its authored palette bank with another upload. Runtime resources remain the
+validated final binary maps, tile writes, palette and local HD list.
+
 The initial art compiler allows authoring within these measured native budgets.
 It reports quantization loss and rejects tile/palette overflow. It uses the same
 map/marking compiler for preview and exported data. It does not distribute
@@ -194,5 +202,5 @@ Canonical gameplay profile identity enters save compatibility, including profile
 implemented through host hooks. No-profile saves preserve their existing context.
 Pure cosmetic HD changes do not invalidate gameplay saves. Real restored saves,
 goals, penalties, throw-ins, corners, goal kicks, framing and scenery interactions
-are required evidence. Until those checks pass, v1 is an implementation contract
-and the previous alias-only support statement remains accurate.
+are required evidence. See the acceptance report for the distinction between
+controlled original-code boundary fixtures and uninterrupted natural matches.

@@ -170,3 +170,94 @@ def test_start_rules_runs_original_constructor_again(tmp_path, exhibition):
     action_succeeded(result, frame, "start-rules")
     assert len(re.findall(r"\[Match\] kickoff frame=\d+", result.stderr)) == 2, result.stderr
     assert word(ram, 0x1E5A) == 2 and word(ram, 0x1E54) == 4
+
+
+def test_pause_restart_uses_same_full_kickoff_as_rematch(tmp_path, exhibition):
+    _, kickoff = exhibition
+    baseline, original = run(tmp_path / "baseline", kickoff + 22)
+    successful(baseline)
+    frame = kickoff + 100
+    result, restored = run(tmp_path / "restart", frame + 21,
+                           actions=[(frame, "restart-match")])
+    successful(result)
+    action_succeeded(result, frame, "restart-match")
+    assert restored == original, "Pause restart did not replay the authentic kickoff"
+
+
+def test_pause_back_returns_authentic_main_menu(tmp_path, exhibition):
+    _, kickoff = exhibition
+    frame = kickoff + 40
+    result, ram = run(tmp_path / "back", frame + 31,
+                      actions=[(frame, "back-main")])
+    successful(result)
+    action_succeeded(result, frame, "back-main")
+    assert word(ram, 0x32) == 6 and word(ram, 0x70) == 12
+    assert word(ram, 0x1538) == 0x9D72 and word(ram, 0x153A) == 0xA4
+    assert word(ram, 0x50) == 0, "Match actors remained enabled at the menu"
+
+
+@pytest.mark.parametrize("world", [False, True], ids=["cup", "world-series"])
+@pytest.mark.parametrize("action", ["restart-match", "back-main"])
+def test_campaign_pause_actions_keep_single_autosave(tmp_path, world, action):
+    script = "".join(f"{f} START\n{f+10} NONE\n" for f in range(60, 361, 60))
+    script += "500 DOWN\n510 NONE\n"
+    if world:
+        script += "530 DOWN\n540 NONE\n"
+    script += "560 A\n570 NONE\n"
+    script += "".join(f"{f} A\n{f+10} NONE\n" for f in range(800, 1600, 100))
+    script += "".join(f"{f} A\n{f+10} NONE\n" for f in range(1800, 2900, 200))
+    input_path = tmp_path / "input.txt"
+    input_path.write_text(script, encoding="ascii")
+    result = subprocess.run(
+        [str(EXE), "--rom", str(ROM), "--headless", "4021",
+         "--script", str(input_path), "--config", str(tmp_path / "isolated.cfg"),
+         "--save-dir", str(tmp_path / "owned-saves"),
+         "--mods-dir", str(tmp_path / "empty-mods"),
+         "--match-action", f"4000:{action}", "--dump-state", str(tmp_path / "final")],
+        cwd=tmp_path, env=dict(os.environ, SDL_AUDIODRIVER="dummy", SDL_VIDEODRIVER="dummy"),
+        capture_output=True, text=True, timeout=120)
+    successful(result)
+    action_succeeded(result, 4000, action)
+    ram = (tmp_path / "final.wram").read_bytes()
+    saves = list((tmp_path / "owned-saves/campaigns").glob("*/campaign.sav"))
+    assert len(saves) == 1
+    data = saves[0].read_bytes()
+    assert int.from_bytes(data[24:32], "little") == 1, "Pause action duplicated campaign progress"
+    if action == "restart-match":
+        assert word(ram, 0x70) == 8
+        assert word(ram, 0xDE07) & 0x24 == (0x20 if world else 4)
+        assert word(ram, 0xDA2) == 0 and word(ram, 0xEA2) == 0
+    else:
+        assert word(ram, 0x70) == 12 and word(ram, 0x1538) == 0x9D72
+
+
+@pytest.mark.parametrize("load", ["continue", "manual"], ids=["fresh-continue", "fresh-slot-load"])
+def test_pause_back_without_resident_menu_keeps_campaign_bytes(tmp_path, load):
+    script = "".join(f"{f} START\n{f+10} NONE\n" for f in range(60, 361, 60))
+    script += "500 DOWN\n510 NONE\n560 A\n570 NONE\n"
+    script += "".join(f"{f} A\n{f+10} NONE\n" for f in range(800, 1300, 100))
+    input_path = tmp_path / "input.txt"
+    input_path.write_text(script, encoding="ascii")
+    command = [str(EXE), "--rom", str(ROM), "--config", str(tmp_path / "isolated.cfg"),
+               "--save-dir", str(tmp_path / "owned-saves"),
+               "--mods-dir", str(tmp_path / "empty-mods")]
+    env = dict(os.environ, SDL_AUDIODRIVER="dummy", SDL_VIDEODRIVER="dummy")
+    saved = subprocess.run(command + ["--headless", "1302", "--script", str(input_path),
+                                     "--save-state", "1302"], cwd=tmp_path, env=env,
+                           capture_output=True, text=True, timeout=120)
+    successful(saved)
+    campaigns = list((tmp_path / "owned-saves/campaigns").glob("*/campaign.sav"))
+    assert len(campaigns) == 1
+    original = campaigns[0].read_bytes()
+    load_args = ["--continue"] if load == "continue" else ["--load-state", "1"]
+    result = subprocess.run(command + ["--headless", "950", *load_args,
+                                      "--match-action", ("0:back-main" if load == "continue" else "1:back-main"),
+                                      "--dump-state", str(tmp_path / "returned")],
+                            cwd=tmp_path, env=env, capture_output=True, text=True, timeout=120)
+    successful(result)
+    assert "[MainMenuReturn] ready" in result.stderr, result.stderr
+    assert "[MainMenuReturn] timed out" not in result.stderr
+    ram = (tmp_path / "returned.wram").read_bytes()
+    assert word(ram, 0x32) == 6 and word(ram, 0x70) == 12
+    assert word(ram, 0x1538) == 0x9D72 and word(ram, 0x153A) == 0xA4
+    assert campaigns[0].read_bytes() == original, "Returning from fresh load rewrote campaign autosave"

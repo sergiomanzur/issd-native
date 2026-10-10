@@ -22,6 +22,7 @@ struct Cart {
 
   uint8_t* rom;
   uint32_t romSize;
+  const uint8_t* romView; /* Borrowed scene data; never owned or serialized. */
   uint8_t* ram;
   uint32_t ramSize;
   const uint64_t* masterClock;
@@ -105,6 +106,8 @@ Cart* cart_init(Snes* snes);
 void cart_free(Cart* cart);
 void cart_reset(Cart* cart); // will reset special chips etc, general reading is set up in load
 void cart_load(Cart* cart, int type, uint8_t* rom, int romSize, int ramSize); // TODO: figure out how to handle (battery, cart-chips etc)
+bool cart_setRomView(Cart *cart, const uint8_t *view, size_t size);
+void cart_clearRomView(Cart *cart);
 uint8_t cart_read(Cart* cart, uint8_t bank, uint16_t adr);
 void cart_write(Cart* cart, uint8_t bank, uint16_t adr, uint8_t val);
 void cart_saveload(Cart *cart, SaveLoadInfo *sli);

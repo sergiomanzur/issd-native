@@ -8732,6 +8732,7 @@ RecompReturn bank_00_B7F7_M0X0(CpuState *cpu) {
       cpu_p_to_mirrors(cpu);
       cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
     }
+    if (g_cpu_native_block_hook) g_cpu_native_block_hook(cpu, 0x00B909);
     {
       /* JSL return frame -> cpu->S (Option-1) */
       cpu_write8(cpu, 0x00, cpu->S, 0x00); cpu->S = (uint16)(cpu->S - 1);
@@ -16984,6 +16985,7 @@ RecompReturn bank_00_B7E9_M0X0(CpuState *cpu) {
       cpu_p_to_mirrors(cpu);
       cpu_trace_px_record(cpu, 0, 0 /*REP*/, _old_p, cpu->P);
     }
+    if (g_cpu_native_block_hook) g_cpu_native_block_hook(cpu, 0x00B909);
     {
       /* JSL return frame -> cpu->S (Option-1) */
       cpu_write8(cpu, 0x00, cpu->S, 0x00); cpu->S = (uint16)(cpu->S - 1);

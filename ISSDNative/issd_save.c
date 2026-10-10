@@ -37,6 +37,8 @@ extern uint8_t g_ram[0x20000];
 #define MAX_PAYLOAD (16u * 1024u * 1024u)
 static char s_directory[SAVE_PATH_MAX];
 static uint8_t s_context[32];
+static uint8_t s_base_context[32], s_extra_context[32];
+static bool s_has_extra_context;
 static bool s_has_context;
 static uint32_t s_gameplay_flags;
 static char s_error[160];
@@ -312,6 +314,25 @@ bool issd_save_set_directory(const char *directory) {
     return true;
 }
 
+static void ApplyContextExtra(void) {
+    if (!s_has_context) return;
+    if (!s_has_extra_context) {
+        memcpy(s_context, s_base_context, sizeof s_context);
+        return;
+    }
+    uint8_t canonical[72] = {'I','S','S','D','S','T','D',2};
+    memcpy(canonical+8, s_base_context, 32);
+    memcpy(canonical+40, s_extra_context, 32);
+    sha256_compute(canonical, sizeof canonical, s_context);
+}
+
+void issd_save_set_context_extra(const uint8_t *digest32) {
+    s_has_extra_context = digest32 != NULL;
+    if (digest32) memcpy(s_extra_context, digest32, 32);
+    else memset(s_extra_context, 0, 32);
+    ApplyContextExtra();
+}
+
 void issd_save_set_context(const uint8_t *base, size_t base_size,
                           const uint8_t *effective, size_t effective_size,
                           uint32_t gameplay_flags) {
@@ -325,9 +346,10 @@ void issd_save_set_context(const uint8_t *base, size_t base_size,
     sha256_compute(base, base_size, canonical + 8);
     sha256_compute(effective, effective_size, canonical + 40);
     Write32(canonical + 72, gameplay_flags);
-    sha256_compute(canonical, sizeof(canonical), s_context);
+    sha256_compute(canonical, sizeof(canonical), s_base_context);
     s_gameplay_flags = gameplay_flags;
     s_has_context = true;
+    ApplyContextExtra();
 }
 
 /* Reserve a same-directory name exclusively. Two game processes must never

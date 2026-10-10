@@ -7,6 +7,7 @@
 static Snes snes;
 static Snes *g_snes = &snes;
 static uint64_t guest_cycle;
+static void rtl_audio_wait_for_consumer(void) {}
 static void RtlApuLock(void) {}
 static void RtlApuUnlock(void) {}
 void rtl_sync_apu_to_cpu_locked(void) {
@@ -23,7 +24,21 @@ int main(int argc, char **argv) {
   apu->spc->p = false;
   CpuState cpu = {0};
 
-  if (!strcmp(argv[1], "cleared-command")) {
+  if (!strcmp(argv[1], "startup-delay")) {
+    /* Original driver starts with 75 timer-0 ticks of readiness delay:
+     * target 32 at the SPC's 128-cycle timer prescaler = 307200 cycles.
+     * A bounded CPU wait must receive a real echo after that delay. */
+    const uint8_t program[] = {
+      0x8F,0x20,0xFA, 0x8F,0x01,0xF1, 0x8F,0x4B,0x19,
+      0xE4,0xFD, 0xF0,0xFC, 0x8B,0x19, 0xD0,0xF8,
+      0xE4,0xF4, 0xC4,0xF4, 0x8F,0x01,0x20, 0x2F,0xFE,
+    };
+    memcpy(apu->ram + 0x200, program, sizeof(program));
+    assert(RtlApuWriteWaitEcho(&cpu, APUI00, 0xEF, false));
+    assert(apu->ram[0x20] == 1 && "startup echo must come from executing the SPC driver");
+    assert(apu->portClock >= 307200 && apu->portClock < 400000);
+    assert(apu->outPorts[0] == 0xEF && cpu.open_bus == 0xEF);
+  } else if (!strcmp(argv[1], "cleared-command")) {
     /* ISSD's SFX acknowledgement ($0E3F) clears BOTH input ports via
      * CONTROL=$11 while the CPU is trying to send voice command $F0. */
     const uint8_t program[] = {

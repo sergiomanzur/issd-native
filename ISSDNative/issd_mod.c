@@ -39,146 +39,7 @@ bool issd_mod_init(void) {
  * mattered more than it sounds: a pack whose team object listed "name"
  * before "team_id" - ordinary JSON - silently ended up with the team's
  * name on the pack and the player's name on the team. */
-typedef struct {
-    const char *p;
-    int line;
-    const char *error;   /* first failure, or NULL */
-    int error_line;
-} JsonReader;
-
-static void json_fail(JsonReader *r, const char *why) {
-    if (!r->error) { r->error = why; r->error_line = r->line; }
-}
-
-static void json_skip_ws(JsonReader *r) {
-    for (;;) {
-        const char c = *r->p;
-        if (c == '\n') { r->line++; r->p++; }
-        else if (c == ' ' || c == '\t' || c == '\r') r->p++;
-        /* Line and block comments are not JSON, but hand-written packs
-         * have always had them and the old scanner skipped them. */
-        else if (c == '/' && r->p[1] == '/') { while (*r->p && *r->p != '\n') r->p++; }
-        else if (c == '/' && r->p[1] == '*') {
-            r->p += 2;
-            while (*r->p && !(*r->p == '*' && r->p[1] == '/')) {
-                if (*r->p == '\n') r->line++;
-                r->p++;
-            }
-            if (*r->p) r->p += 2;
-        }
-        else return;
-    }
-}
-
-static bool json_eat(JsonReader *r, char c) {
-    json_skip_ws(r);
-    if (*r->p != c) return false;
-    r->p++;
-    return true;
-}
-
-/* Reads a string into `out` when given, or skips it. Escapes are resolved
- * for the handful JSON defines; \u is accepted and becomes '?', since the
- * cartridge has no characters outside A-Z anyway. */
-static bool json_string(JsonReader *r, char *out, size_t cap) {
-    if (!json_eat(r, '"')) { json_fail(r, "expected a string"); return false; }
-    size_t n = 0;
-    while (*r->p && *r->p != '"') {
-        char c = *r->p++;
-        if (c == '\n') r->line++;
-        if (c == '\\' && *r->p) {
-            const char esc = *r->p++;
-            switch (esc) {
-                case 'n': c = '\n'; break;
-                case 't': c = '\t'; break;
-                case 'r': c = '\r'; break;
-                case 'b': c = '\b'; break;
-                case 'f': c = '\f'; break;
-                case 'u':
-                    for (int i = 0; i < 4 && *r->p; i++) r->p++;
-                    c = '?';
-                    break;
-                default: c = esc; break;   /* \" \\ \/ and anything else */
-            }
-        }
-        if (out && n + 1 < cap) out[n++] = c;
-    }
-    if (out && cap) out[n] = '\0';
-    if (*r->p != '"') { json_fail(r, "unterminated string"); return false; }
-    r->p++;
-    return true;
-}
-
-static bool json_number(JsonReader *r, long *out) {
-    json_skip_ws(r);
-    char *end = NULL;
-    const double v = strtod(r->p, &end);
-    if (end == r->p) { json_fail(r, "expected a number"); return false; }
-    r->p = end;
-    if (out) *out = (long)v;
-    return true;
-}
-
-static bool json_skip_value(JsonReader *r);
-
-/* Runs `body` for each "key": value of an object. */
-typedef bool (*JsonMember)(JsonReader *r, const char *key, void *ctx);
-
-static bool json_object(JsonReader *r, JsonMember body, void *ctx) {
-    if (!json_eat(r, '{')) { json_fail(r, "expected an object"); return false; }
-    json_skip_ws(r);
-    if (json_eat(r, '}')) return true;
-    for (;;) {
-        char key[64];
-        if (!json_string(r, key, sizeof key)) return false;
-        if (!json_eat(r, ':')) { json_fail(r, "expected ':'"); return false; }
-        if (!body(r, key, ctx)) return false;
-        json_skip_ws(r);
-        if (json_eat(r, ',')) { json_skip_ws(r); continue; }
-        if (json_eat(r, '}')) return true;
-        json_fail(r, "expected ',' or '}'");
-        return false;
-    }
-}
-
-/* Runs `body` for each element of an array. */
-typedef bool (*JsonElement)(JsonReader *r, void *ctx);
-
-static bool json_array(JsonReader *r, JsonElement body, void *ctx) {
-    if (!json_eat(r, '[')) { json_fail(r, "expected an array"); return false; }
-    json_skip_ws(r);
-    if (json_eat(r, ']')) return true;
-    for (;;) {
-        if (!body(r, ctx)) return false;
-        json_skip_ws(r);
-        if (json_eat(r, ',')) { json_skip_ws(r); continue; }
-        if (json_eat(r, ']')) return true;
-        json_fail(r, "expected ',' or ']'");
-        return false;
-    }
-}
-
-static bool json_skip_member(JsonReader *r, const char *key, void *ctx) {
-    (void)key; (void)ctx;
-    return json_skip_value(r);
-}
-static bool json_skip_element(JsonReader *r, void *ctx) {
-    (void)ctx;
-    return json_skip_value(r);
-}
-
-static bool json_skip_value(JsonReader *r) {
-    json_skip_ws(r);
-    switch (*r->p) {
-        case '"': return json_string(r, NULL, 0);
-        case '{': return json_object(r, json_skip_member, NULL);
-        case '[': return json_array(r, json_skip_element, NULL);
-        case 't': r->p += 4; return true;
-        case 'f': r->p += 5; return true;
-        case 'n': r->p += 4; return true;
-        default: return json_number(r, NULL);
-    }
-}
+#include "issd_json_internal.h"
 
 /* Convenience: read a string member straight into a fixed field. */
 #define JSON_STR_FIELD(r, dst) json_string((r), (dst), sizeof(dst))
@@ -316,6 +177,112 @@ static bool team_element(JsonReader *r, void *ctx) {
     return true;
 }
 
+/* Geometry numbers never use the legacy reader's float/truncation behavior. */
+static bool profile_u16(JsonReader *r, uint16_t *value) {
+    json_skip_ws(r);
+    if (*r->p < '0' || *r->p > '9') {
+        json_fail(r, "stadium profile requires an unsigned integer");
+        return false;
+    }
+    unsigned result = 0;
+    const char *start = r->p;
+    while (*r->p >= '0' && *r->p <= '9') {
+        result = result * 10 + (unsigned)(*r->p++ - '0');
+        if (result > 65535) {
+            json_fail(r, "stadium profile integer exceeds 65535");
+            return false;
+        }
+    }
+    if (*r->p == '.' || *r->p == 'e' || *r->p == 'E' ||
+        (r->p - start > 1 && *start == '0')) {
+        json_fail(r, "stadium profile requires a JSON integer");
+        return false;
+    }
+    *value = (uint16_t)result;
+    return true;
+}
+
+static bool profile_camera_member(JsonReader *r, const char *key, void *ctx) {
+    IssdStadiumProfile *profile = ctx;
+    static const char *names[5] = {"min_y", "max_y", "left_shear_anchor",
+                                  "max_x_cap", "right_shear_anchor"};
+    for (unsigned i = 0; i < 5; ++i) {
+        if (strcmp(key, names[i])) continue;
+        profile->fields_present |= (uint16_t)(16u << i);
+        return profile_u16(r, &profile->camera[i]);
+    }
+    json_fail(r, "unknown stadium camera field");
+    return false;
+}
+
+static bool profile_geometry_member(JsonReader *r, const char *key, void *ctx) {
+    IssdStadiumProfile *profile = ctx;
+    if (!strcmp(key, "length_units")) {
+        profile->fields_present |= 4;
+        return profile_u16(r, &profile->length_units);
+    }
+    if (!strcmp(key, "width_units")) {
+        profile->fields_present |= 8;
+        return profile_u16(r, &profile->width_units);
+    }
+    if (!strcmp(key, "camera"))
+        return json_object(r, profile_camera_member, profile);
+    return json_skip_value(r);
+}
+
+static bool profile_member(JsonReader *r, const char *key, void *ctx) {
+    IssdStadiumProfile *profile = ctx;
+    if (!strcmp(key, "version")) {
+        profile->fields_present |= 1;
+        return profile_u16(r, &profile->version);
+    }
+    if (!strcmp(key, "base_layout")) {
+        profile->fields_present |= 2;
+        return profile_u16(r, &profile->base_layout);
+    }
+    if (!strcmp(key, "geometry"))
+        return json_object(r, profile_geometry_member, profile);
+    if (!strcmp(key, "artwork")) {
+        char path[1024];
+        if (!json_string(r, path, sizeof path)) return false;
+        if (!path[0] || strlen(path) >= sizeof profile->artwork) {
+            json_fail(r, "stadium artwork path must contain 1..255 characters");
+            return false;
+        }
+        strcpy(profile->artwork, path);
+        return true;
+    }
+    return json_skip_value(r);
+}
+
+static bool profile_validate(JsonReader *r, IssdStadiumProfile *profile) {
+    static const uint16_t templates[8][7] = {
+        {1792,576,96,672,256,2368,2000}, {1856,640,96,704,192,2464,2000},
+        {1984,704,64,736,192,2688,2304}, {2048,640,64,736,192,2688,2304},
+        {1920,640,96,704,192,2560,2304}, {1920,576,128,640,192,2464,2000},
+        {1792,704,64,736,192,2464,2000}, {2176,704,64,704,192,2880,2368}};
+    if ((profile->fields_present & 15) != 15 || profile->version != 1 ||
+        profile->base_layout > 7) {
+        json_fail(r, "stadium profile requires version 1, base 0..7 and geometry");
+        return false;
+    }
+    const uint16_t *base = templates[profile->base_layout];
+    if (profile->length_units < 1536 || profile->length_units > base[0] ||
+        profile->length_units % 32 || profile->width_units != base[1]) {
+        json_fail(r, "stadium geometry is outside the verified template envelope");
+        return false;
+    }
+    for (unsigned i = 0; i < 5; ++i) {
+        if ((profile->fields_present & (16u << i)) && profile->camera[i] != base[i+2]) {
+            json_fail(r, "custom camera bounds require verified map coverage");
+            return false;
+        }
+        profile->camera[i] = base[i+2];
+    }
+    profile->fields_present = 0;
+    return true;
+}
+
 static bool stadium_member(JsonReader *r, const char *key, void *ctx) {
     IssdModStadium *st = (IssdModStadium *)ctx;
     if (strcmp(key, "stadium_id") == 0) {
@@ -328,6 +295,11 @@ static bool stadium_member(JsonReader *r, const char *key, void *ctx) {
     if (strcmp(key, "display_name") == 0) return JSON_STR_FIELD(r, st->display_name);
     if (strcmp(key, "pitch_length") == 0) return json_u8(r, &st->pitch_length);
     if (strcmp(key, "pitch_width") == 0)  return json_u8(r, &st->pitch_width);
+    if (strcmp(key, "stadium_profile") == 0) {
+        st->has_profile = true;
+        if (!json_object(r, profile_member, &st->profile)) return false;
+        return profile_validate(r, &st->profile);
+    }
     return json_skip_value(r);
 }
 

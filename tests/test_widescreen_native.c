@@ -38,6 +38,23 @@ static void fixture(void) {
 
 /* Original goal-facing penalty camera: BG1 owns the single goal, BG2 the
  * tiled stands/grass, BG3 the HUD. Widen scenery without duplicating the goal. */
+static void test_retained_stadium_menu(void) {
+  const int extras[] = {51, 71, 124};
+  for (unsigned i=0;i<3;i++) {
+    fixture(); word(0x70,0x0c);
+    ppu.bgmode=9; ppu.bgXsc[0]=1; ppu.bgXsc[1]=0x10;
+    ppu.bgXsc[2]=9; ppu.bgTileAdr=0x4422;
+    ppu.screenEnabled[0]=0x17;
+    assert(issd_widescreen_menu_layout(&ppu,ram));
+    issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),extras[i]);
+    assert(ppu.extraLeftCur==extras[i]);
+    assert(ppu.wsLayerRepeat==2 && ppu.wsLayerClamp==0x1d);
+    issd_widescreen_end(&ppu);
+    ppu.bgTileAdr=0x4522; /* stadium/presentation tiles are not wallpaper */
+    assert(!issd_widescreen_menu_layout(&ppu,ram));
+  }
+}
+
 static void test_penalty_background(void) {
   static uint8_t saved_ram[sizeof(ram)];
   static uint16_t saved_vram[0x8000], saved_oam[0x100];
@@ -330,6 +347,27 @@ static void test_padded_stadium_edge(void) {
   assert(ppu.vram[0x808]==0xdead);
   issd_widescreen_end(&ppu);
 }
+static void test_vertical_stadium_padding(void) {
+  const int extras[] = {51,71,124};
+  for (unsigned n=0;n<3;n++) for (unsigned bottom=0;bottom<2;bottom++) {
+    fixture();
+    for (unsigned layer=0;layer<2;layer++) {
+      memset(ram+0x1d000+layer*0x1000,0,0x1000);
+      /* The real stadium occupies rows 1..6 of its first page. */
+      for (unsigned page=0;page<8;page++) for (unsigned row=1;row<7;row++)
+        memset(ram+0x1d000+layer*0x1000+page*64+row*8,1,8);
+      ppu.hScroll[layer]=256; ppu.vScroll[layer]=bottom ? 224 : 0;
+    }
+    assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),extras[n]));
+    unsigned y=bottom ? 28 : 0;
+    unsigned address=(y&31)*32;
+    assert(ppu.vram[address]==(bottom ? 0x200c : 0x2000));
+    assert(ppu.vram[0x1000+address]==(bottom ? 0x240c : 0x2400));
+    assert(ppu.vram[y*32+0x400]==0xdead); /* original center never touched */
+    issd_widescreen_end(&ppu);
+    assert(ppu.vram[address]==0xdead);
+  }
+}
 int main(void) {
   test_coin_background();
   fixture();
@@ -478,11 +516,13 @@ int main(void) {
   assert(ppu.extraLeftCur==95 && ppu.extraRightCur==95);
   issd_widescreen_end(&ppu);
   test_penalty_background();
+  test_retained_stadium_menu();
   test_stats_background();
   test_explicit_sprite_clip();
   test_offscreen_player_graphics();
   test_auxiliary_vertical_admission();
   test_padded_stadium_edge();
+  test_vertical_stadium_padding();
   puts("widescreen native tests passed");
   return 0;
 }

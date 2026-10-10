@@ -1,0 +1,33 @@
+{
+  "name": "Independent stadium examples",
+  "stadium_count": 32,
+  "teams": [],
+  "stadiums": [
+    {
+      "stadium_id": 8,
+      "name": "MEADOW",
+      "stadium_profile": {
+        "version": 1,
+        "base_layout": 0,
+        "geometry": {
+          "length_units": 1728,
+          "width_units": 576
+        },
+        "artwork": "meadow/stadium.json"
+      }
+    },
+    {
+      "stadium_id": 31,
+      "name": "HARBOR",
+      "stadium_profile": {
+        "version": 1,
+        "base_layout": 0,
+        "geometry": {
+          "length_units": 1664,
+          "width_units": 576
+        },
+        "artwork": "harbor/stadium.json"
+      }
+    }
+  ]
+}

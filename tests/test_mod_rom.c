@@ -256,6 +256,7 @@ int main(void) {
      * alone rather than corrupted. */
     {
         const size_t COUNT_OP = 0x121F6Du, NAME_OP = 0x03448Bu;
+        const size_t LEFT_OP = 0x121F40u, SAVE = 0x02A507u;
         const size_t FREE82 = 0x017B5Du, FREE87 = 0x03FAC8u;
         IssdModPack *xp = issd_mod_get_pack(fixture);
 
@@ -272,15 +273,49 @@ int main(void) {
         /* Now with the bytes the real cartridge has. */
         rom[COUNT_OP - 1] = 0xC9; rom[COUNT_OP] = 8; rom[COUNT_OP + 1] = 0;
         rom[NAME_OP - 1] = 0x69; rom[NAME_OP] = 0x9B; rom[NAME_OP + 1] = 0xCA;
+        rom[LEFT_OP - 1] = 0xA9; rom[LEFT_OP] = 7; rom[LEFT_OP + 1] = 0;
+        const uint8_t serializer[] = {0xAD,0xA2,0x1F,0x29,7,0,0x8D,0x86,0,0x8D,0xA2,0x1F};
+        memcpy(rom + 0x02A4FEu, serializer, sizeof serializer);
+        for (unsigned k=0; k<8; k++) rom[0x017AFDu+k]=(uint8_t)(0x30+k);
         const size_t ops[4] = { 0x121FA0u, 0x12200Au, 0x12201Du, 0x12203Fu };
         const uint16_t was[4] = { 0xFADDu, 0xFAEDu, 0xFAEEu, 0xFAFDu };
         for (int i = 0; i < 4; i++) {
             rom[ops[i] - 1] = 0xBF;
             rom[ops[i]] = (uint8_t)(was[i] & 0xFF);
             rom[ops[i] + 1] = (uint8_t)(was[i] >> 8);
+            rom[ops[i] + 2] = 0x82;
         }
-        memset(rom + FREE82, 0xFF, 16 * 6);
-        memset(rom + FREE87, 0xFF, 16 * 7);
+        memset(rom + FREE82, 0xFF, 32 * 5);
+        memset(rom + FREE87, 0xFF, 32 * 7);
+        for (unsigned k=0; k<16; k++) {
+            rom[0x017ADDu+k]=(uint8_t)(0x80+k);
+            rom[0x017AEDu+k]=(uint8_t)(0x60+k);
+        }
+        for (unsigned k=0; k<56; k++) rom[0x03CA9Bu+k]=(uint8_t)(0x20+k);
+        static uint8_t pristine[sizeof rom];
+        memcpy(pristine, rom, sizeof rom);
+
+        xp->stadium_slots = 8;
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(rom[COUNT_OP] == 8 && rom[LEFT_OP] == 7);
+        assert(memcmp(rom + SAVE, serializer + 9, 3) == 0);
+        assert(rom[FREE82] == 0xFF && rom[FREE87] == 0xFF);
+        xp->stadium_slots = 12;
+        /* Every newly guarded instruction is checked before relocation. */
+        const size_t corrupt[] = {LEFT_OP-1, LEFT_OP, LEFT_OP+1,
+            0x02A4FEu,0x02A4FFu,0x02A500u,0x02A501u,0x02A502u,0x02A503u,
+            0x02A504u,0x02A505u,0x02A506u,SAVE,SAVE+1,SAVE+2,
+            COUNT_OP+1,NAME_OP,NAME_OP+1,ops[0]+2};
+        for (unsigned k=0;k<sizeof corrupt/sizeof corrupt[0];k++) {
+            memcpy(rom, pristine, sizeof rom);
+            rom[corrupt[k]] ^= 1;
+            issd_mod_result_reset();
+            issd_mod_apply_to_rom(rom, sizeof rom);
+            assert(issd_mod_last_result()->errors > 0);
+            assert(rom[FREE82] == 0xFF && rom[FREE87] == 0xFF);
+            assert(rom[COUNT_OP] == 8 && rom[ops[0]] == 0xDD);
+        }
+        memcpy(rom, pristine, sizeof rom);
 
         /* Expanding rewrites the very bytes it checks, so it runs once per
          * apply against a pristine image - which is what issd_mod_reapply
@@ -294,6 +329,10 @@ int main(void) {
         issd_mod_result_reset();
         issd_mod_apply_to_rom(rom, sizeof(rom));
         assert(rom[COUNT_OP] == 12 && "the count literal is raised");
+        assert(rom[LEFT_OP] == 11 && rom[LEFT_OP+1] == 0);
+        assert(rom[SAVE] == 0xEA && rom[SAVE+1] == 0xEA && rom[SAVE+2] == 0xEA);
+        assert(rom[0x02A502u] == 7 && "constructors keep stock layout aliases");
+        for (unsigned k=0; k<12; k++) assert(rom[FREE82+48+k] == 0x30+k%8);
         for (int i = 0; i < 4; i++) {
             const uint16_t now = (uint16_t)(rom[ops[i]] | (rom[ops[i]+1] << 8));
             assert(now != was[i] && "each table reference is re-pointed");
@@ -305,12 +344,32 @@ int main(void) {
         const uint8_t *n8 = rom + FREE87 + 8 * 7;
         assert(n8[2] == 0x68 && n8[3] == 0x72);      /* A K */
 
+        /* Untouched expanded table entries repeat stock data with the exact
+         * byte/word strides; slot 8 must not pick up the weather table. */
+        for (unsigned k=0;k<12;k++) {
+            assert(memcmp(rom+FREE82+k*2, pristine+0x017ADDu+(k%8)*2,2)==0);
+            if(k!=8) assert(memcmp(rom+FREE82+24+k*2, pristine+0x017AEDu+(k%8)*2,2)==0);
+            if(k!=8) assert(memcmp(rom+FREE87+k*7, pristine+0x03CA9Bu+(k%8)*7,7)==0);
+        }
+
         /* One the expansion did not reach for is refused. */
         xp->stadiums[0].stadium_id = 15;
         issd_mod_result_reset();
         issd_mod_apply_to_rom(rom, sizeof(rom));
         assert(issd_mod_last_result()->warnings > 0);
         xp->stadium_count = 0;
+        memcpy(rom, pristine, sizeof rom);
+        xp->stadium_slots = 100;
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(rom[COUNT_OP] == 32 && rom[LEFT_OP] == 31);
+        assert(rom[SAVE] == 0xEA && rom[0x02A502u] == 7);
+        for(unsigned k=0;k<32;k++) {
+            assert(memcmp(rom+FREE82+k*2, pristine+0x017ADDu+(k%8)*2,2)==0);
+            assert(memcmp(rom+FREE82+64+k*2, pristine+0x017AEDu+(k%8)*2,2)==0);
+            assert(rom[FREE82+128+k] == 0x30+k%8);
+            assert(memcmp(rom+FREE87+k*7, pristine+0x03CA9Bu+(k%8)*7,7)==0);
+        }
+        assert(rom[FREE82+160] == 0xEE && rom[FREE87+224] == 0xEE);
         xp->stadium_slots = 0;
     }
 

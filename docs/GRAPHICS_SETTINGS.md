@@ -123,6 +123,21 @@ opacity settings apply only to the enlarged overlay; 1x keeps original pixels.
 
 ## Widescreen reliability
 
+Current source after v0.4.0-beta.1 recognizes the blue menu wallpaper from its
+graphics layout even when a previous match leaves stadium allocation data in
+memory. This covers halftime management, formation, squad and substitution
+menus and return screens. Only BG2 wallpaper extends; panels, text and sprites
+remain within the original 256-pixel center. The renderer also continues the
+authored top/bottom stadium boundary rows into added pitch columns, rather than
+sampling blank rows inside the larger map allocation. These changes do not
+widen game simulation, camera bounds or playable pitch dimensions.
+
+The HD replacement pass now retains the VRAM, palette and brightness used for
+each rendered scanline, rather than looking at restored guest memory afterward.
+It uses visible layer ownership to protect players whose colors match the grass,
+and applies replacements to eligible widened margins as well as the center.
+Repeated or mirrored backgrounds use their corresponding original source tiles.
+
 Expanded pitch/stadium rendering keeps the native center and extends metatiles
 and supplemental sprites at the sides. Locomotion continuation now observes
 complete animation descriptors, pairing geometry with the correct ROM graphics

@@ -12808,6 +12808,7 @@ RecompReturn CODE_808D5E_M0X0(CpuState *cpu) {
     if (cpu->D & 0xFF) { cpu->cycles += 1; cpu->master_cycles += 8; }  /* D.l != 0 */
     uint16 _v29 = cpu_read_a16(cpu);
     cpu_write16(cpu, 0x00, (uint16)(cpu->D + 0x004a), _v29);
+    if (g_cpu_native_block_hook) g_cpu_native_block_hook(cpu, 0x008DB8);
     { uint16 _ret_s = cpu->S;  /* RTL pop hardware return frame */
       cpu->S = (uint16)(cpu->S + 1);
       uint16 _rpcl = (uint16)cpu_read8(cpu, 0x00, cpu->S);

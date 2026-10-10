@@ -198,6 +198,115 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* The compositor runs after temporary presentation VRAM is restored.
+     * It must use the tilemap, graphics, palette and brightness at scanout. */
+    {
+        uint64_t key = strtoull(dumped, NULL, 16);
+        char local_red[1024], local_blue[1024];
+        snprintf(local_red,sizeof local_red,"%s/local-red.bmp",dir);
+        snprintf(local_blue,sizeof local_blue,"%s/local-blue.bmp",dir);
+        write_texture(local_red,32,0xffff0000u);
+        write_texture(local_blue,32,0xff0000ffu);
+        const char *red_files[] = {local_red}, *blue_files[] = {local_blue};
+        assert(issd_hd_load_stadium(8,1,&key,red_files,1));
+        assert(issd_hd_load_stadium(9,1,&key,blue_files,1));
+        issd_hd_begin_frame();
+        issd_hd_set_stadium_context(8,1); issd_hd_note_line(ppu,1);
+        issd_hd_set_stadium_context(9,1); issd_hd_note_line(ppu,2);
+        issd_hd_set_stadium_context(-1,0);
+        memset(hi,0,sizeof(uint32_t)*W*H*SCALE*SCALE);
+        issd_hd_composite(ppu,native,W,H,hi,SCALE,0);
+        assert(hi[5*SCALE] == 0xff0000u);
+        assert(hi[W*SCALE*SCALE+5*SCALE] == 0x0000ffu);
+        assert(hi[0] == 0 && hi[covered_x*SCALE] == 0);
+        issd_hd_begin_frame();
+        issd_hd_set_stadium_context(8,2); issd_hd_note_line(ppu,1);
+        memset(hi,0,sizeof(uint32_t)*W*H*SCALE*SCALE);
+        issd_hd_composite(ppu,native,W,H,hi,SCALE,0);
+        assert(hi[5*SCALE] == (replacement&0xffffffu));
+        assert(issd_hd_load_stadium(8,2,&key,blue_files,1));
+        issd_hd_begin_frame(); issd_hd_note_line(ppu,1);
+        memset(hi,0,sizeof(uint32_t)*W*H*SCALE*SCALE);
+        issd_hd_composite(ppu,native,W,H,hi,SCALE,0);
+        assert(hi[5*SCALE] == 0xffu);
+        assert(issd_hd_load_pack(NULL) == 0 && issd_hd_active());
+        issd_hd_begin_frame(); issd_hd_note_line(ppu,1);
+        memset(hi,0,sizeof(uint32_t)*W*H*SCALE*SCALE);
+        issd_hd_composite(ppu,native,W,H,hi,SCALE,0);
+        assert(hi[5*SCALE] == 0xffu);
+        issd_hd_clear_stadiums();
+        assert(!issd_hd_active());
+        snprintf(path,sizeof path,"%s/pack",dir);
+        assert(issd_hd_load_pack(path) == 1);
+    }
+    issd_hd_begin_frame();
+    for (int line = 1; line <= H; line++) issd_hd_note_line(ppu, line);
+    uint16_t saved_map = ppu->vram[0];
+    uint16_t saved_art = ppu->vram[tileadr + character * 16u];
+    uint16_t saved_palette = ppu->cgram[5];
+    uint8_t saved_brightness = ppu->brightnessMult[31];
+    ppu->vram[0] = 100;
+    ppu->vram[tileadr + character * 16u] = 0;
+    ppu->cgram[5] ^= 0x7FFF;
+    ppu->brightnessMult[31] = 0;
+    memset(hi, 0, sizeof(uint32_t) * W * H * SCALE * SCALE);
+    issd_hd_composite(ppu, native, W, H, hi, SCALE, 0);
+    assert(hi[5 * SCALE] == (replacement & 0xFFFFFFu) &&
+           "scanout texture must survive presentation state restoration");
+    ppu->vram[0] = saved_map;
+    ppu->vram[tileadr + character * 16u] = saved_art;
+    ppu->cgram[5] = saved_palette;
+    ppu->brightnessMult[31] = saved_brightness;
+
+    /* A mid-frame palette/VRAM change must not retroactively alter the
+     * first line, or inherit that first line's memoized texture identity. */
+    issd_hd_begin_frame();
+    issd_hd_note_line(ppu, 1);
+    ppu->cgram[5] ^= 0x7FFF;
+    ppu->vram[tileadr + character * 16u] ^= 1;
+    issd_hd_note_line(ppu, 2);
+    ppu->cgram[5] = saved_palette;
+    ppu->vram[tileadr + character * 16u] = saved_art;
+    memset(hi, 0, sizeof(uint32_t) * W * H * SCALE * SCALE);
+    issd_hd_composite(ppu, native, W, H, hi, SCALE, 0);
+    assert(hi[5 * SCALE] == (replacement & 0xFFFFFFu));
+    assert(hi[(size_t)SCALE * W * SCALE + 5 * SCALE] == 0 &&
+           "later scanline must use its own tile identity");
+
+    /* Matching RGB is not proof of BG ownership: a sprite can have the
+     * exact same green as the pitch and still must retain its original art. */
+    issd_hd_begin_frame();
+    ppu->renderFlags = kPpuRenderFlags_NewRenderer;
+    for (int line = 1; line <= H; line++) {
+        issd_hd_note_line(ppu, line);
+        for (int x = 0; x < kPpuBufWidth; x++)
+            ppu->bgBuffers[0].data[x] = 0x1000; /* BG1 owns main pixels */
+        ppu->bgBuffers[0].data[kPpuExtraLeftRight + 5] = 0x2405; /* OBJ */
+        issd_hd_note_rendered_line(ppu, line);
+    }
+    memset(hi, 0, sizeof(uint32_t) * W * H * SCALE * SCALE);
+    issd_hd_composite(ppu, native, W, H, hi, SCALE, 0);
+    assert(hi[5 * SCALE] == 0 && "same-colour sprite must retain ownership");
+    assert(hi[6 * SCALE] == (replacement & 0xFFFFFFu));
+    ppu->renderFlags = 0;
+
+    /* HD pitch detail must continue into both widened margins. */
+    {
+        enum { EXTRA = 8, WIDE = W + 2 * EXTRA };
+        uint32_t wide_native[WIDE];
+        uint32_t wide_hi[WIDE * SCALE * SCALE];
+        for (int x = 0; x < WIDE; x++)
+            wide_native[x] = expected_colour(ppu, (unsigned)(x - EXTRA) & 7);
+        memset(wide_hi, 0, sizeof wide_hi);
+        issd_hd_begin_frame();
+        issd_hd_note_line(ppu, 1);
+        issd_hd_composite(ppu, wide_native, WIDE, 1, wide_hi, SCALE, EXTRA);
+        assert(wide_hi[5 * SCALE] == (replacement & 0xFFFFFFu) &&
+               "left margin must receive HD pitch detail");
+        assert(wide_hi[(WIDE - 3) * SCALE] == (replacement & 0xFFFFFFu) &&
+               "right margin must receive HD pitch detail");
+    }
+
     /* At 1x there is nothing to gain and the frame must be left alone. */
     for (int i = 0; i < W * H; i++) hi[i] = 0u;
     issd_hd_composite(ppu, native, W, H, hi, 1, 0);
@@ -286,6 +395,43 @@ int main(int argc, char **argv) {
                         x, y, got, want);
             assert(got == want && "two tiles must not share one cache slot");
         }
+    }
+
+    /* Repeat margins use the authentic center's source coordinates even
+     * when the hardware tilemap has a different second screen page. */
+    {
+        enum { EXTRA = 16, WIDE = W + 2 * EXTRA };
+        uint32_t wide_native[WIDE], wide_hi[WIDE * SCALE * SCALE];
+        ppu->bgXsc[0] = 1; /* 64 columns; second page is deliberately red */
+        ppu->wsLayerRepeat = 1;
+        for (int i = 0x400; i < 0x800; i++) ppu->vram[i] = 4;
+        for (int x = 0; x < WIDE; x++) {
+            unsigned source = (unsigned)(x - EXTRA) & 255u;
+            wide_native[x] = expected_colour(ppu, (source & 8) ? 17u : 1u);
+        }
+        memset(wide_hi, 0, sizeof wide_hi);
+        issd_hd_begin_frame();
+        issd_hd_note_line(ppu, 1);
+        issd_hd_composite(ppu, wide_native, WIDE, 1, wide_hi, SCALE, EXTRA);
+        assert(wide_hi[13 * SCALE] == (blue & 0xFFFFFFu));
+        assert(wide_hi[(W + EXTRA + 13) * SCALE] == (blue & 0xFFFFFFu));
+        /* An unaligned scroll puts the final center tile run across the
+         * right border, where repeat must restart at authentic x=0. */
+        ppu->hScroll[0] = 73;
+        for (int x = 0; x < WIDE; x++) {
+            unsigned source = ((unsigned)(x - EXTRA) & 255u) + 73u;
+            unsigned entry = source >= 256u ? 4u : ((source & 8) ? 0x0400u : 4u);
+            wide_native[x] = expected_colour(ppu, entry == 0x0400u ? 17u : 1u);
+        }
+        memset(wide_hi, 0, sizeof wide_hi);
+        issd_hd_begin_frame();
+        issd_hd_note_line(ppu, 1);
+        issd_hd_composite(ppu, wide_native, WIDE, 1, wide_hi, SCALE, EXTRA);
+        assert(wide_hi[(W + EXTRA) * SCALE] == (blue & 0xFFFFFFu) &&
+               "right repeat border must restart its tile lookup after unaligned scroll");
+        ppu->hScroll[0] = 0;
+        ppu->wsLayerRepeat = 0;
+        ppu->bgXsc[0] = 0;
     }
 
     assert(issd_hd_load_pack(NULL) == 0);

@@ -7,6 +7,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Build;
 import android.provider.DocumentsContract;
+import android.system.Os;
 import android.util.Log;
 import android.view.View;
 import android.view.WindowInsets;
@@ -129,6 +130,7 @@ public class ISSDActivity extends SDLActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         setTheme(R.style.Theme_ISSD);
+        prepareAotDenySet();
         File ext = getExternalFilesDir(null);
         File targetDir = ext != null ? ext : getFilesDir();
 
@@ -151,6 +153,24 @@ public class ISSDActivity extends SDLActivity {
         if (!hasRomFile(targetDir)) {
             Log.i(TAG, "No ROM detected in " + targetDir.getAbsolutePath() + ", launching file picker");
             promptPickRom();
+        }
+    }
+
+    private void prepareAotDenySet() {
+        // SDL can start its native thread during super.onCreate. Publish the
+        // cartridge squad-loader deny set before that thread can enter main.
+        String existing = System.getenv("SNESRECOMP_LLE_INTERP_TARGET_FILE");
+        if (existing != null && !existing.isEmpty()) return;
+        File denyFile = new File(getFilesDir(), "aot_boot_deny.txt");
+        File staging = new File(getFilesDir(), "aot_boot_deny.txt.tmp");
+        try {
+            try (InputStream input = getAssets().open("aot_boot_deny.txt")) {
+                Files.copy(input, staging.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
+            Files.move(staging.toPath(), denyFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            Os.setenv("SNESRECOMP_LLE_INTERP_TARGET_FILE", denyFile.getAbsolutePath(), true);
+        } catch (Exception error) {
+            throw new IllegalStateException("Cannot prepare the cartridge squad-loader deny set", error);
         }
     }
 

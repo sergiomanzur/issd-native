@@ -19,6 +19,21 @@ def test_production_gameplay_hook_contract(tmp_path):
 #include <stdlib.h>
 typedef struct { uint8_t *ram; uint16_t D, S, X, Y, A; uint8_t P, _flag_N, _flag_C; } CpuState;
 IssdConfig g_issd_config;
+static struct { void *ppu,*cart; } test_snes, *g_snes=&test_snes;
+static uint8_t *g_rom_data;
+static size_t g_rom_size;
+static bool profiles,stadium_trace;
+static unsigned scene_calls,transfer_calls,trace_calls;
+static bool issd_stadium_has_profiles(void) { return profiles; }
+static bool issd_stadium_trace_enabled(void) { return stadium_trace; }
+static void issd_stadium_scene_transfer(void *ppu,uint8_t *memory,uint32_t pc) {
+    (void)ppu;(void)memory;(void)pc;transfer_calls++;
+}
+static bool issd_stadium_scene_opcode(void *cart,uint8_t *memory,const uint8_t *rom,size_t size,uint32_t pc) {
+    (void)cart;(void)memory;(void)rom;(void)size;(void)pc;scene_calls++;return true;
+}
+static void issd_stadium_trace_opcode(const uint8_t *memory,uint32_t pc) { (void)memory;(void)pc;trace_calls++; }
+static void Die(const char *message) { (void)message;abort(); }
 typedef void (*TestHook)(CpuState *, uint32_t);
 static TestHook native_hook;
 static uint32_t opcode_pcs[192];
@@ -63,6 +78,13 @@ int main(void) {
     IssdConfigureGameplayHooks(); assert(native_hook && opcode_count == 2 && opcode_pcs[0] == 0x84c638 && opcode_pcs[1] == 0x84c63d);
     g_issd_config.gameplay_player_ai = false;
     IssdConfigureGameplayHooks(); assert(!native_hook && !opcode_count);
+    profiles=true;IssdConfigureGameplayHooks();assert(native_hook&&opcode_count>=20);
+    fixture();CpuState profile_cpu={0};profile_cpu.ram=ram;
+    native_hook(&profile_cpu,0x8b8000);
+    assert(scene_calls==1&&transfer_calls==1&&trace_calls==1);
+    IssdGameplayInterpreted(&profile_cpu,0x8b8000);
+    assert(scene_calls==2&&transfer_calls==2&&trace_calls==2);
+    profiles=false;IssdConfigureGameplayHooks();assert(!native_hook&&!opcode_count);
     g_issd_config.gameplay_goalkeeper_ai = true;
     g_issd_config.gameplay_player_ai = true;
     fixture(); CpuState cpu = {ram, 0x500, 0x1ac, 123, 456, 0xa55a, 0x81, 1, 1};

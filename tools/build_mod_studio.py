@@ -25,7 +25,33 @@ DIST = os.path.join(PKG, "dist")
 NAME = "ISSDModStudio"
 
 
+def tkinter_preflight():
+    """Exercise themed widgets and Pillow using this build interpreter."""
+    import tkinter as tk
+    from tkinter import ttk
+    from PIL import Image, ImageTk
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        ttk.Style(root).theme_use('alt')
+        notebook = ttk.Notebook(root)
+        pane = ttk.Frame(notebook)
+        notebook.add(pane,text='Preflight')
+        ttk.Spinbox(pane,from_=0,to=31).pack()
+        ttk.Combobox(pane,values=['0','1']).pack()
+        photo = ImageTk.PhotoImage(Image.new('RGBA',(8,8),'red'),master=root)
+        ttk.Label(pane,image=photo).pack()
+        root.update_idletasks()
+    finally:
+        root.destroy()
+
+
 def main() -> int:
+    try:
+        tkinter_preflight()
+    except Exception as exc:
+        print('Complete Tcl/Tk and Pillow runtime required: '+str(exc))
+        return 2
     sys.path.insert(0, HERE)
     from mod_studio import repo
 
@@ -82,6 +108,20 @@ def main() -> int:
     if not os.path.isfile(exe):
         print("the build reported success but produced no executable")
         return 1
+    # Prove the standalone application can start away from repository files.
+    with tempfile.TemporaryDirectory(prefix='issd_studio_smoke_') as smoke:
+        environment = {key:value for key,value in os.environ.items()
+                       if key not in ('TCL_LIBRARY','TK_LIBRARY','PYTHONPATH','PYTHONHOME')}
+        report = os.path.join(smoke,'gui-selftest.txt')
+        checked = subprocess.run([exe,'--selftest',report],cwd=smoke,env=environment,timeout=120)
+        if checked.returncode or not os.path.isfile(report):
+            print('Packaged GUI selftest failed')
+            return 1
+        with open(report,encoding='utf-8') as output:
+            result_text = output.read()
+        if not result_text.startswith('ISSD Mod Studio self-test: ok'):
+            print(result_text)
+            return 1
     print("\n%s  (%.1f MB)" % (exe, os.path.getsize(exe) / (1024 * 1024)))
     return 0
 

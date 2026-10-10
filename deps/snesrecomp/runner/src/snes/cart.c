@@ -43,6 +43,7 @@ void cart_free(Cart* cart) {
 }
 
 void cart_reset(Cart* cart) {
+  cart_clearRomView(cart);
   //if(cart->ramSize > 0 && cart->ram != NULL) memset(cart->ram, 0, cart->ramSize); // for now
   if (cart->superfx) superfx_reset(cart->superfx);
   if (cart->cx4) cx4_reset(cart->cx4);
@@ -66,6 +67,7 @@ void cart_saveload(Cart *cart, SaveLoadInfo *sli) {
 }
 
 void cart_load(Cart* cart, int type, uint8_t* rom, int romSize, int ramSize) {
+  cart_clearRomView(cart);
   superfx_destroy(cart->superfx);
   cart->superfx = NULL;
   cx4_destroy(cart->cx4);
@@ -133,6 +135,17 @@ void cart_note_cpu_bus(Cart *cart, uint8_t bank, uint16_t address) {
 
 static uint64_t cart_master_clock(const Cart *cart) {
   return cart && cart->masterClock ? *cart->masterClock : 0;
+}
+
+bool cart_setRomView(Cart *cart, const uint8_t *view, size_t size) {
+  if (!cart || cart->type != CART_LOROM || !cart->rom || !view ||
+      !cart->romSize || size != cart->romSize) return false;
+  cart->romView = view;
+  return true;
+}
+
+void cart_clearRomView(Cart *cart) {
+  if (cart) cart->romView = NULL;
 }
 
 uint8_t *cart_getRomPtr(Cart *cart, uint8_t bank, uint16_t adr) {
@@ -227,7 +240,10 @@ case CART_CX4: {
     default:
       return NULL;
   }
-  return &cart->rom[off % cart->romSize];
+  const uint8_t *data = (cart->type == CART_LOROM && cart->romView)
+                         ? cart->romView : cart->rom;
+  /* Existing ROM pointer API predates const; callers only read cartridge data. */
+  return (uint8_t *)&data[off % cart->romSize];
 }
 
 uint8_t cart_read(Cart* cart, uint8_t bank, uint16_t adr) {

@@ -55,6 +55,9 @@ bool issd_save_set_directory(const char *directory);
 void issd_save_set_context(const uint8_t *base, size_t base_size,
                            const uint8_t *effective, size_t effective_size,
                            uint32_t gameplay_flags);
+/* NULL preserves the existing context algorithm. A non-NULL digest extends
+ * it with normalized stadium gameplay identity, excluding cosmetic assets. */
+void issd_save_set_context_extra(const uint8_t *digest32);
 bool issd_save_campaign(const char *label);
 bool issd_save_continue(void);
 bool issd_save_continue_info(char *out_info, size_t max_len);

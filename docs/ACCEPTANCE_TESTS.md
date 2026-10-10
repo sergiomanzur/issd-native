@@ -9,6 +9,20 @@ checks with each supported tweak/mod combination separately.
 
 ## Automated checks
 
+Expanded stadium selection and constructor mapping now have dedicated
+[acceptance evidence](EXTRA_STADIUM_ACCEPTANCE.md): four original-input menu/
+live/save-load cases, both wrap directions, all twelve background fixtures,
+and a naturally timed Azteca match plus advancing goal replay at four widths.
+The natural-match proof uses authentic checkpoint reloads and no guest state
+edits. Added logical slots inherit the eight stock match layouts.
+
+Current-source validation on 2026-10-09 includes a fresh nine-match original
+Cup championship, Continue from all 12 native checkpoints, fresh Windows/Linux/
+Android builds, and clean extracted Windows/Linux gameplay and replay checks.
+See [the release validation report](RELEASE_VALIDATION_2026_10_09.md) for exact
+test counts, skipped checks, artifact hashes and platform limits. Android device
+execution remains unverified.
+
 Build the current native executable first. Run `python -m pytest tests -q` from
 the repository; do not collect vendored dependencies. ROM tests skip when the
 user's cartridge image or native build is absent. A skipped test is **not a
@@ -32,12 +46,14 @@ python -m pytest tests/test_local_multiplayer.py tests/test_control_profiles.py 
 | Existing Cup phase/final fixture | Original qualification, group/knockout constructors, semifinal/final commit, champion, ceremony exclusion, final table save/Continue. Test privately seeds prior stage/counters/entrants and winning score. | Playing an untouched tournament from round one. |
 | Existing World terminal fixture | Original result increments the privately seeded previous counter 34 to 35; final table, one completion checkpoint and Continue. | Playing all 35 games or validating every intermediate schedule. |
 | `test_game_acceptance.py` | Original Password-screen submission of cartridge-generated semifinal password, original final match selection, original halftime/fulltime, champion/ceremony/table commit, completion checkpoint and Continue; a drawn fixture reaches original extra-time periods 2 and 3. Only test-owned clocks and scores are accelerated; no callback/period/stage/champion writes. | Full tournament, skill-driven win, naturally elapsed match clock or completed shootout. The password fixture itself originates in an earlier accelerated campaign trace. |
-| `test_campaign_full_acceptance.py` Cup | Fresh native Cup setup and all nine scheduled matches through qualification, groups, knockouts, champion/ceremony/final table; new-process Continue after every committed result and completion. Only clocks/scores accelerated, with no seeded stages, entrants, opponents, periods or callbacks. | Normal elapsed clock, human winning play, alternate teams/difficulties or full World Series. World test is opt-in and unexecuted. |
+| `test_campaign_full_acceptance.py` Cup/World | Fresh original nine-match Cup and 35-match World progression, terminal completion and new-process Continue after each result; clocks/scores accelerated, no seeded stages, entrants, opponents, periods or callbacks. Dedicated extended run passed 19 tests; World remains opt-in for routine collection. | Normal elapsed clocks, human competitive play or alternate teams/settings. See [extended run](GHIDRA_INVESTIGATION.md). |
+| Continuous input-only campaign probes | Naturally timed 35-match World Series in one process without reloads/state edits; all 35 distinct opponents and original completion, with separate production Continue from all 35 result rounds plus completion. Cup verifies two natural qualifying results and elimination, with setup/result restoration. | Untouched winning nine-match Cup, physical presentation/controls/audio or every manual checklist step. See [continuous evidence](CONTINUOUS_CAMPAIGN_ACCEPTANCE.md). |
 | Password flow/codec | Six retail formats, original encoder agreement, invalid input rejection and original guest import; no direct decoded campaign copy. | Modified-ROM password support or every historical password ever generated. |
 | Save storage/transaction tests | Context/integrity validation, fallback backup selection, failed publication/load protection and snapshot rollback. | Real device power loss during storage flush or every filesystem behavior. |
 | Local multiplayer | Four SDL virtual controllers, mapping/slot/disconnect/reconnect behavior and original SNES serial reads. | Four physical controllers, Bluetooth reconnect latency, whole 2v2 match. |
 | Gameplay policy tests | Optional hooks run, bounded target changes, replay equality, current-lineup/condition semantics including seeded substituted lineup. | Original substitution menu execution or every real substitution during match/extra time. |
-| Original team-change inputs | First-team original formation and bench substitution commits, actor refresh, SELECT request cancellation and deterministic advancing save/reload with AI off/on. | Both-team menus, halftime/extra-time changes, original replacement limits, and the substituted human-team actor's optional AI decision. See [team-change checks](TEAM_CHANGES_ACCEPTANCE.md). |
+| Original team-change inputs | Original formation/substitution commits, SELECT cancellation, both human controller sides, three admitted replacements and a fourth rejected before/after live resumption, halftime and extra-time changes, advancing full-payload/WRAM/image replay with AI off/on. | Physical name/camera continuity, every injury/red-card rule and human assessment of optional AI decisions. See [team-change checks](TEAM_CHANGES_ACCEPTANCE.md) and [expanded substitution flows](SUBSTITUTION_FLOW_ACCEPTANCE.md). |
+| Completed original shootouts | Ordinary 5–3 and sudden-death 4–3 Cup-final wins, authentic unused-kicker selection, champion, completion checkpoint, original title exit and Continue. Mid-shootout deterministic replay; tied sudden death cannot create completion saves. | Untouched prior match periods, two-human shootouts, actual opposing-winner completion and physical controls. See [shootout checks](SHOOTOUT_ACCEPTANCE.md). |
 | Touch/config tests | Geometry, multi-touch, persistence, mapping, threshold, edit/reset semantics. | Android touch ergonomics, actual host focus or OS lifecycle. |
 | Exhibition shortcuts | Original-menu preconstructor witness, all four preset clocks/CPU levels, exact full-WRAM rematch/drill replay, favorite process restart and changed-AI rejection. Storage faults preserve prior favorite; UI/model regressions cover unsafe scenes, health and recapture rollback. | Every kit/weather/roster/controller combination, physical ergonomics or a certified goalkeeper/shooting balance patch. |
 
@@ -47,7 +63,7 @@ period or campaign bytes. Acceleration only modifies temporary owned snapshots
 and rehashes their envelopes. Such edits are never a supported user save API.
 Retain pytest output and capture artifacts when failures occur.
 
-## Required untouched tournament acceptance — not executed here
+## Required untouched tournament acceptance — full manual checklist pending
 
 1. Start a fresh Cup through original menus. Choose a documented team, settings
    and difficulty. Play every scheduled match without clock/score/stage edits,
@@ -94,8 +110,10 @@ score, task callbacks or campaign fields for this acceptance run.
 The disassembly's original period counter is WRAM `$00A8`; this is a diagnostic,
 not an instruction to alter it. Merely setting `$00A8`, choosing the standalone
 Penalty Kick game, or seeing its graphics does not establish that a drawn
-knockout transitions to a shootout. No completed native draw-to-shootout run is
-claimed in this audit.
+knockout transitions to a shootout. Automated original draw-to-shootout runs now
+complete ordinary and sudden-death kicks and their campaign handoff; only their
+pre-shootout clocks and tied scores are accelerated. The untouched manual run
+above remains separate. See [shootout checks](SHOOTOUT_ACCEPTANCE.md).
 
 ## Substitutions and controller disconnect — physical acceptance pending
 
@@ -616,3 +634,103 @@ were verified. A clean Windows package extraction booted for 60 frames with
 isolated configuration and save directories. Android signature verification
 passed and its signing certificate matches v0.3.0-beta.1; version code is 6.
 The pending physical-device and untouched campaign acceptance remains pending.
+
+
+## Post-beta background and pause corrections (2026-10-03)
+
+The focused menu/stadium suite passed **14 tests, 4 skipped** in 233.25s
+(`build/background-audit/complete-tests.log`); that first combined run also
+caught two HD capture-fixture failures, so it was not an overall passing run.
+The menu cases cover formation, squad, substitutions, halftime management and
+an actual exhibition return to the main menu at original, 16:10, 16:9 and 21:9
+widths. Native center pixels and guest WRAM remain identical; added menu columns
+are wallpaper only. Screenshots are in `build/background-inventory`.
+
+All eight original stadium constructors were exercised with Liga MX enabled.
+Test-owned stadium selections are applied before the original game constructor;
+these are controlled fixtures, not eight complete untouched matches. The native
+1x captures verify map diversity, unchanged guest state/VRAM and exact center
+pixels. They do not establish HD replacement coverage. Added stadium slots 8–11
+remain outside certified playable support because their existing initialization
+is incomplete; optional tests record that limitation.
+
+The pause and native-APU-reset suite passed **9 tests, 8 deselected** in 128.90s
+(`build/background-audit/complete-pause-reset-tests.log`). Exhibition,
+International Cup and World Series restart/return cases passed. Fresh Continue
+and manual-load returns reached the authentic main menu and preserved campaign
+save bytes. A standalone runtime-reset check verifies native NULL-SPC handling,
+SRAM preservation and legacy SPC-player initialization. An independent code
+review found no further issues in the reset, audio guard and snapshot lifecycle.
+
+Affected widescreen, HD, menu, shortcut and runtime-reset unit checks passed
+**5 tests** in 20.08s (`build/background-audit/reset-unit-tests.log`). HD unit
+fixtures specifically cover restored scanout VRAM, matching-color player
+protection, widened margins and the center/right-margin boundary with scroll.
+The complete project suite has not been rerun for these post-beta corrections.
+
+Final Windows, Linux and Android arm64-v8a/x86_64 builds succeeded; logs are
+`build/background-audit/final-windows-build.log`,
+`build/background-audit/final-linux-build.log` and
+`build/background-audit/final-android-build.log`. These are local source builds,
+not a new published release. The Windows executable is `build/ISSDNative.exe`.
+
+After the final audio guard build, both fresh-load return cases passed again:
+**2 passed, 14 deselected** in 17.67s
+(`build/background-audit/final-pause-fallback-tests.log`). Final Windows SHA-256:
+`74b5bbae13699a89eec69ffbc06f62db32f2a386db1407f02013b072fd9eee95`.
+
+Corrected HD native acceptance passed **2 tests** in 140.86s, with a further
+HD unit pass in 4.76s. Captures are in
+`build/hd-grass-audit/actual-pitch-acceptance-final`. The test expires the
+300-frame startup notification before comparing full images. In these Liga MX
+fixtures the shipped Akron pack replaces HUD artwork, not grass; its untouched
+pitch margins are verified rather than misreported as HD coverage. A separate
+test-owned pack derived from 99 actual dumped green 4bpp pitch tiles supplies
+unmistakable replacement detail and verifies both margins at all three widened
+ratios for stadiums 0 and 7. Full center pixels, guest WRAM and restored VRAM
+remain unchanged. The HD executable copy used identical production HD code;
+the final executable differs only in the subsequently verified audio pause guard.
+
+## Shootout, substitution and campaign follow-up (2026-10-09)
+
+Before the goal-replay correction below, the production Windows build passed the full project suite: **292 tests,
+8 skipped and 8 subtests passed in 2,667.79 seconds**. Output is retained in
+`build/flow-acceptance/full-suite.log`. Skips include the opt-in accelerated full
+World test; its earlier dedicated 35-match execution is recorded in
+[Ghidra investigation](GHIDRA_INVESTIGATION.md), not counted as a pass here.
+
+Two additional substitution cases and four probe-certificate regression cases,
+created after full-suite collection, passed separately: **6 tests in 126.61
+seconds** (`build/flow-acceptance/remaining-checks.log`). The late sudden-death
+case also passed independently: **1 test in 105.49 seconds**
+(`build/flow-acceptance/sudden-parent.log`). These results cover all seven new
+substitution cases, completed ordinary/sudden-death shootouts and certificate
+rejection of incomplete campaign runs. They do not represent a second full-suite
+run or physical-device acceptance.
+
+The shootout investigation found and fixed a missing completion autosave at the
+original settled final ceremony, which can exit directly to title. Both-side
+observer guards and duplicate suppression pass, and original ordinary/sudden-death
+retail wins restore through Continue. See [shootout acceptance](SHOOTOUT_ACCEPTANCE.md).
+Original substitution flow tests required no production change; see
+[substitution acceptance](SUBSTITUTION_FLOW_ACCEPTANCE.md).
+
+Continuous World execution passed all 35 original matches in 1,921,751 frames
+without reloads or guest-state edits. All 35 opponents were distinct, and all
+35 result rounds plus completion passed separate production Continue checks
+(36 archived envelopes), preserving original campaign blocks and stored bytes.
+See [continuous campaign acceptance](CONTINUOUS_CAMPAIGN_ACCEPTANCE.md). A naturally
+eliminated qualifying Cup is distinct from an untouched winning championship.
+Physical controls/display/audio, Android lifecycle and alternate teams/settings
+remain separate release checks.
+
+## Widescreen goal replay correction (2026-10-09)
+
+Absent original replay players now stay absent in widened margins instead of
+being reconstructed from stale live-match records. Fresh natural-goal automatic
+playback, pause and rewind pass native-center and complete WRAM comparisons at
+4:3, 16:10, 16:9 and 21:9. A matching before/after capture removes 1,112 left-edge
+ghost pixels with no center/right change or guest-state change. Affected checks
+passed **17 tests with 1 skipped** across the unit/native runs; the earlier full
+project suite was not repeated for this correction. See
+[goal replay evidence](GOAL_REPLAY_FIX.md) for exact build, scope and reproduction.

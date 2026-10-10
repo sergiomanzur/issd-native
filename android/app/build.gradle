@@ -2,6 +2,12 @@ plugins {
     id 'com.android.application'
 }
 
+def bootAssets = layout.buildDirectory.dir('generated/bootAssets')
+def prepareBootAssets = tasks.register('prepareBootAssets', Copy) {
+    from('../../recomp/aot_boot_deny.txt')
+    into(bootAssets)
+}
+
 android {
     namespace 'com.issdnative'
     compileSdk 34
@@ -14,8 +20,8 @@ android {
         // storage fallbacks.
         minSdk 26
         targetSdk 34
-        versionCode 6
-        versionName '0.4.0-beta.1'
+        versionCode 7
+        versionName '0.5.0-beta.1'
 
         externalNativeBuild {
             cmake {
@@ -37,6 +43,7 @@ android {
 
     sourceSets {
         main {
+            assets.srcDir(bootAssets)
             // SDL ships the Activity that owns the Android window and input;
             // compile it straight from the pinned source tree rather than
             // keeping a second copy in this repo.
@@ -61,3 +68,5 @@ android {
         jniLibs { useLegacyPackaging = true }
     }
 }
+
+tasks.named('preBuild').configure { dependsOn(prepareBootAssets) }

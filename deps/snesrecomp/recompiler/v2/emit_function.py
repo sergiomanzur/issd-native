@@ -470,6 +470,8 @@ def emit_function(rom: bytes, bank: int, start: int,
                   unresolved_indirect_collector=None,
                   data_regions=None,
                   exclude_ranges: Optional[List[Tuple[int, int]]] = None,
+                  runtime_immediates=frozenset(),
+                  opcode_hooks=frozenset(),
                   tail_call_pc16: Optional[int] = None,
                   tail_call_target_name: Optional[str] = None,
                   callee_exit_mx=None,
@@ -834,7 +836,8 @@ def emit_function(rom: bytes, bank: int, start: int,
         pairs: List[Tuple[object, List[IROp]]] = []
         flat: List[IROp] = []
         for di in cfg.blocks[key].insns:
-            ops = lower(di.insn, value_factory=vf)
+            ops = lower(di.insn, value_factory=vf,
+                        runtime_immediates=runtime_immediates)
             pairs.append((di.insn, ops))
             flat.extend(ops)
         block_per_insn_ir[key] = pairs
@@ -1526,6 +1529,9 @@ def emit_function(rom: bytes, bank: int, start: int,
                         f"inlined into synthesized dispatch below */"
                     )
                 continue
+            if (di_insn.addr & 0x7fffff) in opcode_hooks and ii != 0:
+                lines.append('if (g_cpu_native_block_hook) '
+                             f'g_cpu_native_block_hook(cpu, 0x{di_insn.addr:06X});')
             # Axis-2 step C dynamics: charge runtime-only modifiers (D.l != 0,
             # abs,X/Y read page-cross) for this instruction before its effect.
             for _ln in _dynamic_charge_lines(di_insn, _blk_spd_expr):

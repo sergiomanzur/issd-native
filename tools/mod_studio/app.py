@@ -2,20 +2,27 @@
 
 The editor never touches a cartridge. It reads and writes the same `.json`
 packs the game loads, and checks them with the same rules `validate_mod.py`
-uses - it writes the pack to a scratch file and runs that module, rather than
-keeping a second copy of the rules that can disagree with the first.
+uses, resolving resource files at the pack's actual location.
 """
 from __future__ import annotations
 
 import os
 import sys
 import tempfile
+import copy
+import queue
+import threading
+from pathlib import Path
 import tkinter as tk
 from tkinter import colorchooser, filedialog, messagebox, ttk
 
 from PIL import Image, ImageTk
 
 from . import cartridge, model, preview, repo, tiles
+from .document import Document
+from .stadium import StadiumDraft, StadiumWorkspace
+from .game_launch import GameRunner, LaunchRequest, stage
+from .export import export_pack
 
 APP_NAME = "ISSD Mod Studio"
 SETTINGS = os.path.join(os.path.expanduser("~"),
@@ -60,6 +67,13 @@ class Studio(tk.Tk):
         self.configure(bg=BG)
 
         self.pack_data = model.new_pack()
+        self.document = Document(self.pack_data)
+        self._stadium_drafts = {}
+        self.stadium_workspace = None
+        self.game_runner = GameRunner()
+        self._launch_queue = queue.Queue()
+        self._launch_pending = False
+        self._game_executable = None
         self.path: str | None = None
         self.dirty = False
         self._images: list[ImageTk.PhotoImage] = []   # keep references alive
@@ -102,11 +116,15 @@ class Studio(tk.Tk):
         f.add_separator()
         f.add_command(label="Save", accelerator="Ctrl+S", command=self.on_save)
         f.add_command(label="Save as...", command=self.on_save_as)
+        f.add_command(label="Export portable pack...", command=self.on_export)
         f.add_separator()
         f.add_command(label="Quit", command=self.on_quit)
         m.add_cascade(label="File", menu=f)
 
         a = tk.Menu(m, tearoff=0)
+        a.add_command(label="Undo", accelerator="Ctrl+Z", command=self.on_undo)
+        a.add_command(label="Redo", accelerator="Ctrl+Y", command=self.on_redo)
+        a.add_separator()
         a.add_command(label="Add team (new, nothing replaced)",
                       command=lambda: self.on_add_team(added=True))
         a.add_command(label="Add team (replace an existing one)",
@@ -127,6 +145,9 @@ class Studio(tk.Tk):
         self.bind_all("<Control-n>", lambda e: self.on_new())
         self.bind_all("<Control-o>", lambda e: self.on_open())
         self.bind_all("<Control-s>", lambda e: self.on_save())
+        self.bind_all("<Control-z>", lambda e: self.on_undo())
+        self.bind_all("<Control-y>", lambda e: self.on_redo())
+        self.bind_all("<Control-Shift-Z>", lambda e: self.on_redo())
         self.bind_all("<Delete>", lambda e: self.on_delete())
 
     def _build_toolbar(self):
@@ -236,12 +257,15 @@ class Studio(tk.Tk):
 
     # ------------------------------------------------------------ editors --
     def _clear_editor(self):
+        self.stadium_workspace = None
         for child in self.editor.winfo_children():
             child.destroy()
         self._images.clear()
 
     def show_selected(self):
         iid = self.selection()
+        if self.document.pack is self.pack_data:
+            self.document.select(iid)
         self._clear_editor()
         if iid.startswith("player:"):
             _, t, p = iid.split(":")
@@ -290,7 +314,7 @@ class Studio(tk.Tk):
                 value = value[:limit]
                 var.set(value)
             target[key] = value
-            self.mark_dirty()
+            self.mark_dirty(group=str(entry))
             if on_change:
                 on_change()
         var.trace_add("write", changed)
@@ -842,10 +866,9 @@ class Studio(tk.Tk):
         size_box.grid(row=6, column=0, columnspan=4, sticky="w")
         ttk.Label(size_box, text="Pitch", style="Head.TLabel").grid(
             row=0, column=0, columnspan=3, sticky="w")
-        ttk.Label(size_box, text="These are the numbers the screens print. The "
-                                "playfield itself does not change size - the "
-                                "same match on a 138x90 and a 115x74 pitch "
-                                "leaves memory identical 1400 frames in.",
+        ttk.Label(size_box, text="Display yards shown on the game screens. "
+                                "Use the independent geometry controls below "
+                                "to change the playable pitch in engine units.",
                   style="Muted.TLabel", wraplength=440, justify="left").grid(
             row=1, column=0, columnspan=3, sticky="w", pady=(2, 8))
         shown = ttk.Label(size_box, style="Panel.TLabel")
@@ -867,6 +890,28 @@ class Studio(tk.Tk):
                        note="%d-%d yards; 0 keeps the cartridge's"
                             % repo.PITCH_WIDTH, on_change=redraw)
         redraw()
+        draft = self._stadium_drafts.get(id(st))
+        if draft is None or draft.document is not self.document:
+            draft = StadiumDraft(self.document, index,
+                os.path.dirname(os.path.abspath(self.path)) if self.path else None)
+            self._stadium_drafts[id(st)] = draft
+        draft.index = index
+        self.stadium_workspace = StadiumWorkspace(
+            f, self.document, index, self.mark_dirty,
+            os.path.dirname(os.path.abspath(self.path)) if self.path else None, draft=draft,
+            get_rom=self.cartridge_bytes)
+        self.stadium_workspace.grid(row=7, column=0, columnspan=4, sticky="ew", pady=12)
+        launch = ttk.Frame(f)
+        launch.grid(row=8, column=0, columnspan=4, sticky='w', pady=6)
+        test = ttk.Button(launch, text='Test in game', command=lambda: self.on_test_stadium(index))
+        test.pack(side='left')
+        workspace = self.stadium_workspace
+        def update_test(_event=None):
+            test.configure(state='normal' if workspace.ready_for_test else 'disabled')
+        workspace.bind('<<StadiumValidation>>',update_test)
+        update_test()
+        ttk.Button(launch, text='Stop test', command=self.on_stop_test).pack(side='left', padx=8)
+        ttk.Button(launch, text='Export portable pack', command=self.on_export).pack(side='left')
 
     # --------------------------------------------------------- cartridge --
     def _remembered_rom(self):
@@ -958,12 +1003,42 @@ class Studio(tk.Tk):
         return len(stadiums) - 1
 
     # ----------------------------------------------------------- commands --
-    def mark_dirty(self):
-        if not self.dirty:
-            self.dirty = True
-            self.title("%s - %s *" % (APP_NAME, self.path or "untitled"))
+    def mark_dirty(self, group=None):
+        if self._suspend:
+            return
+        if self.document.pack is not self.pack_data:
+            self.document = Document(self.pack_data, self.path)
+        self.document.checkpoint(group=group)
+        self.dirty = self.document.dirty
+        self.title("%s - %s%s" % (APP_NAME, self.path or "untitled",
+                                 " *" if self.dirty else ""))
+
+    def _restore_history(self, direction):
+        operation = getattr(self.document, direction)
+        self._suspend = True
+        try:
+            changed = operation()
+            if changed:
+                self.refresh_tree(select_iid=self.document.selection)
+                self.dirty = self.document.dirty
+                self.title("%s - %s%s" % (APP_NAME, self.path or "untitled",
+                                         " *" if self.dirty else ""))
+        finally:
+            self._suspend = False
+        return "break"
+
+    def on_undo(self):
+        return self._restore_history('undo')
+
+    def on_redo(self):
+        return self._restore_history('redo')
 
     def _settle(self):
+        if self.document.pack is not self.pack_data:
+            self.document = Document(self.pack_data, self.path)
+        else:
+            self.document.path = self.path
+            self.document.mark_saved()
         self.dirty = False
         self.title("%s - %s" % (APP_NAME, self.path or "untitled"))
 
@@ -1023,11 +1098,12 @@ class Studio(tk.Tk):
         self.refresh_tree(select_iid="team:%d" % (len(self.pack_data["teams"]) - 1))
 
     def on_add_stadium(self):
+        try:
+            nxt = model.free_stadium_id(self.pack_data)
+        except ValueError as exc:
+            self.status.set(str(exc))
+            return
         stadiums = self.pack_data.setdefault("stadiums", [])
-        used = {s.get("stadium_id") for s in stadiums}
-        nxt = repo.STOCK_STADIUMS
-        while nxt in used and nxt < repo.STADIUM_MAX - 1:
-            nxt += 1
         stadiums.append(model.new_stadium(nxt))
         want = max(int(self.pack_data.get("stadium_count") or 0), nxt + 1)
         if nxt >= repo.STOCK_STADIUMS:
@@ -1046,8 +1122,15 @@ class Studio(tk.Tk):
                                          % (len(self.pack_data["teams"]) - 1))
         elif iid.startswith("stadium:"):
             i = int(iid.split(":")[1])
-            self.pack_data["stadiums"].append(
-                model.clone_team(self.pack_data["stadiums"][i]))
+            try:
+                clone = model.clone_stadium(self.pack_data['stadiums'][i],
+                    self.pack_data, os.path.dirname(self.path) if self.path else None)
+            except (ValueError, OSError) as exc:
+                self.status.set(str(exc))
+                return
+            self.pack_data['stadiums'].append(clone)
+            self.pack_data['stadium_count'] = max(
+                int(self.pack_data.get('stadium_count') or 0), clone['stadium_id'] + 1)
             self.mark_dirty()
             self.refresh_tree(select_iid="stadium:%d"
                                          % (len(self.pack_data["stadiums"]) - 1))
@@ -1076,6 +1159,78 @@ class Studio(tk.Tk):
         self.mark_dirty()
         self.refresh_tree(select_root=True)
 
+    def _export_ready(self):
+        for stadium in self.pack_data.get('stadiums', []):
+            draft = self._stadium_drafts.get(id(stadium))
+            if draft and draft.document is self.document and not draft.ready_for_test:
+                self.status.set('Correct the invalid stadium values before exporting or testing.')
+                return False
+        return True
+
+    def on_export(self):
+        if not self._export_ready():
+            return
+        parent = filedialog.askdirectory(title='Choose parent folder for portable pack', parent=self)
+        if not parent:
+            return
+        destination = Path(parent)/('ISSD-pack-'+__import__('uuid').uuid4().hex[:8])
+        try:
+            export_pack(self.pack_data, Path(self.path).resolve().parent if self.path else Path.cwd(), destination)
+        except (ValueError, OSError) as exc:
+            self.status.set('Export failed: '+str(exc))
+            return
+        self.status.set('Portable pack exported: '+str(destination))
+
+    def on_test_stadium(self, index):
+        if self._launch_pending or self.game_runner.poll().state == 'running':
+            self.status.set('Stop the current test before launching another.')
+            return
+        if not self._export_ready():
+            return
+        if not self._game_executable or not Path(self._game_executable).is_file():
+            self._game_executable = filedialog.askopenfilename(title='Choose ISSD Native executable', parent=self)
+        if not self._game_executable:
+            return
+        if not self.rom_path or not Path(self.rom_path).is_file():
+            self.rom_path = filedialog.askopenfilename(title='Choose your cartridge dump', parent=self,
+                filetypes=[('SNES cartridge','*.sfc *.smc'),('All files','*')])
+        if not self.rom_path:
+            return
+        request = LaunchRequest(Path(self._game_executable),Path(self.rom_path),
+            self.pack_data['stadiums'][index]['stadium_id'],copy.deepcopy(self.pack_data),
+            Path(self.path).resolve().parent if self.path else Path.cwd(),
+            Path(tempfile.gettempdir())/'issd-studio-tests')
+        self._launch_pending = True
+        self.status.set('Preparing isolated test…')
+        def prepare():
+            try:
+                self._launch_queue.put((stage(request),None))
+            except Exception as exc:
+                self._launch_queue.put((None,str(exc)))
+        threading.Thread(target=prepare,daemon=True).start()
+        self.after(100,self._poll_test)
+
+    def _poll_test(self):
+        if self._launch_pending:
+            try:
+                run,error = self._launch_queue.get_nowait()
+            except queue.Empty:
+                self.after(100,self._poll_test)
+                return
+            self._launch_pending = False
+            if error:
+                self.status.set('Test preparation failed: '+error)
+                return
+            self.game_runner.start(run)
+        status = self.game_runner.poll()
+        self.status.set(status.message+((' · Log: '+str(status.log)) if status.log else ''))
+        if status.state == 'running':
+            self.after(200,self._poll_test)
+
+    def on_stop_test(self):
+        status = self.game_runner.stop()
+        self.status.set(status.message)
+
     def on_validate(self):
         v = _validator()
         if v is None:
@@ -1083,14 +1238,18 @@ class Studio(tk.Tk):
                                              "editor, so the pack cannot be "
                                              "checked here.", parent=self)
             return
-        tmp = os.path.join(tempfile.gettempdir(), "issd_mod_studio_check.json")
-        model.save(self.pack_data, tmp)
         report = v.Report()
-        v.validate(tmp, report)
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+        directory = os.path.dirname(os.path.abspath(self.path)) if self.path else os.getcwd()
+        v.validate_data(self.pack_data, report, directory, self.path or '<unsaved pack>')
+        for index, stadium in enumerate(self.pack_data.get('stadiums', [])):
+            draft = self._stadium_drafts.get(id(stadium))
+            if draft and draft.document is self.document:
+                draft.index = index
+                draft.pack_dir = Path(directory)
+                for diagnostic in draft.diagnostics():
+                    if diagnostic not in report.diagnostics:
+                        report.diagnostics.append(diagnostic)
+                        report.errors.append(diagnostic.message)
         self._show_report(report)
 
     def _show_report(self, report):
@@ -1153,7 +1312,7 @@ class Studio(tk.Tk):
             self.destroy()
 
 
-def selftest(report_path: str, pack_path: str | None = None) -> int:
+def selftest(report_path: str, pack_path: str | None = None, rom_path: str | None = None) -> int:
     """Open a window, build every pane, run the checker, and close.
 
     A packaged .exe can be broken in ways the source is not - a missing
@@ -1166,6 +1325,9 @@ def selftest(report_path: str, pack_path: str | None = None) -> int:
     ok = True
     try:
         studio = Studio()
+        if rom_path:
+            studio.rom_path=rom_path
+            studio.rom=cartridge.load_rom(rom_path)
         if pack_path:
             studio.pack_data = model.load(pack_path)
             studio.path = pack_path
@@ -1174,6 +1336,7 @@ def selftest(report_path: str, pack_path: str | None = None) -> int:
             studio.pack_data["teams"] = [model.new_team(True),
                                            model.new_team(False)]
             studio.pack_data["stadiums"] = [model.new_stadium(8)]
+        studio._settle()
         studio.refresh_tree(select_root=True)
 
         panes = 0
@@ -1213,17 +1376,42 @@ def selftest(report_path: str, pack_path: str | None = None) -> int:
         pane.destroy()
         lines.append("tile pane built")
 
+        if pack_path and rom_path:
+            import tempfile
+            from .export import export_pack
+            profiles=0
+            for index,entry in enumerate(studio.pack_data.get('stadiums',[])):
+                if not entry.get('stadium_profile'):
+                    continue
+                studio.tree.selection_set(f'stadium:{index}')
+                studio.show_selected();studio.update()
+                workspace=studio.stadium_workspace
+                assert workspace.ready_for_test,'Authored profile diagnostics failed'
+                original=workspace.variables['length_units'].get()
+                workspace.variables['length_units'].set('invalid');studio.update()
+                assert not workspace.ready_for_test,'Invalid geometry was accepted'
+                workspace.variables['length_units'].set(original);studio.update()
+                assert workspace.ready_for_test
+                workspace.notebook.select(workspace.artwork_tab)
+                workspace._preview_scene();studio.update()
+                assert workspace.scene_preview.cget('image'),workspace.scene_status.get()
+                profiles+=1
+            assert profiles,'Supply an authored profile for the workflow check'
+            with tempfile.TemporaryDirectory(prefix='issd_gui_export_') as destination:
+                export_pack(studio.pack_data,Path(pack_path).parent,Path(destination)/'export')
+            lines.append(f'authored profiles: {profiles}; invalid draft, compiled preview and portable export verified')
+            if os.name=='nt':
+                from PIL import ImageGrab
+                ImageGrab.grab(window=studio.winfo_id()).save(report_path+'.png')
+
         v = _validator()
         if v is None:
             ok = False
             lines.append("validate_mod.py did not travel with the build")
         else:
-            tmp = os.path.join(tempfile.gettempdir(),
-                               "issd_mod_studio_selftest.json")
-            model.save(studio.pack_data, tmp)
             report = v.Report()
-            v.validate(tmp, report)
-            os.remove(tmp)
+            directory = os.path.dirname(os.path.abspath(studio.path)) if studio.path else os.getcwd()
+            v.validate_data(studio.pack_data, report, directory, studio.path or '<selftest>')
             lines.append("checker ran: %d error(s), %d warning(s)"
                          % (len(report.errors), len(report.warnings)))
 
@@ -1511,7 +1699,8 @@ def main():
     if argv and argv[0] == "--selftest":
         out = argv[1] if len(argv) > 1 else "selftest.txt"
         pack = argv[2] if len(argv) > 2 else None
-        raise SystemExit(selftest(out, pack))
+        rom=argv[3] if len(argv)>3 else None
+        raise SystemExit(selftest(out, pack, rom))
     studio = Studio()
     if argv and os.path.isfile(argv[0]):
         try:

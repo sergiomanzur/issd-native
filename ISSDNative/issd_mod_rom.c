@@ -296,16 +296,18 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
 /* ------------------------------------------------- more stadiums ----- */
 
 /* The eight are eight because four tables are packed against their
- * neighbours and one 16-bit literal says so. None of that is load-bearing:
+ * neighbours and the menu wrap literals say so. None of that is load-bearing:
  * each table moves to free space in its own bank, the single instruction
- * that indexes it is re-pointed, and the literal is raised.
+ * that indexes it is re-pointed, and the wrap limits are raised.
  *
  *   $82:FADD  turf pattern    LDA $82FADD,X   operand at 0x121FA0
  *   $82:FAED  pitch length    LDA $82FAED,X   operand at 0x12200A
  *   $82:FAEE  pitch width     LDA $82FAEE,X   operand at 0x12201D
- *   $82:FAFD  unidentified    LDA $82FAFD,X   operand at 0x12203F
+ *   $82:FAFD  name OAM index  LDA $82FAFD,X   operand at 0x12203F
  *   $87:CA9B  names           ADC #$CA9B      operand at 0x03448B
- *   count                     CMP #$0008      operand at 0x121F6D
+ *   right wrap                CMP #$0008      operand at 0x121F6D
+ *   left wrap                 LDA #$0007      operand at 0x121F40
+ *   logical ID store          STA $1FA2       opcode at 0x02A507
  *
  * The name reader never appears in the recompiled C because it runs
  * interpreted. It was found by logging the interpreter's PC whenever
@@ -315,6 +317,9 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
  * Every site is checked against the bytes it is expected to hold before
  * anything is written, so a different cartridge revision is refused rather
  * than corrupted. */
+#define ROM_STADIUM_LEFT_OPERAND   0x121F40u
+#define ROM_STADIUM_SERIALIZER     0x02A4FEu
+#define ROM_STADIUM_LOGICAL_STORE  0x02A507u
 #define ROM_STADIUM_COUNT_OPERAND  0x121F6Du
 #define ROM_STADIUM_NAME_OPERAND   0x03448Bu
 #define ROM_FREE_BANK82            0x017B5Du   /* $82:FB5D, 1187 bytes */
@@ -322,11 +327,11 @@ static void patch_attributes(uint8_t *rom, size_t base, const IssdModPlayer *p) 
 
 typedef struct { size_t operand; uint16_t from; } StadiumRef;
 
-static const StadiumRef kStadiumWordRefs[] = {
+static const StadiumRef kStadiumRefs[] = {
     { 0x121FA0u, 0xFADDu },   /* turf */
     { 0x12200Au, 0xFAEDu },   /* length */
     { 0x12201Du, 0xFAEEu },   /* width, the same table one byte on */
-    { 0x12203Fu, 0xFAFDu },   /* unidentified, but per stadium */
+    { 0x12203Fu, 0xFAFDu },   /* byte-indexed OAM name indices */
 };
 
 /* Where the tables live now. Stock until a pack asks for more. */
@@ -347,9 +352,10 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
     if (slots <= ROM_STADIUMS) return false;
     if (slots > ISSD_MAX_STADIUMS) slots = ISSD_MAX_STADIUMS;
 
-    const size_t need82 = (size_t)slots * 6u;      /* three word tables */
+    const size_t need82 = (size_t)slots * 5u; /* turf words, pitch pairs, OAM bytes */
     const size_t need87 = (size_t)slots * ROM_STADIUM_NAME_BYTES;
-    if (rom_size < ROM_FREE_BANK87 + need87 ||
+    if (rom_size < 0x122042u || /* last long table-reference operand */
+        rom_size < ROM_FREE_BANK87 + need87 ||
         !rom_is_free(rom, ROM_FREE_BANK82, need82) ||
         !rom_is_free(rom, ROM_FREE_BANK87, need87)) {
         issd_mod_result_note_error("no free space for extra stadiums");
@@ -359,18 +365,32 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
     }
 
     /* Refuse rather than corrupt if this is not the cartridge we measured. */
-    if (rom[ROM_STADIUM_COUNT_OPERAND - 1] != 0xC9 ||
+    static const uint8_t serializer[] = {
+        0xAD, 0xA2, 0x1F, /* LDA selected logical stadium */
+        0x29, 0x07, 0x00, /* AND #7: reuse one of eight validated match layouts */
+        0x8D, 0x86, 0x00, /* STA constructor layout */
+        0x8D, 0xA2, 0x1F  /* STA selected stadium: removed only when expanded */
+    };
+    if (rom[ROM_STADIUM_LEFT_OPERAND - 1] != 0xA9 ||
+        rom[ROM_STADIUM_LEFT_OPERAND] != 7 ||
+        rom[ROM_STADIUM_LEFT_OPERAND + 1] != 0 ||
+        memcmp(rom + ROM_STADIUM_SERIALIZER, serializer, sizeof serializer) != 0 ||
+        rom[ROM_STADIUM_COUNT_OPERAND - 1] != 0xC9 ||
         rom[ROM_STADIUM_COUNT_OPERAND] != ROM_STADIUMS ||
+        rom[ROM_STADIUM_COUNT_OPERAND + 1] != 0 ||
+        rom[ROM_STADIUM_NAME_OPERAND] != 0x9B ||
+        rom[ROM_STADIUM_NAME_OPERAND + 1] != 0xCA ||
         rom[ROM_STADIUM_NAME_OPERAND - 1] != 0x69) {
         issd_mod_result_note_error("cartridge does not match; stadiums kept");
         fprintf(stderr, "[ModLoader] The stadium code is not where it is "
                         "expected in this cartridge. Leaving 8 stadiums.\n");
         return false;
     }
-    for (unsigned i = 0; i < sizeof kStadiumWordRefs / sizeof kStadiumWordRefs[0]; i++) {
-        const StadiumRef *r = &kStadiumWordRefs[i];
+    for (unsigned i = 0; i < sizeof kStadiumRefs / sizeof kStadiumRefs[0]; i++) {
+        const StadiumRef *r = &kStadiumRefs[i];
         const uint16_t have = (uint16_t)(rom[r->operand] | (rom[r->operand + 1] << 8));
-        if (rom[r->operand - 1] != 0xBF || have != r->from) {
+        if (rom[r->operand - 1] != 0xBF || have != r->from ||
+            rom[r->operand + 2] != 0x82) {
             issd_mod_result_note_error("cartridge does not match; stadiums kept");
             fprintf(stderr, "[ModLoader] Stadium table reference %u is not "
                             "where it is expected. Leaving 8 stadiums.\n", i);
@@ -382,20 +402,20 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
      * so a slot nobody has customised is still a working stadium. */
     size_t cursor = ROM_FREE_BANK82;
     size_t pitch_dst = 0;
-    for (unsigned i = 0; i < sizeof kStadiumWordRefs / sizeof kStadiumWordRefs[0]; i++) {
-        const StadiumRef *r = &kStadiumWordRefs[i];
+    for (unsigned i = 0; i < sizeof kStadiumRefs / sizeof kStadiumRefs[0]; i++) {
+        const StadiumRef *r = &kStadiumRefs[i];
         size_t dst;
         if (r->from == 0xFAEEu) {
             dst = pitch_dst + 1;          /* width shares the pitch table */
         } else {
             const size_t src = (size_t)0x10000u + (r->from - 0x8000u);
             dst = cursor;
+            const size_t stride = r->from == 0xFAFDu ? 1u : 2u;
             for (unsigned k = 0; k < slots; k++) {
-                const size_t e = src + (size_t)(k % ROM_STADIUMS) * 2u;
-                rom[dst + k * 2] = rom[e];
-                rom[dst + k * 2 + 1] = rom[e + 1];
+                const size_t e = src + (size_t)(k % ROM_STADIUMS) * stride;
+                memcpy(rom + dst + k * stride, rom + e, stride);
             }
-            cursor += (size_t)slots * 2u;
+            cursor += (size_t)slots * stride;
             if (r->from == 0xFAEDu) pitch_dst = dst;
         }
         const uint16_t addr = (uint16_t)(0x8000u + (dst - 0x10000u));
@@ -414,6 +434,10 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
     rom[ROM_STADIUM_NAME_OPERAND + 1] = (uint8_t)(name_addr >> 8);
 
     rom[ROM_STADIUM_COUNT_OPERAND] = (uint8_t)slots;
+    rom[ROM_STADIUM_LEFT_OPERAND] = (uint8_t)(slots - 1);
+    /* Keep the logical ID for custom plates/textures. The constructor still
+     * receives logical ID & 7, so added slots share stock match geometry. */
+    memset(rom + ROM_STADIUM_LOGICAL_STORE, 0xEA, 3);
 
     s_stadium_slots = slots;
     s_stadium_name_base = ROM_FREE_BANK87;

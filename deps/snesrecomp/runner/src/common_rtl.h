@@ -282,6 +282,9 @@ void RtlRenderAudio(int16 *audio_buffer, int samples, int channels);
  * omitting it silently assumes 32040 and consumes far too fast at any other
  * rate. Ignored for values outside 8000-192000. */
 void RtlSetAudioOutputRate(int freq);
+/* Optional host backpressure, invoked on the game thread outside the APU lock.
+ * Hosts without an active realtime consumer leave this unset. */
+void RtlAudioSetProducerWait(void (*wait)(void));
 /* Notify the shared audio runner of host fast-forward state. Guest-frame SPC
  * synchronization is automatic inside RtlRunFrame; clients only supply the
  * presentation policy needed to discard stale PCM after fast-forward. */

@@ -1131,6 +1131,8 @@ def _emit_bank_one(args_dict: dict) -> dict:
                         unresolved_indirect_collector=
                             bank_unresolved_indirects,
                         data_regions=cfg.data_regions or None,
+                        runtime_immediates=cfg.runtime_immediates,
+                        opcode_hooks=cfg.opcode_hooks,
                         exclude_ranges=cfg.exclude_ranges or None,
                         callee_exit_mx=args_dict['callee_exit_mx'],
                         callee_exit_mx_modes=args_dict['callee_exit_mx_modes'],

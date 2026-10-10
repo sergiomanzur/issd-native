@@ -1,7 +1,7 @@
 # ISSD Mod Studio
 
-A visual editor for the mod packs in `mods/`. It never touches a cartridge:
-it reads and writes the same `.json` files the game loads.
+A visual editor for the mod packs in `mods/`. It reads your cartridge for
+private template previews and writes mod resources; it does not modify the dump.
 
 ```
 tools/mod_studio/dist/ISSDModStudio.exe            the built editor
@@ -26,7 +26,7 @@ one command. Everything it needs is in the repository.
 | **Pack** | name, author, version, description, `stadium_count`, whether to show the seventh group |
 | **Teams** | add (replacing nobody) or replace one of the 36; name, plate name, squad photograph, formation, tactics, kit colours |
 | **Players** | name, number, position, appearance, the ten ratings |
-| **Stadiums** | slot, name, plate name, pitch size |
+| **Stadiums** | slot, names, display yards, independent engine geometry and native/local HD artwork |
 | **Pitch tiles** | the graphics a ground is drawn from - see below |
 
 Add, duplicate and delete from the toolbar, the Edit menu or the Del key.
@@ -84,7 +84,49 @@ rating is 0-99 in the pack but four bits in the game, of which only 2-9 are
 used. Every slider has the band it quantises into drawn behind it, so it is
 obvious that 55 and 60 are the same player.
 
-## Pitch tiles
+## Independent stadium workspace
+
+Save the pack first, add a stadium, then select **Create independent profile**.
+New slots use the first free ID from 8 through 31. The original layout controls
+the scenery and bounded resource allocation. Display yards are separate from
+the engine dimensions: version 1 supports shortening the pitch in 32-unit steps,
+with the original width and measured camera bounds.
+
+The **Geometry** tab supports typed values and dragging. Invalid text stays in
+the draft and blocks testing; undo/redo applies to both methods. The **Artwork**
+tab provides this workflow:
+
+1. **Create editable artwork** reads private map references and native palette
+   values. It creates authored map resources without copying cartridge pixels.
+2. Choose an upload slot and owned palette bank, then **Import tile atlas**.
+   Native images use 8px tiles; image scales 2, 4 or 8 preserve higher-resolution
+   artwork as stadium-local HD replacements and create the native fallback.
+   Keys and BMP files are generated automatically. Color loss and capacity
+   errors are reported. A bank used by another authored upload cannot be replaced.
+3. Enable **Place imported image** to assign a background layer and coordinates
+   on the 8px native grid. Clicking the compiled preview picks a position.
+   Existing placements keep their dimensions and position when replacing art;
+   use another upload slot for a different placement.
+4. **Preview compiled stadium** displays final map words, quantized native
+   pixels and palette. Select combined layers, BG1/BG2, a goal/center region or
+   the initial native camera window.
+   This is a static day/fine background preview; check sprites, animations,
+   fades, weather and HD compositing in the game.
+5. Changing geometry makes generated artwork maps stale. **Recompile pitch
+   maps** preserves imported art and placements while generating new maps.
+
+**Test in game** stages the current valid document with its dependencies, its
+own config, saves, controller script and log. It starts the chosen native game
+with your separately supplied cartridge. **Stop test** controls that child
+process. **Export portable pack** publishes only validated referenced mod
+resources; cartridge data, saves and unused working files are excluded.
+
+The bounded geometry/artwork implementation passed its full regression run and
+two uninterrupted custom matches. See `docs/INDEPENDENT_STADIUM_ACCEPTANCE.md`
+for exact coverage, skips and platform limits. These checks do not certify
+every weather variant or target device for a release.
+
+## Legacy global pitch tiles
 
 **Pitch tiles** opens the other half of a ground: the 8x8 graphics it is
 drawn from. A tile pack replaces them with pictures of your own at any size
@@ -125,9 +167,21 @@ game that no longer exists.
 A windowed `.exe` has no console, so it writes its self-test to a file:
 
 ```
-ISSDModStudio.exe --selftest report.txt [pack.json]
+ISSDModStudio.exe --selftest report.txt [pack.json] [cartridge.sfc]
 ```
 
 It opens a window, builds every pane, runs the checker and exits - which is
 how a missing `baked.json` or a Pillow that cannot talk to tk gets caught
 before a user clicks the thing that needs it.
+
+With a profile pack and a cartridge, it also checks invalid drafts, compiled
+artwork previews and portable export, and saves an editor-window screenshot.
+The cartridge path supplied to this check is not stored in user preferences.
+
+Try `mods/independent_stadium_example/mod.json` for two same-template stadiums
+with different pitch lengths and entirely new simple artwork. The Geometry
+tab shows a dashed initial-camera window; the Artwork preview can display that
+exact region. Supported lengths shrink in 32-unit steps; width and scenery
+remain template constraints. Compiler errors, including the 256-metatile
+budget, block Test. See `docs/INDEPENDENT_STADIUM_ACCEPTANCE.md` for measured
+coverage and remaining platform limits.

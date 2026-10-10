@@ -2,6 +2,7 @@
 #include "issd_menu.h"
 #include "issd_controls.h"
 #include "issd_match_menu.h"
+#include "issd_match.h"
 #include "issd_password_ui.h"
 #include "issd_config.h"
 #include "issd_save.h"
@@ -132,14 +133,29 @@ const uint8_t g_issd_font8x8[96][8] = {
 #define MENU_ITEM_RESTART 20
 #define MENU_ITEM_QUIT 21
 #define MENU_ITEM_GRAPHICS 22
-#define MENU_TOTAL_ITEMS 23
+#define MENU_ITEM_RESTART_MATCH 23
+#define MENU_ITEM_BACK_MAIN 24
+#define MENU_TOTAL_ITEMS 25
 #else
 #define MENU_ITEM_RESTART 18
 #define MENU_ITEM_QUIT 19
 #define MENU_ITEM_GRAPHICS 20
-#define MENU_TOTAL_ITEMS 21
+#define MENU_ITEM_RESTART_MATCH 21
+#define MENU_ITEM_BACK_MAIN 22
+#define MENU_TOTAL_ITEMS 23
 #endif
 
+/* Keep legacy setting IDs stable; put pause actions directly under Resume. */
+static int main_row(int item) {
+    if (item == MENU_ITEM_RESTART_MATCH) return 1;
+    if (item == MENU_ITEM_BACK_MAIN) return 2;
+    return item == 0 ? 0 : item + 2;
+}
+static int main_item(int row) {
+    if (row == 1) return MENU_ITEM_RESTART_MATCH;
+    if (row == 2) return MENU_ITEM_BACK_MAIN;
+    return row == 0 ? 0 : row - 2;
+}
 #define MENU_ITEM_CONTINUE 15
 #define MENU_ITEM_PASSWORD 16
 #define MENU_ITEM_GAMEPLAY 17
@@ -386,9 +402,10 @@ static void menu_keep_visible(void) {
     int count = g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS ? GRAPHICS_ROWS : MENU_TOTAL_ITEMS;
     int visible = g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS ? s_graphics_visible_rows : s_main_visible_rows;
     if (g_overlay_menu.scroll > count - visible) g_overlay_menu.scroll = count - visible;
-    if (g_overlay_menu.current_item < g_overlay_menu.scroll) g_overlay_menu.scroll = g_overlay_menu.current_item;
-    if (g_overlay_menu.current_item >= g_overlay_menu.scroll + visible)
-        g_overlay_menu.scroll = g_overlay_menu.current_item - visible + 1;
+    int selected = g_overlay_menu.page == ISSD_MENU_PAGE_MAIN ? main_row(g_overlay_menu.current_item) : g_overlay_menu.current_item;
+    if (selected < g_overlay_menu.scroll) g_overlay_menu.scroll = selected;
+    if (selected >= g_overlay_menu.scroll + visible)
+        g_overlay_menu.scroll = selected - visible + 1;
     if (g_overlay_menu.scroll < 0) g_overlay_menu.scroll = 0;
 }
 static void graphics_open(void) {
@@ -489,7 +506,7 @@ bool issd_menu_navigate_up(void) {
         g_overlay_menu.current_item = (g_overlay_menu.current_item + 4) % 5; return true;
     }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(-1); return true; }
-    g_overlay_menu.current_item = (g_overlay_menu.current_item - 1 + MENU_TOTAL_ITEMS) % MENU_TOTAL_ITEMS;
+    g_overlay_menu.current_item = main_item((main_row(g_overlay_menu.current_item) - 1 + MENU_TOTAL_ITEMS) % MENU_TOTAL_ITEMS);
     menu_keep_visible();
     return true;
 }
@@ -506,7 +523,7 @@ bool issd_menu_navigate_down(void) {
         g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % 5; return true;
     }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(1); return true; }
-    g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % MENU_TOTAL_ITEMS;
+    g_overlay_menu.current_item = main_item((main_row(g_overlay_menu.current_item) + 1) % MENU_TOTAL_ITEMS);
     menu_keep_visible();
     return true;
 }
@@ -704,6 +721,16 @@ bool issd_menu_confirm(void) {
         return true;
     }
     switch (g_overlay_menu.current_item) {
+        case MENU_ITEM_RESTART_MATCH:
+            if (issd_match_restart()) {
+                issd_menu_notify("Match restarted", 150); issd_menu_close();
+            } else issd_menu_notify(issd_match_error(), 240);
+            break;
+        case MENU_ITEM_BACK_MAIN:
+            if (issd_match_back_main()) {
+                issd_menu_notify(issd_match_at_main_menu() ? "Returned to main menu" : "Returning to main menu...", issd_match_at_main_menu() ? 150 : 1800); issd_menu_close();
+            } else issd_menu_notify(issd_match_error(), 240);
+            break;
         case 0: /* Resume */
             issd_menu_close();
             break;
@@ -914,7 +941,7 @@ bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
     for (int i = g_overlay_menu.scroll; i < MENU_TOTAL_ITEMS && i < g_overlay_menu.scroll + s_main_visible_rows; i++) {
         int item_y = start_y + (i - g_overlay_menu.scroll) * row_h;
         if (fb_y >= item_y && fb_y < item_y + row_h) {
-            g_overlay_menu.current_item = i;
+            g_overlay_menu.current_item = main_item(i);
             if (fb_x > box_x + box_w * 3 / 4) {
                 issd_menu_navigate_right();
             } else if (fb_x > box_x + box_w / 2) {
@@ -1276,6 +1303,8 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
 
     char items[MENU_TOTAL_ITEMS][44];
     snprintf(items[0], sizeof(items[0]), "Resume Match");
+    snprintf(items[MENU_ITEM_RESTART_MATCH], sizeof(items[0]), "Restart Match%s", issd_match_can_restart() ? "" : " (unavailable)");
+    snprintf(items[MENU_ITEM_BACK_MAIN], sizeof(items[0]), "Back to Main Menu%s", issd_match_can_back_main() ? "" : " (unavailable)");
     snprintf(items[1], sizeof(items[1]), "Controls / Profiles...");
     snprintf(items[2], sizeof(items[2]), "Mods...     <%s>", issd_menu_mods_label());
     snprintf(items[3], sizeof(items[3]), "Aspect:     <%s>", aspect_str);
@@ -1314,12 +1343,13 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
     int start_y = box_y + 18;
     int row_h = 12;
     for (int i = g_overlay_menu.scroll; i < MENU_TOTAL_ITEMS && i < g_overlay_menu.scroll + s_main_visible_rows; i++) {
-        uint32_t color = (i == g_overlay_menu.current_item) ? 0xFF00FF66 : 0xFFE0E0E0;
+        int item = main_item(i);
+        uint32_t color = (item == g_overlay_menu.current_item) ? 0xFF00FF66 : 0xFFE0E0E0;
         int item_y = start_y + (i - g_overlay_menu.scroll) * row_h;
-        if (i == g_overlay_menu.current_item) {
+        if (item == g_overlay_menu.current_item) {
             DrawChar(fb, width, height, box_x + 4, item_y, '>', 0xFF00FF66);
         }
-        char visible[44]; snprintf(visible, sizeof visible, "%s", items[i]);
+        char visible[44]; snprintf(visible, sizeof visible, "%s", items[item]);
         int chars = (box_w - 20) / 8;
         if (chars < (int)strlen(visible)) visible[chars] = 0;
         DrawString(fb, width, height, box_x + 14, item_y, visible, color);

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "issd_stadium.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -113,20 +114,17 @@ typedef struct {
     IssdModPlayer players[ISSD_MAX_PLAYERS_PER_TEAM];
 } IssdModTeam;
 
-/* The cartridge has eight stadiums, and like the teams they are a fixed
- * table: one can be replaced but none added. A stadium is its name, which
- * the pre-match screen prints, and the size of its pitch, which the game
- * really does play differently on - 114 by 74 yards up to 138 by 90. */
-/* The cartridge ships eight. Its tables move into free space and extend -
- * see issd_mod_rom.c - and the host draws the name plate itself, so the
- * ceiling is now just how much free space the two banks have: 1187 bytes
- * in $82 at six per stadium, 1336 in $87 at seven. Thirty-two is a round
- * number well inside both and more grounds than anyone has asked for. */
+/* The cartridge ships eight match layouts. Logical stadium slots can extend
+ * their select-screen name and displayed pitch dimensions by moving tables
+ * into free space (see issd_mod_rom.c). Added slots reuse stock match geometry
+ * through slot & 7; these dimensions do not create a new playable layout.
+ * The table ceiling is 1187 bytes in $82 at five per slot and 1336 in $87 at
+ * seven. Thirty-two stays well within both banks. */
 #define ISSD_MAX_STADIUMS 32
 #define ISSD_STOCK_STADIUMS 8
 
 typedef struct {
-    int8_t  stadium_id;      /* 0-7, or -1 for an entry with none */
+    int8_t  stadium_id;      /* 0..31 logical slot, or -1 for no entry */
     char    name[16];        /* 7 characters reach the cartridge */
     /* What the select screen's plate shows. The cartridge picks that
      * plate from a list of pre-rendered graphics by slot number, so past
@@ -135,6 +133,8 @@ typedef struct {
     char    display_name[20];
     uint8_t pitch_length;    /* yards; 0 leaves the cartridge's own */
     uint8_t pitch_width;
+    bool has_profile;
+    IssdStadiumProfile profile;
 } IssdModStadium;
 
 typedef struct {

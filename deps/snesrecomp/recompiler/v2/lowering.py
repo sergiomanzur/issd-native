@@ -120,7 +120,8 @@ def _width_x(insn: Insn) -> int:
 
 # ── Top-level dispatch ──────────────────────────────────────────────────────
 
-def lower(insn: Insn, *, value_factory: ValueFactory) -> List[IROp]:
+def lower(insn: Insn, *, value_factory: ValueFactory,
+          runtime_immediates=frozenset()) -> List[IROp]:
     """Lower one Insn to a list of IR ops.
 
     The list is non-empty for every opcode (Nop is used as a placeholder
@@ -133,7 +134,23 @@ def lower(insn: Insn, *, value_factory: ValueFactory) -> List[IROp]:
         # If we ever reach this in real ROM, the per-op smoke test would
         # have caught it; in production every mnem is dispatched.
         return [Nop()]
-    return h(insn, value_factory)
+    ops = h(insn, value_factory)
+    selected = any((pc & 0x7fffff) == (insn.addr & 0x7fffff)
+                   for pc in runtime_immediates)
+    if selected:
+        if (insn.mode != IMM or insn.mnem not in
+                {'ADC', 'SBC', 'AND', 'ORA', 'EOR', 'CMP', 'CPX', 'CPY',
+                 'LDA', 'LDX', 'LDY', 'BIT'}):
+            raise ValueError(f'Unsupported runtime immediate at {insn.addr:06X}')
+        if not ops or not isinstance(ops[0], ConstI):
+            raise ValueError(f'Runtime immediate has no operand at {insn.addr:06X}')
+        operand = ops[0]
+        # Operand bytes belong to the decoded program bank, irrespective of DB.
+        address = (insn.addr & 0xff0000) | ((insn.addr + 1) & 0xffff)
+        ops[0] = Read(seg=SegRef(kind=SegKind.LONG, offset=address & 0xffff,
+                               bank=address >> 16),
+                      width=operand.width, out=operand.out)
+    return ops
 
 
 # ── Per-mnemonic handlers ───────────────────────────────────────────────────

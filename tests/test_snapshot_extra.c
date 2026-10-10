@@ -1,5 +1,11 @@
 #include "issd_snapshot.h"
 void issd_widescreen_rebase(Ppu *ppu, const uint8_t *ram) { (void)ppu; (void)ram; }
+void issd_stadium_scene_art_identity(const uint8_t *ram,uint8_t identity[16]) {
+    (void)ram;memset(identity,0x5a,16);
+}
+void issd_stadium_scene_saved_art(const uint8_t identity[16],bool known) {
+    if (known) for(unsigned i=0;i<16;++i) assert(identity[i]==0x5a);
+}
 
 int g_interp_apu_driving;
 uint64_t g_main_cpu_cycles_estimate;
@@ -65,7 +71,7 @@ int main(void) {
     assert(g_apu_last_sync_master == 61234000 && g_apu_pace_cycles_estimate == 888);
     assert(tail_context.valid && tail_context.entry_s == 0x1aa && tail_context.hrv == 2);
     assert(cache_resets == 1);
-    const unsigned corrupt_offsets[] = {0, 4, 8, 31, 104, 112};
+    const unsigned corrupt_offsets[] = {0, 4, 8, 31, 104};
     for (size_t i = 0; i < sizeof(corrupt_offsets) / sizeof(corrupt_offsets[0]); ++i) {
         unsigned char *byte = snapshot + size - ISSD_SNAPSHOT_EXTRA_SIZE + corrupt_offsets[i];
         *byte ^= 0xff;
@@ -76,8 +82,13 @@ int main(void) {
     /* The prior 128-byte extension still restores CPU/APU state. */
     size_t core_start = size - ISSD_SNAPSHOT_EXTRA_SIZE;
     unsigned char *core = snapshot + core_start;
+    core[4]=2;memset(core+112,0,16);
+    assert(issd_snapshot_validate_extra(core,ISSD_SNAPSHOT_EXTRA_SIZE,8));
+    core[112]=1;assert(!issd_snapshot_validate_extra(core,ISSD_SNAPSHOT_EXTRA_SIZE,8));
+    core[112]=0;
     core[4] = 1; core[5] = core[6] = core[7] = 0;
     core[8] = 128; core[9] = core[10] = core[11] = 0;
+    memset(core+112,0,16);
     assert(issd_snapshot_validate_extra(core, 128, 8));
     g_cpu.A = 0;
     assert(RtlLoadSnapshotFromMemory(snapshot, core_start + 128));

@@ -1,5 +1,26 @@
 # Exhibition rematches, drills and presets
 
+## Pause actions (current source after v0.4.0-beta.1)
+
+Open the native overlay with Escape/F1 or the controller overlay shortcut.
+**Restart Match** and **Back to Main Menu** are directly below Resume.
+Restart restores the first healthy kickoff captured for the resident exhibition,
+International Cup or World Series match, including teams, kits, weather, rules,
+competition state, clock and score. It does not advance campaign progress.
+Back returns to the actual cartridge main menu and retains the campaign save
+already on disk. Any play since that save is abandoned.
+
+These session snapshots are not synthesized from a mid-match manual save or
+Continue. Restart is unavailable without a captured kickoff. When no compatible
+main-menu snapshot exists (including a fresh Continue), Back runs the original
+startup flow with the applied cartridge and automatically stops at the actual
+main menu. A progress message appears during that transition; campaign files
+are retained. Mod or gameplay-context changes invalidate resident snapshots.
+Scenario, training and standalone penalty-mode restart remain unsupported.
+Unavailable actions report their reason.
+
+## Exhibition shortcuts
+
 Open **Gameplay Tweaks → Match Shortcuts / Presets** in the native overlay.
 These features are included in v0.3.0-beta.1.
 

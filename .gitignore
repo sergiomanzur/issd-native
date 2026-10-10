@@ -91,3 +91,6 @@ android/app/.cxx/
 # `python tools/build_mod_studio.py` makes it in one command.
 tools/mod_studio/dist/
 tools/mod_studio/__pycache__/
+
+# Original authored stadium example resources (no cartridge pixels).
+!mods/independent_stadium_example/**/*.bin

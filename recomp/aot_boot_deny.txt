@@ -10,3 +10,10 @@
 # calls it in bank $80.
 00CF2A
 80CF2A
+
+# Expanded stadiums preserve the logical selected ID at $85:A507 while the
+# existing AND #7 still passes a validated stock layout to constructors.
+# The serializer is baked into the M0X0 entry at $85:A3FB; execute its patched
+# cartridge instructions authoritatively, including the bank $05 mirror.
+05A3FB
+85A3FB

@@ -212,5 +212,54 @@ int main(int argc, char **argv) {
     const char *cup_completion = issd_campaign_tick(ram, true);
     assert(cup_completion && !strcmp(cup_completion, "International Cup complete"));
     assert(issd_campaign_tick(ram, true) == NULL);
+    /* Completed original shootout must survive the terminal screen's exit.
+     * The generic ceremony callback alone is never a committed result. */
+    for (unsigned invalid = 0; invalid <= 12; ++invalid) {
+        issd_campaign_reset();
+        setup(1); word(0x70, 8);
+        assert(issd_campaign_tick(ram, true) == NULL);
+        word(0x70, 12); word(0x1648, 0x401c); word(0x1640, 9);
+        word(0x1446, 0xc8c0); ram[0x1448] = 0x8b;
+        word(0xa8, 3); word(0x1700, 0);
+        ram[0xd442] = 5; ram[0xd443] = 3;
+        word(0xda0, 60); word(0xea0, 70); ram[0xddce] = 60;
+        if (invalid == 1) word(0x1640, 8);
+        if (invalid == 2) word(0xa8, 1);
+        if (invalid == 3) ram[0xddce] = 70;
+        if (invalid == 4) word(0x1460, 1);
+        if (invalid == 5) word(0x1462, 1);
+        if (invalid == 6) ram[0xd443] = 5;
+        if (invalid == 7) word(0x1700, 0xffff);
+        if (invalid == 8) word(0x1648, 0x4004);
+        if (invalid == 9) ram[0xddce] = 0xff;
+        if (invalid == 10) word(0x1446, 0xc8c1);
+        if (invalid == 11) word(0x1648, 0x4028);
+        if (invalid == 12) word(0x1652, 1);
+        assert(issd_campaign_tick(ram, true) == NULL);
+        const char *shootout = issd_campaign_tick(ram, true);
+        if (invalid) assert(shootout == NULL);
+        else {
+            assert(shootout && !strcmp(shootout, "International Cup complete"));
+            assert(issd_campaign_tick(ram, true) == NULL);
+            issd_campaign_reset();
+            assert(issd_campaign_tick(ram, true) == NULL);
+            assert(issd_campaign_tick(ram, true) == NULL);
+        }
+    }
+    issd_campaign_reset();
+    setup(1); word(0x70, 8);
+    assert(issd_campaign_tick(ram, true) == NULL);
+    word(0x70, 12); word(0x1648, 0x401c); word(0x1640, 9);
+    word(0x1446, 0xc8c0); ram[0x1448] = 0x8b;
+    word(0xa8, 3); word(0x1700, 2);
+    ram[0xd442] = 3; ram[0xd443] = 5;
+    word(0xda0, 60); word(0xea0, 70); ram[0xddce] = 70;
+    assert(issd_campaign_tick(ram, true) == NULL);
+    const char *opponent_completion = issd_campaign_tick(ram, true);
+    assert(opponent_completion && !strcmp(opponent_completion, "International Cup complete"));
+    assert(issd_campaign_tick(ram, true) == NULL);
+    word(0x1446, 0xd32e); ram[0x1448] = 0x85;
+    assert(issd_campaign_tick(ram, true) == NULL);
+    assert(issd_campaign_tick(ram, true) == NULL); /* No duplicate table save. */
     return 0;
 }

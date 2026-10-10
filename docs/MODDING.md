@@ -673,17 +673,37 @@ A pack may hold only `stadiums` and no `teams` at all.
 
 `stadium_count` is how many the game offers at all. Raising it moves four
 tables into free space, extends them, and re-points the code that reads
-them - so slot 8 is a real ninth stadium with its own name, size and turf,
-not a slot reading past the end of a table. New slots start as copies of
-the cartridge's own, so one you have not customised still works.
+them. It also updates both menu wrap directions and preserves the logical
+selection during match setup. New slots start as copies of the cartridge's
+own menu entries and can have distinct names and displayed pitch dimensions.
+
+Without a `stadium_profile`, logical slot `n` inherits match layout `n & 7`.
+Raising the count or changing display yards alone does not change geometry.
+An independent profile instead selects its own base template, shortened pitch
+length and optional authored native artwork/local HD resources. Width and
+scenery remain template constraints. See [the profile contract](STADIUM_PROFILE_CONTRACT.md)
+and [measured acceptance](INDEPENDENT_STADIUM_ACCEPTANCE.md).
+
+Mod Studio can create and edit these profiles, preview the compiled background,
+import images, generate HD variants and export a portable pack. Its **Test in
+game** button stages a private session; **Stop test** closes that session's
+game. Open `mods/independent_stadium_example/mod.json` for two original-art
+examples, MEADOW and HARBOR. For direct loading, place the exported JSON and
+its dependencies in the selected mods root; the loader scans that root's JSON
+files, not nested pack directories.
+
+After upgrading to this expansion repair, start a fresh match with expanded
+packs. Pre-fix expanded-pack saves have a different patched gameplay context
+and are rejected rather than loaded against incompatible data. Existing saves
+are not rewritten; no migration is implemented.
 
 Across a stack of packs the **largest** `stadium_count` wins, so a pack
 that only replaces a stadium does not need to care how many there are.
 
 Name a stadium you have added and the game draws its plate for you, so
 there is no ceiling from the cartridge's supply of plate graphics. A slot
-you add but never name keeps whatever unused graphic the cartridge has at
-that index, which the validator warns about.
+you add but never name inherits the original name graphic for its layout,
+which the validator warns about.
 
 If this cartridge is not the USA revision the tables were measured on,
 every patch site is checked before anything is written and the expansion

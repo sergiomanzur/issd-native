@@ -1,5 +1,53 @@
 # Changelog
 
+## Unreleased
+
+## 0.5.0-beta.1 — 2026-10-10
+
+- Correct expanded stadium selection in both menu wrap directions, retain
+  custom logical stadium IDs through original settings serialization, and
+  copy the byte-indexed name graphics table without reading weather data.
+  Legacy added slots reuse the original eight match layouts.
+
+- Add bounded independent stadium profiles: shortened engine pitches, authored
+  native maps/characters/palettes and stadium-local HD sets. Preserve geometry
+  save identity and refresh changed or removed cosmetic resources safely.
+  Two same-template profiles complete uninterrupted natural matches.
+- Expand Mod Studio with geometry/artwork editing, compiled camera previews,
+  image import, undo/redo, portable export and isolated asynchronous Test/Stop.
+  Include two original-art stadium examples and a rebuilt standalone editor.
+  See `docs/INDEPENDENT_STADIUM_ACCEPTANCE.md` for scope and evidence.
+
+- Exclude unrecorded players from widened goal-replay margins instead of drawing
+  their stale live-match positions and poses. Recorded replay edge sprites and
+  live-play culling remain intact; natural-goal playback, pause and rewind pass
+  native-center/state comparisons at 4:3, 16:10, 16:9 and 21:9.
+- Save completed Cup shootouts at the original settled ceremony, including
+  sudden death, before the cartridge returns directly to the title screen.
+  Verify original substitution limits, both controller sides, halftime and
+  extra-time replacement flows with advancing snapshot replay.
+- Verify an uninterrupted, naturally timed 35-match World Series and production
+  Continue from every result and completion; retain diagnostic build manifests
+  and native checkpoints. Natural Cup qualification/elimination also passes;
+  an untouched winning Cup remains an acceptance gap.
+- Pace realtime sound transfers against FIFO consumption with the audio mutex
+  released, preventing the reproduced loss of title/commentary PCM. Bound CPU
+  timestamps to the current guest frame and allow the SPC startup delay to
+  finish with a genuine acknowledgement. Stalled devices incur one bounded
+  wait until consumption resumes; headless and fast-forward stay unblocked.
+- Extend blue menu wallpaper after stadium initialization, including halftime
+  management, formations, squad substitutions and returned menus. Clip panels,
+  text and sprites to the original center instead of repeating them at the sides.
+- Continue authored stadium top/bottom boundary tiles into widened margins,
+  avoiding blank map padding near the goal area.
+- Add Restart Match and Back to Main Menu directly below Resume in the overlay.
+  Match restart retains its captured kickoff; returning to the menu preserves
+  existing campaign saves. Restart requires a compatible kickoff checkpoint;
+  returning also supports fresh Continue through the original startup flow.
+- Preserve HD tile scanout data through render transactions, protect player
+  pixels, and apply HD textures across widened margins with correct wallpaper
+  repeat/mirror behavior. Back to Main Menu also works after a fresh Continue.
+
 ## v0.4.0-beta.1 (2026-10-03)
 
 - Replace the coin-scene's repeated 8-pixel edge slivers with wider authored

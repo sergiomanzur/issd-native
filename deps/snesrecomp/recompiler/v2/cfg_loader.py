@@ -80,6 +80,8 @@ class RamRoutine:
 @dataclass
 class BankCfg:
     bank: int
+    runtime_immediates: set = field(default_factory=set)
+    opcode_hooks: set = field(default_factory=set)
     includes: List[str] = field(default_factory=list)
     entries: List[BankEntry] = field(default_factory=list)
     names: List[NameDecl] = field(default_factory=list)
@@ -382,6 +384,19 @@ def load_bank_cfg(path: str) -> BankCfg:
             # the interpreter tier. The address is deliberately absolute so
             # a directive can live in a minimal bank00.cfg while naming any
             # ROM bank discovered from a profile manifest.
+            if head in {'runtime_immediate', 'opcode_hook'}:
+                if len(tokens) != 2:
+                    raise ValueError(f'{path}: {head} needs <pc24>')
+                pc = _parse_hex(tokens[1])
+                if not 0 <= pc <= 0xffffff:
+                    raise ValueError(f'{path}: {head} PC exceeds 24 bits')
+                pc &= 0x7fffff
+                collection = (cfg.runtime_immediates if head == 'runtime_immediate'
+                              else cfg.opcode_hooks)
+                if pc in collection:
+                    raise ValueError(f'{path}: {head} duplicate {pc:06X}')
+                collection.add(pc)
+                continue
             if head == 'force_lle':
                 if len(tokens) != 2:
                     raise ValueError(

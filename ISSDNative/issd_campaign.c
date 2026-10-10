@@ -89,6 +89,18 @@ const char *issd_campaign_tick(const uint8_t *ram, bool healthy) {
             if (stage == 9 && !word(ram, 0x1652) && winner <= 0x46 && !(winner & 1))
                 event = CUP_COMPLETE;
         }
+        /* The original shootout can leave its final ceremony directly for
+         * the title screen, without the normal Cup-table callback. Save only
+         * a settled, completed final: the generic ceremony callback also
+         * serves unfinished scenes and must not establish a checkpoint. */
+        if (kind == CUP && (flags & 8) && stage == 9 &&
+            !word(ram, 0x1652) && cb == 0x8bc8c0 && word(ram, 0xa8) == 3) {
+            unsigned side = ram[0xd442] > ram[0xd443] ? 0 : 2;
+            unsigned champion = ram[side ? 0xea0 : 0xda0];
+            if (ram[0xd442] != ram[0xd443] && word(ram, 0x1700) == side &&
+                winner <= 0x46 && !(winner & 1) && winner == champion)
+                event = CUP_COMPLETE;
+        }
         if (password_import_pending) {
             if (kind == CUP && cb == 0x8b953c) event = CUP_IMPORT;
             if (kind == WORLD_SERIES && cb == 0x8b9414) event = WORLD_IMPORT;
