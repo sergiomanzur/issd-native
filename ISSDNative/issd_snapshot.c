@@ -16,9 +16,10 @@ extern int g_interp_apu_driving;
 /* Explicit little-endian fields; never persist CpuState's RAM pointer or ABI
  * padding. This extension is independent of the runner's v4-v8 guest schema. */
 enum { CORE_SIZE = 128, EXTRA_SIZE = ISSD_SNAPSHOT_EXTRA_SIZE,
-       EXTRA_MAGIC = 0x58445349, EXTRA_VERSION = 3 };
+       EXTRA_MAGIC = 0x58445349, EXTRA_VERSION = 4 };
 static bool presentation_loaded;
 static bool artwork_identity_loaded;
+static bool replay_history_loaded;
 static uint8_t artwork_identity[16];
 extern Snes *g_snes;
 static void put(uint8_t *p, uint64_t value, unsigned count) {
@@ -77,6 +78,7 @@ void issd_snapshot_save_extra(SaveLoadInfo *sli) {
     if (g_snes) issd_stadium_scene_art_identity(g_snes->ram,data+112);
     issd_animation_save_state(data + CORE_SIZE);
     issd_pose_history_save_state(data + CORE_SIZE + ISSD_ANIMATION_STATE_SIZE);
+    issd_replay_save_state(data + ISSD_SNAPSHOT_LEGACY_PRESENTATION_SIZE);
     sli->func(sli, data, sizeof(data));
 }
 
@@ -85,7 +87,8 @@ bool issd_snapshot_validate_extra(const void *blob, size_t size, uint32_t versio
     if (!data || version < 5 || size < CORE_SIZE ||
         get(data, 4) != EXTRA_MAGIC ||
         !((get(data + 4, 4) == 1 && size == CORE_SIZE) ||
-          ((get(data + 4, 4) == 2 || get(data + 4, 4) == EXTRA_VERSION) && size == EXTRA_SIZE)) ||
+          ((get(data + 4, 4) == 2 || get(data + 4, 4) == 3) && size == ISSD_SNAPSHOT_LEGACY_PRESENTATION_SIZE) ||
+          (get(data + 4, 4) == EXTRA_VERSION && size == EXTRA_SIZE)) ||
         get(data + 8, 4) != size || get(data + 12, 4) > INT_MAX)
         return false;
     if (data[28] != 0 && data[28] != 2 && data[28] != 3) return false;
@@ -98,10 +101,11 @@ bool issd_snapshot_validate_extra(const void *blob, size_t size, uint32_t versio
     if (get(data+4,4)<3)
         for (unsigned i = 112; i < CORE_SIZE; ++i)
             if (data[i]) return false;
-    if (size == EXTRA_SIZE &&
+    if (size >= ISSD_SNAPSHOT_LEGACY_PRESENTATION_SIZE &&
         (!issd_animation_validate_state(data + CORE_SIZE, ISSD_ANIMATION_STATE_SIZE) ||
          !issd_pose_history_validate_state(data + CORE_SIZE + ISSD_ANIMATION_STATE_SIZE, ISSD_POSE_HISTORY_STATE_SIZE)))
         return false;
+    if (size == EXTRA_SIZE && !issd_replay_validate_state(data+ISSD_SNAPSHOT_LEGACY_PRESENTATION_SIZE,ISSD_REPLAY_HISTORY_STATE_SIZE)) return false;
     return true;
 }
 
@@ -109,12 +113,14 @@ void issd_snapshot_load_extra(SaveLoadInfo *sli, uint32_t version) {
     uint8_t data[EXTRA_SIZE] = {0};
     sli->func(sli, data, CORE_SIZE);
     size_t size = get(data + 8, 4);
-    if (size != CORE_SIZE && size != EXTRA_SIZE) return;
-    if (size == EXTRA_SIZE) sli->func(sli, data + CORE_SIZE, EXTRA_SIZE - CORE_SIZE);
+    if (size != CORE_SIZE && size != ISSD_SNAPSHOT_LEGACY_PRESENTATION_SIZE && size != EXTRA_SIZE) return;
+    if (size > CORE_SIZE) sli->func(sli, data + CORE_SIZE, size - CORE_SIZE);
     /* The runner already accepted the whole chunk through pure preflight. */
     if (!issd_snapshot_validate_extra(data, size, version)) return;
-    presentation_loaded = size == EXTRA_SIZE;
-    artwork_identity_loaded = get(data+4,4)==3;
+    presentation_loaded = size >= ISSD_SNAPSHOT_LEGACY_PRESENTATION_SIZE;
+    artwork_identity_loaded = get(data+4,4)>=3;
+    replay_history_loaded = size == EXTRA_SIZE;
+    if (replay_history_loaded) issd_replay_load_state(data+ISSD_SNAPSHOT_LEGACY_PRESENTATION_SIZE,ISSD_REPLAY_HISTORY_STATE_SIZE);
     if (artwork_identity_loaded) memcpy(artwork_identity,data+112,16);
     if (presentation_loaded) {
         issd_animation_load_state(data + CORE_SIZE, ISSD_ANIMATION_STATE_SIZE);
@@ -164,6 +170,8 @@ void issd_snapshot_on_loaded(uint32_t version) {
         issd_pose_history_reset();
     }
     presentation_loaded = false;
+    if (!replay_history_loaded) issd_replay_reset();
+    replay_history_loaded = false;
     issd_stadium_scene_saved_art(artwork_identity,artwork_identity_loaded);
     artwork_identity_loaded = false;
     if (g_snes) issd_widescreen_rebase(g_snes->ppu, g_snes->ram);

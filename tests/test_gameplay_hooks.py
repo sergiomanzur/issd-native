@@ -33,6 +33,8 @@ static bool issd_stadium_scene_opcode(void *cart,uint8_t *memory,const uint8_t *
     (void)cart;(void)memory;(void)rom;(void)size;(void)pc;scene_calls++;return true;
 }
 static void issd_stadium_trace_opcode(const uint8_t *memory,uint32_t pc) { (void)memory;(void)pc;trace_calls++; }
+static unsigned replay_calls;
+static void issd_replay_observe(const uint8_t *memory,uint32_t pc) {(void)memory;(void)pc;replay_calls++;}
 static void Die(const char *message) { (void)message;abort(); }
 typedef void (*TestHook)(CpuState *, uint32_t);
 static TestHook native_hook;
@@ -65,26 +67,27 @@ static void cpu_write16(CpuState *c, unsigned bank, uint16_t a, uint16_t v) {
         source += function(definitions, name)
     source += r'''
 int main(void) {
-    IssdConfigureGameplayHooks(); assert(!native_hook && !opcode_count);
+    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count==3);
+    assert(opcode_pcs[0]==0x8ba997 && opcode_pcs[1]==0x8baafd);
     g_issd_config.gameplay_bug_fixes = true;
     IssdConfigureGameplayHooks(); assert(native_hook && opcode_count >= 4);
     g_issd_config.gameplay_bug_fixes = false;
-    IssdConfigureGameplayHooks(); assert(!native_hook && !opcode_count);
+    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count==3);
     g_issd_config.gameplay_goalkeeper_ai = true;
-    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count == 1 && opcode_pcs[0] == 0x84dede);
+    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count == 4 && opcode_pcs[3] == 0x84dede);
     g_issd_config.gameplay_player_ai = true;
-    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count == 3);
+    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count == 6);
     g_issd_config.gameplay_goalkeeper_ai = false;
-    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count == 2 && opcode_pcs[0] == 0x84c638 && opcode_pcs[1] == 0x84c63d);
+    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count == 5 && opcode_pcs[3] == 0x84c638 && opcode_pcs[4] == 0x84c63d);
     g_issd_config.gameplay_player_ai = false;
-    IssdConfigureGameplayHooks(); assert(!native_hook && !opcode_count);
+    IssdConfigureGameplayHooks(); assert(native_hook && opcode_count==3);
     profiles=true;IssdConfigureGameplayHooks();assert(native_hook&&opcode_count>=20);
     fixture();CpuState profile_cpu={0};profile_cpu.ram=ram;
     native_hook(&profile_cpu,0x8b8000);
     assert(scene_calls==1&&transfer_calls==1&&trace_calls==1);
     IssdGameplayInterpreted(&profile_cpu,0x8b8000);
     assert(scene_calls==2&&transfer_calls==2&&trace_calls==2);
-    profiles=false;IssdConfigureGameplayHooks();assert(!native_hook&&!opcode_count);
+    profiles=false;IssdConfigureGameplayHooks();assert(native_hook&&opcode_count==3);
     g_issd_config.gameplay_goalkeeper_ai = true;
     g_issd_config.gameplay_player_ai = true;
     fixture(); CpuState cpu = {ram, 0x500, 0x1ac, 123, 456, 0xa55a, 0x81, 1, 1};

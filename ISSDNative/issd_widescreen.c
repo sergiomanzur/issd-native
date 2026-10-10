@@ -1,6 +1,7 @@
 #include "issd_widescreen.h"
 #include "issd_pose_history.h"
 #include "issd_animation.h"
+#include "issd_camera.h"
 #include "snes/ppu.h"
 #include <string.h>
 
@@ -13,6 +14,8 @@ static struct {
   uint16_t vram[0x8000], oam[0x100];
   uint8_t high_oam[0x20];
   uint8_t ram[0x20000];
+  uint16_t descriptors[22];
+  uint16_t replay_directory;
 } frame;
 
 static uint16_t word(const uint8_t *p, unsigned a) {
@@ -181,6 +184,14 @@ bool issd_widescreen_menu_layout(const Ppu *ppu, const uint8_t *ram) {
    * would fight that, and it is not a menu. */
   if (mode != 5 && mode != 6) return false;
   if (issd_widescreen_pitch_layout(ppu, ram)) return false;
+  /* Campaign/tournament splash cards reuse the menu allocation, but BG2
+   * contains the reflected lettering instead of wallpaper. Retail World
+   * Series: mode $0C, BG1/BG2/OBJ enabled ($13), BG3 disabled, black backdrop.
+   * Repeating BG2 duplicates that foreground into the widened black sides.
+   * BG3 remains enabled on wallpaper menus even during their black fades. */
+  if (ppu->bgTileAdr == 0x4422 && ppu->cgram[0] == 0 &&
+      ((ppu->screenEnabled[0] | ppu->screenEnabled[1]) & 6) == 2)
+    return false;
   /* Main, formation and squad menus retain the preceding stadium allocation.
    * Their actual graphics layout, rather than stale world-map stride, owns
    * the blue wallpaper. The close-up stadium uses different tile banks. */
@@ -282,6 +293,20 @@ static bool world_tile(const uint8_t *ram, unsigned layer,
   unsigned definition = 0x18000 + layer * 0x2000 + metatile * 32;
   *tile = word(ram, definition + ((y & 31) >> 3) * 8 + ((x & 31) >> 3) * 2);
   return true;
+}
+
+bool issd_widescreen_world_layer(const uint8_t *ram,unsigned layer,IssdWorldLayer *out) {
+  if(!ram || !out || layer>1) return false;
+  unsigned stride=word(ram,0x1ffcc);
+  if(stride<0x80 || stride>0x340 || (stride&63)) return false;
+  out->layer=layer;
+  world_bounds(ram,layer,&out->first,&out->last,&out->top,&out->bottom);
+  return true;
+}
+bool issd_widescreen_world_sample(const uint8_t *ram,const IssdWorldLayer *layer,
+                                 int x,int y,uint16_t *tile) {
+  if(!ram || !layer || !tile || layer->layer>1) return false;
+  return world_tile(ram,layer->layer,x,y,layer->first,layer->last,layer->top,layer->bottom,tile);
 }
 
 static void fill_pitch(Ppu *ppu, const uint8_t *ram, int left, int right) {
@@ -402,12 +427,229 @@ typedef struct {
   bool missing_native_copy;
 } ObjectEntry;
 
+enum { REPLAY_SLOT_SIZE=448, REPLAY_ACTOR_SIZE=20 };
+static uint8_t replay_history[512u*REPLAY_SLOT_SIZE];
+static uint16_t replay_directory=0xffff,previous_replay_directory=0xffff;
+static void replay_put(uint8_t *p,unsigned a,unsigned value) {
+  p[a]=(uint8_t)value;p[a+1]=(uint8_t)(value>>8);
+}
+static uint32_t replay_hash(const uint8_t *ram,unsigned start,unsigned end) {
+  uint32_t hash=2166136261u;
+  for(unsigned i=start;i<end;i++) hash=(hash^ram[0x10000+i])*16777619u;
+  return hash;
+}
+static bool replay_matches(const uint8_t *slot,const uint8_t *ram,unsigned directory) {
+  unsigned start=word(slot,0),end=word(slot,2);
+  if(directory>=0x400 || (directory&1) || start<0x400 || end<=start || end>0x7700 ||
+      word(ram,0x10000+directory)!=start) return false;
+  uint32_t hash=word(slot,4)|((uint32_t)word(slot,6)<<16);
+  return hash==replay_hash(ram,start,end);
+}
+void issd_replay_reset(void) {
+  memset(replay_history,0,sizeof replay_history);
+  replay_directory=previous_replay_directory=0xffff;
+}
+void issd_replay_save_state(uint8_t *state) {
+  if(state) {
+    replay_put(state,0,replay_directory);replay_put(state,2,0);
+    memcpy(state+4,replay_history,sizeof replay_history);
+  }
+}
+bool issd_replay_validate_state(const uint8_t *state,size_t size) {
+  if(!state || size!=ISSD_REPLAY_HISTORY_STATE_SIZE || word(state,2)) return false;
+  unsigned directory=word(state,0);
+  if(directory!=0xffff && (directory>=0x400 || (directory&1))) return false;
+  for(unsigned i=0;i<512;i++) {
+    const uint8_t *slot=state+4+i*REPLAY_SLOT_SIZE;
+    unsigned start=word(slot,0),end=word(slot,2);
+    if(!start) {
+      for(unsigned j=0;j<REPLAY_SLOT_SIZE;j++) if(slot[j]) return false;
+      continue;
+    }
+    if(start<0x400 || end<=start || end>0x7700) return false;
+    for(unsigned p=0;p<22;p++) if(word(slot,8+p*REPLAY_ACTOR_SIZE+18)>1) return false;
+  }
+  return true;
+}
+bool issd_replay_load_state(const uint8_t *state,size_t size) {
+  if(!issd_replay_validate_state(state,size)) return false;
+  memcpy(replay_history,state+4,sizeof replay_history);
+  replay_directory=word(state,0);previous_replay_directory=replay_directory;return true;
+}
+void issd_replay_observe(const uint8_t *ram,uint32_t pc) {
+  pc|=0x800000;
+  if(pc==0x8ba997) {issd_replay_reset();return;}
+  if(ram && pc==0x8bae80) {replay_directory=word(ram,0x18aa);return;}
+  if(!ram || pc!=0x8baafd) return;
+  unsigned next=word(ram,0x18a4);
+  if(next>=0x400 || (next&1)) return;
+  unsigned directory=(next+0x3fe)&0x3ff;
+  uint8_t *slot=replay_history+(directory/2)*REPLAY_SLOT_SIZE;
+  memset(slot,0,REPLAY_SLOT_SIZE);
+  unsigned start=word(ram,0x10000+directory),end=word(ram,0x18a0);
+  if(start<0x400 || end<=start || end>0x7700) return;
+  replay_put(slot,0,start);replay_put(slot,2,end);
+  uint32_t hash=replay_hash(ram,start,end);
+  replay_put(slot,4,hash);replay_put(slot,6,hash>>16);
+  for(unsigned i=0;i<22;i++) {
+    unsigned object=0x500+i*0x100;
+    uint8_t *actor=slot+8+i*REPLAY_ACTOR_SIZE;
+    memcpy(actor,ram+object,6);
+    replay_put(actor,6,word(ram,object+8));
+    replay_put(actor,8,word(ram,object+12));
+    replay_put(actor,10,word(ram,object+16));
+    replay_put(actor,12,word(ram,object+20));
+    replay_put(actor,14,word(ram,object+0x30));
+    replay_put(actor,16,word(ram,object+0x56));
+    unsigned type=word(ram,object+0x30);
+    replay_put(actor,18,type && !(type&0x8000) && (word(ram,object+20)&0x8000));
+  }
+}
+/* Bind each resolved live pose to the same native recording generation as
+ * its OAM. Playback must never run the live animation predictor a second time. */
+static void replay_presented_pose(const uint8_t *ram,unsigned object,uint16_t descriptor) {
+  if(word(ram,0x70)==0x13 || object<0x500 || object>=0x1b00 || (object&255)) return;
+  unsigned directory=(word(ram,0x18a4)+0x3fe)&0x3ff;
+  uint8_t *slot=replay_history+(directory/2)*REPLAY_SLOT_SIZE;
+  if(replay_matches(slot,ram,directory))
+    replay_put(slot,8+((object-0x500)/0x100)*REPLAY_ACTOR_SIZE+12,descriptor);
+}
+static void replay_restore_edges(uint8_t *ram,unsigned directory) {
+  if(word(ram,0x70)!=0x13) return;
+  if(directory>=0x400 || (directory&1)) return;
+  const uint8_t *slot=replay_history+(directory/2)*REPLAY_SLOT_SIZE;
+  if(!replay_matches(slot,ram,directory)) return;
+  for(unsigned i=0;i<22;i++) {
+    unsigned object=0x500+i*0x100;
+    const uint8_t *actor=slot+8+i*REPLAY_ACTOR_SIZE;
+    if(!word(ram,object+0x1e) || !word(actor,18)) continue;
+    memcpy(ram+object,actor,6);
+    replay_put(ram,object+8,word(actor,6));replay_put(ram,object+12,word(actor,8));
+    replay_put(ram,object+16,word(actor,10));replay_put(ram,object+18,word(actor,8));
+    replay_put(ram,object+20,word(actor,12));replay_put(ram,object+0x30,word(actor,14));
+    replay_put(ram,object+0x56,word(actor,16));replay_put(ram,object+0x1e,0);
+  }
+}
+
 /* $8BAAC6 records only admitted players. During replay $98F279 marks all
  * players absent and $98F291 clears $1E only for recorded entries. An absent
  * record retains its old coordinates/descriptor, not a replayable pose. */
 static bool replay_player_absent(const uint8_t *ram, unsigned object) {
   return word(ram, 0x70) == 0x13 && object >= 0x500 && object < 0x1b00 &&
          !(object & 255) && word(ram, object + 0x1e) != 0;
+}
+
+static bool camera_piece(const Ppu *ppu,const uint8_t *ram,const uint8_t *rom,
+    size_t rom_size,unsigned object,unsigned pose,unsigned part,IssdCameraPiece *out) {
+  static const uint8_t sizes[8][2]={{8,16},{8,32},{8,64},{16,32},{16,64},{32,64},{16,32},{16,32}};
+  bool packed=(pose&0x8000)!=0,large;int dx,dy;unsigned tile,attr;
+  if(packed) {
+    const uint8_t *geometry=rom_span(rom,rom_size,0x880000|pose,1);
+    if(!geometry || !geometry[0] || geometry[0]>64 || part>=geometry[0]) return false;
+    geometry=rom_span(rom,rom_size,0x880000|pose,1+geometry[0]*4);
+    if(!geometry) return false;
+    const uint8_t *data=geometry+1+part*4;
+    dy=(int8_t)data[0];dx=(int8_t)data[1];tile=data[2];attr=data[3];large=(attr&0x10)!=0;
+  } else {
+    if(!pose || pose>=0xa000 || !ram[pose] || ram[pose]>64 || part>=ram[pose]) return false;
+    unsigned index=pose+part*2;
+    if(index>=0xa000) return false;
+    dx=(int16_t)word(ram,0x2000+index);dy=(int16_t)word(ram,0x4000+index);
+    tile=ram[0x6000+index];attr=ram[0x6001+index];large=(ram[index+1]&0x80)!=0;
+  }
+  unsigned props=ram[object+3]|((((ram[object+5]&0x80 ? ram[object+5] : ram[0x7c])&0x30)|ram[object+4])&0xf0);
+  unsigned color=(attr&0xc1)^props;
+  if(attr&0x20) color=color&8 ? color|2 : (color&~4)|8;
+  out->x=(int16_t)word(ram,object+8)-(large?8:4)+((props&0x40)?-dx:dx);
+  out->y=(int16_t)word(ram,object+12)+(int16_t)word(ram,object+16)-(large?8:4)+dy;
+  out->size=sizes[ppu->obsel>>5][large];out->tile=(uint8_t)(tile+ram[object+2]);
+  out->attributes=(uint8_t)color;
+  return true;
+}
+
+static uint16_t camera_aux_identity[0xd00];
+
+bool issd_widescreen_camera_pieces(Ppu *ppu,const uint8_t *ram,const uint8_t *rom,
+    size_t rom_size,const IssdCameraView *view,IssdCameraPiece *pieces,size_t capacity,size_t *count) {
+  if(!ppu || !ram || !rom || !view || !pieces || !count || !issd_widescreen_pitch_layout(ppu,ram)) return false;
+  *count=0;
+  /* Keep uploads private even at 4:3, where the ordinary wider transaction is absent. */
+  if(!frame.owner) {
+    frame.owner=ppu;memcpy(frame.vram,ppu->vram,sizeof frame.vram);
+    memcpy(frame.oam,ppu->oam,sizeof frame.oam);memcpy(frame.high_oam,ppu->highOam,sizeof frame.high_oam);
+  }
+  if(ram==frame.ram) replay_restore_edges(frame.ram,frame.replay_directory);
+  unsigned objects[128],n=0;
+  for(unsigned i=0;i<48;i++) {
+    unsigned object=word(ram,0x1d40+i*2);if(!object) break;
+    if(object>=0x400 && object<=0x1c40) {
+      objects[n++]=object;
+      if(object<0xd00 && (object&255)) camera_aux_identity[object]=word(ram,object);
+    }
+  }
+  for(unsigned object=0x400;object<0x1b00;object+=0x100) {
+    if(object>=0x500 && (!ram[object+0x30] || !(word(ram,object+0x14)&0x8000))) continue;
+    bool exists=false;for(unsigned i=0;i<n;i++) if(objects[i]==object) exists=true;
+    if(!exists) objects[n++]=object;
+  }
+  /* Active auxiliary records have their coordinates maintained by $83D01E/$83D057.
+   * Replay auxiliaries without native admission are excluded until recorded evidence exists. */
+  if(word(ram,0x70)!=0x13) for(unsigned base=0x400;base<0xd00;base+=0x100)
+    for(unsigned offset=0xa0;offset<=0xd0;offset+=0x30) {
+      if(offset==0xd0 && base<0x800) continue;
+      unsigned object=base+offset;
+      if(!word(ram,object)) {camera_aux_identity[object]=0;continue;}
+      bool exists=false;for(unsigned i=0;i<n;i++) if(objects[i]==object) exists=true;
+      if(!exists) {
+        int x=(int16_t)word(ram,object+8),y=(int16_t)word(ram,object+12);
+        bool native_y=base<0x800 ? (unsigned)(y+32)<0x140u : (unsigned)y<0x140u;
+        bool horizontal_cull=base<0x800 ? (unsigned)(x+32)>=0x140u : (unsigned)(x+64)>=0x180u;
+        /* A stale center record is not evidence of a drawable auxiliary.
+         * Vertical expansion requires an identity previously admitted by the cartridge. */
+        if((native_y && horizontal_cull) ||
+            (!native_y && camera_aux_identity[object]==word(ram,object))) objects[n++]=object;
+      }
+    }
+  for(unsigned i=1;i<n;i++) {
+    unsigned object=objects[i],j=i;
+    while(j && (int16_t)word(ram,objects[j-1]+0x12)>(int16_t)word(ram,object+0x12)) {
+      objects[j]=objects[j-1];j--;
+    }
+    objects[j]=object;
+  }
+  while(n) {
+    unsigned object=objects[--n];
+    if(replay_player_absent(ram,object)) continue;
+    int x=(int16_t)word(ram,object+8),y=(int16_t)word(ram,object+12)+(int16_t)word(ram,object+16);
+    if(x+64<=view->x || x-64>=view->x+view->w || y+64<=view->y || y-64>=view->y+view->h) continue;
+    unsigned pose=word(ram,object);
+    if(object>=0x500 && object<0x1b00 && !(object&255) && ram[object+0x30]) {
+      uint16_t descriptor=frame.descriptors[(object-0x500)/256];
+      if(!descriptor) {
+        descriptor=word(ram,object+0x14);
+        if(word(ram,0x70)!=0x13) {
+          int ground_y=(int16_t)word(ram,object+12);
+          issd_pose_history_observe_world(object,x,ground_y,
+              x+word(ram,0x13a0),ground_y+word(ram,0x13b0),descriptor);
+          if(!issd_animation_pose(object,ram,rom,rom_size,
+              issd_pose_history_live_window(x,ground_y),&descriptor))
+            descriptor=issd_pose_history_pose(object,x,ground_y,descriptor);
+          replay_presented_pose(ram,object,descriptor);
+        }
+        frame.descriptors[(object-0x500)/256]=descriptor;
+      }
+      pose=prepare_player(ppu,ram,object,descriptor,rom,rom_size);
+    }
+    for(unsigned part=0;part<64;part++) {
+      IssdCameraPiece piece;
+      if(!camera_piece(ppu,ram,rom,rom_size,object,pose,part,&piece)) break;
+      if(piece.x+piece.size<=view->x || piece.x>=view->x+view->w ||
+          piece.y+piece.size<=view->y || piece.y>=view->y+view->h) continue;
+      if(*count==capacity) return false;
+      pieces[(*count)++]=piece;
+    }
+  }
+  return true;
 }
 
 /* A slot may only be reused when the hardware cannot draw it on any visible
@@ -540,7 +782,7 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
         !(object & 255) && ram[object + 0x30] &&
         (word(ram, object + 0x14) & 0x8000);
     uint16_t descriptor = word(ram, object + 0x14);
-    if (player) {
+    if (player && word(ram,0x70)!=0x13) {
       /* Learn complete descriptors, not geometry addresses: two animation
        * steps may share a pose while using different graphics rows. */
       issd_pose_history_observe_world(object, ox, oy,
@@ -548,7 +790,9 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
       if (!issd_animation_pose(object, ram, rom, rom_size,
           issd_pose_history_live_window(ox, oy), &descriptor))
         descriptor = issd_pose_history_pose(object, ox, oy, descriptor);
+      replay_presented_pose(ram,object,descriptor);
     }
+    if(player) frame.descriptors[(object-0x500)/256]=descriptor;
     if (entry.missing_native_copy && player) {
       /* Player geometry fits within 64 pixels of its origin. Avoid uploading
        * invisible players, especially the shared type-8 detail tile. */
@@ -559,37 +803,12 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     /* Geometry and graphics follow the same observed cartridge descriptor. */
     if (!pose) continue;
     bool packed = (pose & 0x8000) != 0;
-    uint8_t parts;
-    const uint8_t *geometry = NULL;
-    if (packed) {
-      geometry = rom_span(rom, rom_size, 0x880000 | pose, 1);
-      if (!geometry) continue;
-      parts = geometry[0];
-    } else {
-      parts = ram[pose];
-    }
-    if (!parts || parts > 64) continue;
-    if (packed && !(geometry = rom_span(rom, rom_size,
-        0x880000 | pose, 1 + parts * 4))) continue;
-    unsigned props = ram[object+3] | ((((ram[object+5] & 0x80 ?
-      ram[object+5] : ram[0x7c]) & 0x30) | ram[object+4]) & 0xf0);
-    for (unsigned part=0; part<parts; part++) {
-      int dx, dy; unsigned tile, attr; bool large;
-      if (packed) {
-        const uint8_t *data = geometry + 1 + part * 4;
-        dy = (int8_t)data[0]; dx = (int8_t)data[1]; tile=data[2]; attr=data[3];
-        large = (attr & 0x10) != 0;
-      } else {
-        unsigned index=pose+part*2;
-        if (index >= 0xa000) break;
-        dx=(int16_t)word(ram,0x2000+index); dy=(int16_t)word(ram,0x4000+index);
-        tile=ram[0x6000+index]; attr=ram[0x6001+index];
-        large = (ram[index+1] & 0x80) != 0;
-      }
-      int x=(int16_t)word(ram,object+8)-(large?8:4)+((props&0x40)?-dx:dx);
-      int y=(int16_t)word(ram,object+12)+(int16_t)word(ram,object+16)-(large?8:4)+dy;
+    for (unsigned part=0; part<64; part++) {
+      IssdCameraPiece piece;
+      if (!camera_piece(ppu,ram,rom,rom_size,object,pose,part,&piece)) break;
+      int x=piece.x,y=piece.y,size=piece.size;
+      bool large=size==sizes[ppu->obsel>>5][1];
       int native_left = !packed && large ? -32 : -16;
-      int size=sizes[ppu->obsel>>5][large];
       bool native_part_visible = x >= native_left && x < 256;
       if ((!entry.missing_native_copy && native_part_visible) ||
           x + size <= -left_extra || x >= 256+right_extra ||
@@ -597,10 +816,9 @@ static void fill_objects(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
       /* These are hardware parked entries, never an arbitrary visible slot. */
       while (free_slot<128 && !is_oam_slot_free(ppu, (unsigned)free_slot)) free_slot++;
       if (free_slot == 128) goto done;
-      unsigned color=(attr&0xc1)^props;
-      if (attr&0x20) color = color&8 ? color|2 : (color&~4)|8;
+      unsigned color=piece.attributes;
       ppu->oam[free_slot*2]=(uint8_t)x | ((uint16_t)(uint8_t)y<<8);
-      ppu->oam[free_slot*2+1]=(uint8_t)(tile+ram[object+2]) | ((uint16_t)color<<8);
+      ppu->oam[free_slot*2+1]=piece.tile | ((uint16_t)color<<8);
       unsigned shift=(free_slot%4)*2;
       ppu->highOam[free_slot/4]=(ppu->highOam[free_slot/4]&~(3u<<shift)) |
         ((((unsigned)x>>8)&1) | (large?2:0))<<shift;
@@ -633,6 +851,7 @@ static int s_ws_extra = 0;
 
 void issd_widescreen_reset(void) {
   if (frame.owner) issd_widescreen_end(frame.owner);
+  memset(camera_aux_identity,0,sizeof camera_aux_identity);
   s_prev_ram_valid = false;
   s_presented_ram_valid = false;
   s_snapshot_ppu = NULL;
@@ -644,6 +863,7 @@ void issd_widescreen_reset(void) {
 /* Rebase frame generation after a checked load without discarding the restored
  * presentation animation. The saved frame has already latched current WRAM. */
 void issd_widescreen_rebase(Ppu *ppu, const uint8_t *ram) {
+  memset(camera_aux_identity,0,sizeof camera_aux_identity);
   if (frame.owner) issd_widescreen_end(frame.owner);
   s_presented_ram_valid = false;
   s_snapshot_ppu = ppu;
@@ -659,6 +879,7 @@ const uint8_t *issd_widescreen_presented_ram(const uint8_t *current) {
 static void remember_ram(const uint8_t *ram) {
   if (!ram) return;
   memcpy(s_prev_ram, ram, sizeof(s_prev_ram));
+  previous_replay_directory=replay_directory;
   s_prev_ram_valid = true;
 }
 
@@ -690,6 +911,8 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     issd_widescreen_reset();
   s_snapshot_ppu = ppu;
   memcpy(frame.ram, s_prev_ram_valid ? s_prev_ram : ram, sizeof(frame.ram));
+  memset(frame.descriptors,0,sizeof frame.descriptors);
+  frame.replay_directory=s_prev_ram_valid ? previous_replay_directory : replay_directory;
   s_presented_ram_valid = true;
   if (extra < 0) extra=0;
   if (extra > ISSD_WIDESCREEN_MAX_EXTRA) extra=ISSD_WIDESCREEN_MAX_EXTRA;
@@ -769,6 +992,7 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
    * the currently latched scroll registers, not this frame's fresh one. */
   const uint8_t *rec = frame.ram;
   fill_pitch(ppu, rec, extra, extra);
+  replay_restore_edges(frame.ram,s_prev_ram_valid ? previous_replay_directory : replay_directory);
   fill_objects(ppu, rec, rom, rom_size, extra, extra);
   remember_ram(ram);
   return true;

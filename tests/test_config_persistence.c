@@ -216,6 +216,9 @@ int main(int argc, char **argv) {
     assert(loaded.player_profiles[3].schema == 0 && loaded.player_profiles[3].stick_deadzone == 12000);
     assert(loaded.player_profiles[3].bindings[11] == ((UINT64_C(1) << 10) | (UINT64_C(1) << 36)));
 
+    f=fopen(argv[1],"w");assert(f);fprintf(f,"camera_mode=999\n");fclose(f);
+    assert(issd_config_load(&loaded,argv[1]));
+    assert(loaded.camera_mode==ISSD_CAMERA_CLASSIC);
     assert(!loaded.gameplay_bug_fixes); /* old config preserves original behavior */
     puts("config persistence tests passed");
     return 0;

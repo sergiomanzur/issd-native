@@ -78,3 +78,27 @@ def test_custom_natural_replay_reload_keeps_geometry_and_local_art_across_widths
                 margin=(width-256)//2*scale
                 center=picture.crop((margin,0,margin+256*scale,224*scale))
                 assert ImageChops.difference(baseline_image,center).getbbox() is None,'Native replay center changed with width'
+
+    # Both zoom-outs use the same accepted geometry and saved natural replay.
+    for aspect,width in ((3,358),(2,398),(4,504)):
+        camera_ram,camera_picture=None,None
+        for mode in (0,1,2):
+            folder=tmp_path/f'camera-{aspect}-{mode}';folder.mkdir()
+            saves=folder/'saves';saves.mkdir();(saves/'quicksave.sav').write_bytes(seed)
+            config=folder/'config.cfg'
+            config.write_text(base_config+f'\naspect_ratio={aspect}\ntrue_widescreen=1\ncamera_mode={mode}\n')
+            result=subprocess.run([str(exe),'--rom',str(rom),'--config',str(config),'--mods-dir',str(run.mods),
+                '--save-dir',str(saves),'--load-state','1','--headless','60','--dump-state',str(folder/'state'),
+                '--screenshot',str(folder/'frame.bmp'),'--capture-scale','1'],cwd=folder,env=environment,capture_output=True,text=True,timeout=120)
+            assert result.returncode==0,result.stdout[-3000:]+result.stderr[-3000:]
+            actual=(folder/'state.wram').read_bytes()
+            assert word(actual,0x70)==19 and word(actual,0x1fa2)==logical and word(actual,0x12a2)==length
+            with Image.open(folder/'frame.bmp') as opened:picture=opened.convert('RGB')
+            assert picture.size==(width,224)
+            colors=picture.getdata()
+            # Native quantization/fades blend the checker into magenta or cyan.
+            assert sum(b>100 and (g<80 if logical==8 else r<80) for r,g,b in colors)>10000,'Custom artwork absent'
+            if camera_ram is not None:
+                assert actual==camera_ram,'Camera changed custom replay simulation'
+                assert ImageChops.difference(camera_picture,picture).getbbox(),'No tactical camera change'
+            camera_ram,camera_picture=actual,picture

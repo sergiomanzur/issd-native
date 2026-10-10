@@ -24,7 +24,8 @@ static int g_capture_scale=8;
 bool g_ws_active=false;
 int g_ws_extra=0;
 static uint32_t g_hi_pixel_buffer[1];
-static bool hd_active;
+static bool hd_active,camera_active;
+static bool issd_camera_active(void) {return camera_active;}
 static int captured_w,captured_h,composite_margin,composite_scale;
 typedef struct { void *ppu; } Snes;
 static Snes *g_snes;
@@ -50,6 +51,9 @@ int main(void) {
     assert(SaveFrame("test",frame,504,224)); assert(composite_margin==124 && captured_w==4032);
     g_capture_scale=16;
     assert(SaveFrame("test",frame,504,224)); assert(composite_scale==8);
+    camera_active=true;composite_margin=-99;
+    assert(SaveFrame("test",frame,398,224));
+    assert(composite_margin==-99 && captured_w==3184 && captured_h==1792);
     return 0;
 }
 '''

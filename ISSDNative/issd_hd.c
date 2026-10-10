@@ -335,6 +335,16 @@ static uint64_t hd_tile_key(const Ppu *ppu, unsigned tileadr, unsigned character
 }
 
 /* Decode one pixel of a tile, as the PPU's own fetch does. */
+const uint32_t *issd_hd_camera_texture(const Ppu *ppu,unsigned base,unsigned character,
+                                      unsigned palette,int *size) {
+    if(size) *size=0;
+    if(!ppu || !size || !issd_hd_active() || base>0x7fff || character>1023 || palette>240) return NULL;
+    uint64_t key=hd_tile_key(ppu,base,character,4,palette);
+    const HdTexture *texture=hd_lookup_scene(key,s_stadium_id,s_stadium_generation);
+    if(!texture) return NULL;
+    *size=texture->size;return texture->pixels;
+}
+
 static unsigned hd_tile_pixel(const Ppu *ppu, unsigned tileadr, unsigned character,
                               int bpp, unsigned px, unsigned py) {
     const unsigned words = (unsigned)hd_tile_words(bpp);

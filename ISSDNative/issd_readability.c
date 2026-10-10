@@ -1,4 +1,5 @@
 #include "issd_readability.h"
+#include "issd_camera.h"
 #include <string.h>
 
 extern const uint8_t g_issd_font8x8[96][8];
@@ -50,6 +51,17 @@ static bool on_pitch(int x,int y,int w,int h) {
     return x>=0 && x<w && y>=24 && y<h-8;
 }
 typedef struct { int x,y,w,h; } Rect;
+static void actor_screen(const uint8_t *r,unsigned actor,int w,int h,int margin,
+                         const IssdConfig *cfg,int *x,int *y,int *height) {
+    *x=(int16_t)word(r,actor+8);*y=(int16_t)word(r,actor+12);
+    *height=(int16_t)word(r,actor+16);
+    if(h==224 && (cfg->camera_mode==ISSD_CAMERA_TACTICAL || cfg->camera_mode==ISSD_CAMERA_TACTICAL_WIDE)) {
+        IssdCameraView view=issd_camera_view(w,h,cfg->camera_mode);
+        *x=issd_camera_project(*x,view.x,w,view.w);
+        *y=issd_camera_project(*y,view.y,h,view.h);
+        *height=issd_camera_project(*height,0,h,view.h);
+    } else *x+=margin;
+}
 static bool overlaps(Rect a,Rect b) {
     return a.x<b.x+b.w && b.x<a.x+a.w && a.y<b.y+b.h && b.y<a.y+a.h;
 }
@@ -106,8 +118,8 @@ static void radar(uint32_t *fb,int w,int h,const uint8_t *r,const IssdConfig *cf
 void issd_readability_render(uint32_t *fb,int w,int h,int margin,const uint8_t *r,const IssdConfig *cfg) {
     if (!fb || !r || !cfg || w<=0 || h<=0 || word(r,0x32)!=6 || word(r,0x70)!=8) return;
     if (word(r,0x400)) {
-        int x=(int16_t)word(r,0x408)+margin,y=(int16_t)word(r,0x40c);
-        int elevated=y+(int16_t)word(r,0x410);
+        int x,y,height;actor_screen(r,0x400,w,h,margin,cfg,&x,&y,&height);
+        int elevated=y+height;
         if (cfg->ball_shadow && (elevated < y-4 || elevated > y+4) && on_pitch(x,y,w,h))
             for (int dy=-1;dy<=1;dy++) for (int dx=-4;dx<=4;dx++)
                 if (dx*dx+dy*dy*8<=16) pixel(fb,w,h,x+dx,y+dy,0xff182a20);
@@ -130,7 +142,7 @@ void issd_readability_render(uint32_t *fb,int w,int h,int margin,const uint8_t *
         if (!a || (word(r,control+0x2e)&0x8000)) continue;
         unsigned player=human++;
         if (!actor_valid(r,a)) continue;
-        int x=(int16_t)word(r,a+8)+margin,y=(int16_t)word(r,a+12);
+        int x,y,height;actor_screen(r,a,w,h,margin,cfg,&x,&y,&height);
         if (!on_pitch(x,y,w,h)) continue;
         selected[count].actor=a; selected[count].player=player;
         selected[count].x=x; selected[count].y=y;

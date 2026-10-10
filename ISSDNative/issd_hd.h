@@ -88,6 +88,10 @@ void issd_hd_note_line(const Ppu *ppu, int line);
 /* Immediately after ppu_runLine, capture main-screen pixel ownership from
  * the new renderer. Same-colour sprites/upper layers must not receive BG art. */
 void issd_hd_note_rendered_line(const Ppu *ppu, int line);
+/* Read-only lookup for a directly sampled tactical world tile. Returned
+ * storage belongs to the active pack and expires when packs change. */
+const uint32_t *issd_hd_camera_texture(const Ppu *ppu,unsigned base,unsigned character,
+                                      unsigned palette,int *size);
 
 /* Composite replacements into an already-scaled frame.
  *

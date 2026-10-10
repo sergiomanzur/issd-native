@@ -178,6 +178,9 @@ int main(int argc, char **argv) {
     snprintf(path, sizeof path, "%s/pack", dir);
     assert(issd_hd_load_pack(path) == 1);
     assert(issd_hd_active());
+    int tactical_size=0;
+    const uint32_t *tactical_texture=issd_hd_camera_texture(ppu,tileadr,character,0,&tactical_size);
+    assert(tactical_texture && tactical_size==8*SCALE && tactical_texture[0]==replacement);
 
     issd_hd_begin_frame();
     for (int line = 1; line <= H; line++) issd_hd_note_line(ppu, line);
@@ -212,6 +215,8 @@ int main(int argc, char **argv) {
         assert(issd_hd_load_stadium(9,1,&key,blue_files,1));
         issd_hd_begin_frame();
         issd_hd_set_stadium_context(8,1); issd_hd_note_line(ppu,1);
+        tactical_texture=issd_hd_camera_texture(ppu,tileadr,character,0,&tactical_size);
+        assert(tactical_texture && tactical_texture[0]==0xffff0000u);
         issd_hd_set_stadium_context(9,1); issd_hd_note_line(ppu,2);
         issd_hd_set_stadium_context(-1,0);
         memset(hi,0,sizeof(uint32_t)*W*H*SCALE*SCALE);

@@ -24,6 +24,7 @@
 #include "issd_bridge.h"
 #include "issd_config.h"
 #include "issd_video.h"
+#include "issd_camera_render.h"
 #include "issd_readability.h"
 #include "issd_visual.h"
 #include "issd_running.h"
@@ -306,7 +307,7 @@ static void IssdRefreshSaveContext(void) {
     if (issd_stadium_has_profiles()) flags |= 16u;
     uint8_t stadium_digest[32] = {0};
     if (flags & 16u) issd_stadium_gameplay_digest(stadium_digest);
-    cpu_set_native_block_hook(((flags & 30u) || issd_stadium_trace_enabled()) ? IssdGameplayNativeBlock : NULL);
+    cpu_set_native_block_hook(IssdGameplayNativeBlock);
     if (g_base_rom_data && g_rom_data &&
         (flags != g_save_gameplay_flags || memcmp(stadium_digest,g_save_stadium_digest,32))) {
         IssdConfigureGameplayHooks();
@@ -540,8 +541,13 @@ static void SDLCALL SdlAudioCallback(void *userdata, Uint8 *stream, int len) {
     }
 }
 
+static uint32_t g_camera_hud[504*224];
+static Ppu g_camera_field_ppu;
 static void IssdDrawPpuFrame(void) {
     if (!g_snes || !g_snes->ppu) return;
+    static int camera_profile=-1;
+    if(camera_profile<0) camera_profile=getenv("ISSD_CAMERA_PROFILE")!=NULL;
+    uint64_t camera_begin=camera_profile ? SDL_GetPerformanceCounter() : 0;
     issd_stadium_scene_refresh_art(g_snes->ppu,g_ram);
     unsigned logical_id = g_ram[0x1fa2] | (unsigned)g_ram[0x1fa3] << 8;
     unsigned mode = g_ram[0x70] | (unsigned)g_ram[0x71] << 8;
@@ -563,6 +569,17 @@ static void IssdDrawPpuFrame(void) {
 
     issd_team_visual_begin(g_snes->ppu, issd_widescreen_presented_ram(g_ram),
                            g_rom_data, g_rom_size);
+    int camera_width=SNES_WIDTH+2*(g_ws_active ? g_ws_extra : 0);
+    issd_camera_set_art_lookup(issd_hd_active() ? issd_hd_camera_texture : NULL);
+    bool tactical=issd_camera_prepare(g_snes->ppu,issd_widescreen_presented_ram(g_ram),
+        g_rom_data,g_rom_size,g_issd_config.camera_mode,camera_width,SNES_HEIGHT);
+    if(tactical) {
+        memset(g_camera_hud,0,sizeof g_camera_hud);
+        PpuBindOverlaySurface(g_snes->ppu,kPpuOverlaySource_Bg3,(uint8_t *)g_camera_hud,
+                              (size_t)camera_width*sizeof(uint32_t));
+        PpuSetOverlayCapture(g_snes->ppu,kPpuOverlaySource_Bg3,-(camera_width-256)/2,0,
+                            camera_width,SNES_HEIGHT,0);
+    }
 
     SimpleHdma hdma[8];
     for (int ch = 0; ch < 8; ch++) {
@@ -580,22 +597,42 @@ static void IssdDrawPpuFrame(void) {
          * replacement pass needs are the ones in force right now, and
          * the title screen changes background mode partway down. */
         issd_hd_note_line(g_snes->ppu, line);
+        if(tactical && line==100) {
+            memcpy(&g_camera_field_ppu,g_snes->ppu,sizeof g_camera_field_ppu);
+            if(getenv("ISSD_CAMERA_TRACE")) {
+                static unsigned reports;
+                if(reports++<3) fprintf(stderr,"[CameraRaster] math=%x select=%x fixed=%x window=%x %d/%d scroll=%d/%d\n",
+                    g_camera_field_ppu.cgadsub,g_camera_field_ppu.cgwsel,g_camera_field_ppu.fixedColor,
+                    g_camera_field_ppu.windowsel,g_camera_field_ppu.window1left,g_camera_field_ppu.window1right,
+                    g_camera_field_ppu.hScroll[1],g_camera_field_ppu.vScroll[1]);
+            }
+        }
         if (line == 1) issd_stadium_trace_ppu(g_ram);
         ppu_runLine(g_snes->ppu, line);
         issd_hd_note_rendered_line(g_snes->ppu, line);
     }
     ppu_handleVblank(g_snes->ppu);
+    if(tactical) {
+        issd_camera_compose(&g_camera_field_ppu,issd_widescreen_presented_ram(g_ram),g_pixel_buffer,
+                            g_camera_hud,camera_width,SNES_HEIGHT);
+        PpuBindOverlaySurface(g_snes->ppu,kPpuOverlaySource_Bg3,NULL,0);
+        PpuClearOverlayCaptures(g_snes->ppu);
+    }
     if (g_issd_config.color_boost)
         issd_visual_boost_frame(g_pixel_buffer, (size_t)(SNES_WIDTH + 2 * (g_ws_active ? g_ws_extra : 0)) * SNES_HEIGHT);
+    IssdConfig readability_config=g_issd_config;
+    if(!issd_camera_active()) readability_config.camera_mode=ISSD_CAMERA_CLASSIC;
     issd_readability_render(g_pixel_buffer, SNES_WIDTH + 2 * (g_ws_active ? g_ws_extra : 0),
                             SNES_HEIGHT, g_ws_active ? g_ws_extra : 0,
-                            issd_widescreen_presented_ram(g_ram), &g_issd_config);
+                            issd_widescreen_presented_ram(g_ram), &readability_config);
     issd_team_visual_render(g_pixel_buffer, SNES_WIDTH + 2 * (g_ws_active ? g_ws_extra : 0),
                             SNES_HEIGHT, g_ws_active ? g_ws_extra : 0);
     issd_team_visual_end(g_snes->ppu);
     issd_running_end(g_snes->ppu);
     issd_widescreen_end(g_snes->ppu);
     issd_hd_dump_frame(g_snes->ppu);
+    if(camera_profile) fprintf(stderr,"[CameraTime] %.6f\n",
+        (double)(SDL_GetPerformanceCounter()-camera_begin)*1000.0/SDL_GetPerformanceFrequency());
 }
 
 /* Equivalent policies at native and interpreted decision boundaries. No CPU
@@ -747,6 +784,7 @@ static void IssdGameplayDecision(CpuState *cpu, uint32_t pc, bool native) {
     }
 }
 static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc) {
+    if (!interp_bridge_lle_master_deadline_reached(cpu)) issd_replay_observe(cpu->ram,pc);
     issd_stadium_scene_transfer(g_snes ? g_snes->ppu : NULL,cpu->ram,pc);
     if (!issd_stadium_scene_opcode(g_snes ? g_snes->cart : NULL, cpu->ram,
                                   g_rom_data, g_rom_size, pc))
@@ -755,6 +793,7 @@ static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc) {
     IssdGameplayDecision(cpu, pc, true);
 }
 static void IssdGameplayInterpreted(CpuState *cpu, uint32_t pc) {
+    issd_replay_observe(cpu->ram,pc);
     issd_stadium_scene_transfer(g_snes ? g_snes->ppu : NULL,cpu->ram,pc);
     if (!issd_stadium_scene_opcode(g_snes ? g_snes->cart : NULL, cpu->ram,
                                   g_rom_data, g_rom_size, pc))
@@ -765,8 +804,11 @@ static void IssdGameplayInterpreted(CpuState *cpu, uint32_t pc) {
 static void IssdConfigureGameplayHooks(void) {
     /* This runner owns the gameplay opcode policy slots. Unregister disabled
      * policies entirely so original execution avoids callback/sync overhead. */
-    cpu_set_native_block_hook((g_issd_config.gameplay_goalkeeper_ai || g_issd_config.gameplay_player_ai || g_issd_config.gameplay_bug_fixes || issd_stadium_has_profiles() || issd_stadium_trace_enabled()) ? IssdGameplayNativeBlock : NULL);
+    cpu_set_native_block_hook(IssdGameplayNativeBlock);
     interp_bridge_set_pre_opcode_hook(0, NULL);
+    interp_bridge_set_pre_opcode_hook(0x8ba997,IssdGameplayInterpreted);
+    interp_bridge_set_pre_opcode_hook(0x8baafd,IssdGameplayInterpreted);
+    interp_bridge_set_pre_opcode_hook(0x8bae80,IssdGameplayInterpreted);
     if (issd_stadium_trace_enabled() || issd_stadium_has_profiles()) {
         static const uint32_t trace_pcs[] = {
             0x85a50a, 0xa4e0b3, 0x8bdb65, 0x98f205, 0xa4d7ce, 0xa4d6b2, 0xa4d6c5,
@@ -1915,7 +1957,7 @@ static bool SaveFrame(const char *path, const uint32_t *native, int w, int h) {
         scale--;
     UpscaleFrameBuffer(g_hi_pixel_buffer, w * scale, h * scale, native, w, h,
                        ISSD_FILTER_NEAREST);
-    issd_hd_composite(g_snes ? g_snes->ppu : NULL, native, w, h,
+    if(!issd_camera_active()) issd_hd_composite(g_snes ? g_snes->ppu : NULL, native, w, h,
                       g_hi_pixel_buffer, scale,
                       (w - SNES_WIDTH) / 2);
     return SaveBmp(path, g_hi_pixel_buffer, w * scale, h * scale);
@@ -2835,7 +2877,7 @@ int main(int argc, char **argv) {
                     UpscaleFrameBuffer(g_hi_pixel_buffer, cur_tex_w, cur_tex_h,
                                    g_pixel_buffer, cur_render_w, cur_render_h,
                                    g_issd_config.scaling_filter);
-                    if (issd_hd_active() && cur_tex_w % cur_render_w == 0)
+                    if (issd_hd_active() && !issd_camera_active() && cur_tex_w % cur_render_w == 0)
                         issd_hd_composite(g_snes->ppu, g_pixel_buffer,
                                           cur_render_w, cur_render_h,
                                           g_hi_pixel_buffer,

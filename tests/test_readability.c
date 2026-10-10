@@ -29,6 +29,11 @@ int main(void) {
     put(0x608,120); put(0x60c,110); clear();
     issd_readability_render(fb,446,224,95,ram,&cfg); assert(!changed());
     put(0x1ace,0); clear(); issd_readability_render(fb,446,224,95,ram,&cfg); assert(changed()>0);
+    cfg.camera_mode=ISSD_CAMERA_TACTICAL_WIDE;
+    put(0x608,0);put(0x60c,100);clear();
+    issd_readability_render(fb,446,224,95,ram,&cfg);
+    assert(fb[108*446+138]==0xff60c8ff);
+    cfg.camera_mode=ISSD_CAMERA_CLASSIC;put(0x608,120);
     put(0x608,0x8000); clear(); issd_readability_render(fb,446,224,95,ram,&cfg); assert(!changed());
     cfg.player_markers=false; cfg.radar_scale=2; put(0x12a2,1536); put(0x12a4,512);
     put(0x62a,768); put(0x62c,256); clear();
