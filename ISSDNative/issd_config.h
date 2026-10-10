@@ -13,6 +13,8 @@
 #define ISSD_INPUT_SOURCE_MASK ((UINT64_C(0x1fffff) & ~(UINT64_C(1) << 5)) | (UINT64_C(0x3f) << 32))
 
 enum { ISSD_VISUAL_ORIGINAL, ISSD_VISUAL_SHARP, ISSD_VISUAL_ENHANCED, ISSD_VISUAL_CUSTOM };
+typedef enum { ISSD_CAMERA_CLASSIC, ISSD_CAMERA_TACTICAL,
+               ISSD_CAMERA_TACTICAL_WIDE } IssdCameraMode;
 
 enum { ISSD_MATCH_ORIGINAL, ISSD_MATCH_CLASSIC, ISSD_MATCH_CASUAL, ISSD_MATCH_CUSTOM };
 typedef struct {
@@ -82,6 +84,7 @@ typedef struct {
     IssdInternalResolution internal_res;
     IssdScalingFilter scaling_filter;
     bool true_widescreen;
+    IssdCameraMode camera_mode;
     int output_resolution; /* 0 current/auto, 1 720p, 2 1080p, 3 1440p, 4 2160p */
     int overlay_scale;     /* 0 automatic, 1..4 output-pixel UI scale */
     bool ball_outline; /* Deprecated: always disabled; retained for source compatibility. */

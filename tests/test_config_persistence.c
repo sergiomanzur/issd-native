@@ -11,6 +11,8 @@ int main(int argc, char **argv) {
 
     IssdConfig cfg;
     issd_config_init_defaults(&cfg);
+    assert(cfg.camera_mode == ISSD_CAMERA_CLASSIC);
+    cfg.camera_mode = ISSD_CAMERA_TACTICAL_WIDE;
     assert(!cfg.integer_scaling && cfg.output_resolution == 0 && cfg.overlay_scale == 0);
     assert(!cfg.ball_outline && !cfg.ball_shadow && !cfg.player_markers && !cfg.player_names);
     assert(!cfg.enhanced_running_animation);
@@ -94,14 +96,17 @@ int main(int argc, char **argv) {
     IssdConfig loaded;
     if (!issd_config_load(&loaded, argv[1])) return 9;
     assert(loaded.integer_scaling && loaded.output_resolution == 4 && loaded.overlay_scale == 3);
+    assert(loaded.camera_mode == ISSD_CAMERA_TACTICAL_WIDE);
     assert(loaded.scaling_filter == ISSD_FILTER_SHARP && loaded.radar_scale == 3);
     assert(loaded.hud_scale == 3 && loaded.radar_position == 4 && loaded.radar_opacity == 50);
     assert(!loaded.ball_outline && loaded.ball_shadow && loaded.player_markers && loaded.player_names);
     assert(!loaded.enhanced_running_animation);
     loaded.enhanced_running_animation = true;
+    loaded.camera_mode = ISSD_CAMERA_TACTICAL;
     assert(issd_config_save(&loaded, argv[1]));
     assert(issd_config_load(&loaded, argv[1]));
     assert(loaded.enhanced_running_animation);
+    assert(loaded.camera_mode == ISSD_CAMERA_TACTICAL);
     if (strcmp(loaded.rom_path, cfg.rom_path) != 0) return 10;
     if (strcmp(loaded.mods_dir, cfg.mods_dir) != 0) return 11;
     if (loaded.aspect_ratio != ISSD_ASPECT_16_9) return 12;
@@ -121,7 +126,7 @@ int main(int argc, char **argv) {
 
     f = fopen(argv[1], "w");
     assert(f);
-    fputs("output_resolution=999\noverlay_scale=-4\nradar_scale=999\nscaling_filter=99\n"
+    fputs("camera_mode=999\noutput_resolution=999\noverlay_scale=-4\nradar_scale=999\nscaling_filter=99\n"
           "hud_scale=999\nradar_position=-3\nradar_opacity=-100\n"
           "player_1_stick_deadzone=-999999999999999999999999999\n"
           "player_1_trigger_deadzone=999999999999999999999999999\n"

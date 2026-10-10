@@ -27,6 +27,7 @@ set(ISSD_GAME_SOURCES
     "${ISSD_ROOT}/ISSDNative/issd_team_visual.c"
     "${ISSD_ROOT}/ISSDNative/issd_config.c"
     "${ISSD_ROOT}/ISSDNative/issd_video.c"
+    "${ISSD_ROOT}/ISSDNative/issd_camera.c"
     "${ISSD_ROOT}/ISSDNative/issd_readability.c"
     "${ISSD_ROOT}/ISSDNative/issd_gameplay.c"
     "${ISSD_ROOT}/ISSDNative/issd_bugfix_keeper.c"

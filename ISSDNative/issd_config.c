@@ -310,6 +310,11 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     if (!strcmp(key, "scaling_filter")) { if (valid_int) cfg->scaling_filter = (IssdScalingFilter)clamp(ival, 0, 3); return; }
     if (!strcmp(key, "internal_res")) { if (valid_int) cfg->internal_res = (IssdInternalResolution)clamp(ival, 0, 5); return; }
     if (!strcmp(key, "aspect_ratio")) { if (valid_int) cfg->aspect_ratio = (IssdAspectRatio)clamp(ival, 0, ISSD_ASPECT_COUNT - 1); return; }
+    if (!strcmp(key, "camera_mode")) {
+        cfg->camera_mode = valid_int && ival >= ISSD_CAMERA_CLASSIC && ival <= ISSD_CAMERA_TACTICAL_WIDE ?
+            (IssdCameraMode)ival : ISSD_CAMERA_CLASSIC;
+        return;
+    }
 
     if (strcmp(key, "rom_path") == 0) copy_config_string(cfg->rom_path, sizeof(cfg->rom_path), value);
     else if (strcmp(key, "mods_dir") == 0) copy_config_string(cfg->mods_dir, sizeof(cfg->mods_dir), value);
@@ -406,6 +411,7 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "internal_res=%d\n", (int)cfg->internal_res);
     fprintf(f, "scaling_filter=%d\n", (int)cfg->scaling_filter);
     fprintf(f, "true_widescreen=%d\n", cfg->true_widescreen ? 1 : 0);
+    fprintf(f, "camera_mode=%d\n", (int)cfg->camera_mode);
     fprintf(f, "output_resolution=%d\n", clamp(cfg->output_resolution, 0, 4));
     fprintf(f, "overlay_scale=%d\n", clamp(cfg->overlay_scale, 0, 4));
     fprintf(f, "ball_outline=0\n");
