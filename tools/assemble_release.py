@@ -131,7 +131,8 @@ def assemble(windows_build, linux_build, android_build, studio_exe):
                  'GOAL_REPLAY_FIX SHOOTOUT_ACCEPTANCE SUBSTITUTION_FLOW_ACCEPTANCE '
                  'CONTINUOUS_CAMPAIGN_ACCEPTANCE CUP_WINNING_ACCEPTANCE EXTRA_STADIUM_ACCEPTANCE '
                  'STADIUM_PROFILE_CONTRACT INDEPENDENT_STADIUM_ACCEPTANCE MOD_STUDIO_QUICKSTART '
-                 'RELEASE_VALIDATION_2026_10_10').split()
+                 'CAMERA_INVESTIGATION TACTICAL_CAMERA_1_0_VALIDATION '
+                 'RELEASE_VALIDATION_2026_10_10 RELEASE_VALIDATION_0_5_0_BETA_2').split()
     common.update({f'docs/{name}.md': ROOT/f'docs/{name}.md' for name in documents})
     for source in (ROOT/'deps/snesrecomp/third_party/psxrecomp_color_lut').glob('LICENSE-*.txt'):
         common[f'licenses/psxrecomp_color_lut/{source.name}'] = source

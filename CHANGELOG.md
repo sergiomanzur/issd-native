@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.5.0-beta.2 — 2026-10-10
+
 - Add persistent Classic / Tactical 80% / Tactical Wide 67% camera choices for
   1.0 development, using real expanded stadium coverage, signed actors,
   replay player history and independently sized HUD elements. Preserve original

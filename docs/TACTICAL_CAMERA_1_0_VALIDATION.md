@@ -1,7 +1,9 @@
 # Tactical camera — 1.0 development validation
 
-Implemented on 2026-10-10. This is a development feature; VERSION and the
-published v0.5.0-beta.1 release are unchanged.
+Implemented on 2026-10-10. At implementation completion, VERSION and the
+published v0.5.0-beta.1 release were unchanged. This 1.0 development feature
+is now included in v0.5.0-beta.2; see
+[its release validation](RELEASE_VALIDATION_0_5_0_BETA_2.md) for the fresh release gate.
 
 | Graphics camera | World scale | Visible coverage per axis |
 | --- | --- | --- |
