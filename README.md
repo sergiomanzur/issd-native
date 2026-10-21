@@ -6,11 +6,41 @@ The goal is to preserve the original gameplay while adding modern controls, pres
 
 The current release is **[v0.5.0-beta.3](https://github.com/sergiomanzur/issd-native/releases/tag/v0.5.0-beta.3)**, a GitHub prerelease for Windows, Linux and Android. It improves touch controls with clear button letters and an eight-direction thumb pad that retains movement while sliding. It also includes two tactical camera zoom-outs, centered campaign cards and recorded replay edge-player history. It also includes audio timing, shootout/persistence, substitution and widescreen replay fixes, bounded independent stadium profiles, and the improved Mod Studio with two example stadiums. Four-player local play, configurable controls, campaign recovery, cartridge password interoperability, exhibition shortcuts and optional AI/bug fixes remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.5.0-beta.3.md).
 
-Enable **Graphics → Running Animation → Enhanced** and hold **Y / Dash** to use the new running poses. Enhanced also adds midpoint poses to ordinary walking in all eight directions; other action clips retain their original animation. Ball Outline has been removed, including legacy saved enables.
+Ball Outline has been removed, including legacy saved enables.
 
 The [supported-feature inventory](docs/SUPPORTED_FEATURES.md) records actual behavior and inactive settings; [acceptance checks](docs/ACCEPTANCE_TESTS.md) separate automated evidence from pending complete-campaign and device testing. Original formation/substitution menus have [input-driven acceptance checks](docs/TEAM_CHANGES_ACCEPTANCE.md) for first-team commits, request cancellation and advancing save/reload with AI off/on. The project remains a beta; netplay is a [future design](docs/NETPLAY_DESIGN.md).
 
 Project metadata for [recomp.board](https://recomp.fyi) and other tools lives in [`.recomp.json`](.recomp.json), following the [recomp.board specification](https://recomp.fyi/spec). Its `released` status means a public build is available and maintained; the project remains a beta working toward 1.0. Update the manifest whenever the project status, toolchain, or supported original release changes.
+
+## Latest source improvements
+
+The following changes are available in source builds after **v0.5.0-beta.3**;
+they are not included in that packaged release:
+
+- **Fit Pixel Perfect:** Choose **Graphics → Aspect Ratio → Fit Pixel Perfect**
+  to select a tested widescreen width at the largest whole-number scale that
+  fits the output. A 1080p display uses 480x224 at 4x; a 1280x800 Steam Deck
+  display uses 426x224 at 3x. **Widescreen Menus → Off** keeps menus, the title,
+  coin toss and statistics at their original centered width while matches,
+  replays and penalties remain wide.
+- **Widescreen polish:** Rain and snow fill the side margins without repeating
+  HUD text, stadium edges avoid repeated fence/advertising fragments, and
+  announcement bars retain their original centered width.
+- **Enhanced walking and running:** Enable **Graphics → Running Animation →
+  Enhanced** for lower-body midpoint poses in all eight directions. Ordinary
+  walking is included; hold **Y / Dash** for the running loop. Other action
+  clips retain their original animation, and movement and game timing stay
+  unchanged.
+- **Controller reconnects:** Detached slots are reclaimed when a replacement
+  arrives before the old removal event. Other attached controllers, including
+  identical models, keep their player slots. Release held buttons after reconnect.
+
+These improvements adapt selected changes from
+[Mabec-games/iss-deluxed](https://github.com/Mabec-games/iss-deluxed/tree/54344cb).
+Existing presentation defaults and the in-game overlay remain available.
+The Windows build and 54 focused tests passed, alongside a five-width
+widescreen check. Full-suite and Android/device validation remain incomplete.
+See [graphics settings](docs/GRAPHICS_SETTINGS.md) and [controls](docs/CONTROLS.md).
 
 ## Current platforms
 
@@ -35,7 +65,7 @@ Current Windows, Linux, and Android builds succeed; gameplay and controller regr
 - **Campaign saves:** Explicit Continue, safe campaign checkpoints, two backup generations, and compatibility checks against applied gameplay data. See [the campaign saves guide](docs/CAMPAIGN_SAVES.md).
 - **Password bridge:** Native entry/export for all six original Cup/World Series password formats, original checksum validation and restoration, and autosave after import. Requires unmodified retail gameplay. See [the password guide](docs/PASSWORD_BRIDGE.md).
 - **Save states:** Quicksave/quickload and eight numbered slots with integrity and gameplay compatibility checks. New snapshots preserve native CPU/timing and multitap state. Older v4–v8 raw snapshots require a compatibility warning and explicit confirmation.
-- **Presentation:** Window-size presets, actual resolution reporting, independent integer scaling, 4:3/square-pixel/Authentic 320 and wider views, nearest/linear/Sharp/CRT filters, sharp scalable overlays, Original/Sharp/Enhanced presets with a sample preview/reset, and optional ball/player/radar readability with label size and radar placement/opacity controls. See [graphics settings](docs/GRAPHICS_SETTINGS.md).
+- **Presentation:** Window-size presets, actual resolution reporting, independent integer scaling, 4:3/square-pixel/Authentic 320, Fit Pixel Perfect and wider views, with optional original-width menus, nearest/linear/Sharp/CRT filters, sharp scalable overlays, Original/Sharp/Enhanced presets with a sample preview/reset, and optional ball/player/radar readability with label size and radar placement/opacity controls. See [graphics settings](docs/GRAPHICS_SETTINGS.md).
 - **Modding:** Ordered roster/formation/kit/stadium packs, striped and away kits, custom flags, team plates, squad photos, and BMP background tile replacements. Bounded independent stadium profiles add shortened pitches, native artwork and local HD sets. Mod Studio provides compiled previews, image import, history, portable export and isolated Test/Stop.
 - **Gameplay tweaks:** Stackable, persistent goalkeeper shot tracking and formation/substitution-aware player positioning, controlled from the new **Gameplay Tweaks** overlay page. Both default off and apply live. See [the gameplay tweaks guide](docs/GAMEPLAY_TWEAKS.md).
 - **Original bug fixes:** One persistent master toggle for six verified corrections, with original behavior when Off and save compatibility checks. Reported glitches without a verified cause remain unresolved. See [the bug-fix guide](docs/ORIGINAL_BUG_FIXES.md).
@@ -88,7 +118,7 @@ Connect up to four SDL2-compatible gamepads before starting or while the game is
 
 In **Open Game**, choose the cartridge's multiplayer player-count option. Original configurations include **P1+P3 versus P2+P4** and **all four players versus CPU**.
 
-Disconnecting a pad clears its input without moving the remaining players to other slots. A live match pauses in the overlay. Reconnect, then resume when ready; new connections fill the first vacant slot. With several vacancies, slots fill in ascending order. A fifth gamepad is ignored.
+Disconnecting a pad clears its input without moving the remaining players to other slots. A live match pauses in the overlay. Reconnect, then resume when ready; new connections fill the first vacant slot. With several vacancies, slots fill in ascending order. Detached slots are reclaimed before assigning a replacement, and a delayed removal event cannot remove the replacement. Attached controllers keep their slots even when they share a model. A fifth gamepad is ignored.
 
 Any assigned pad can open the overlay with **Guide/Home** or **Back+Start**, then navigate with the D-pad, A, and B. Held gamepad controls must be released before affecting gameplay after closing the overlay or regaining window focus. See [the multiplayer guide](docs/LOCAL_MULTIPLAYER.md) for protocol, script, and validation details.
 
