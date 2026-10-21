@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "../ISSDNative/issd_running.c"
-static uint8_t memory[0x20000], cartridge[0x400000], atlas[SIDE*8][SIDE*16][3];
+static uint8_t memory[0x20000], cartridge[0x400000], atlas[SIDE*8][SIDE*20][3];
 static Ppu machine;
 static void store(unsigned a,unsigned v) { memory[a]=v; memory[a+1]=v>>8; }
 static size_t read_file(const char *path,void *out,size_t capacity) {
@@ -13,25 +13,27 @@ static size_t read_file(const char *path,void *out,size_t capacity) {
     size_t n=fread(out,1,capacity,f); fclose(f); return n;
 }
 int main(int argc,char **argv) {
-    assert(argc==5);
+    assert(argc==5 || argc==6);
+    const bool walking=argc==6;
+    const unsigned steps=walking ? 10 : 8;
     size_t rom_size=read_file(argv[1],cartridge,sizeof(cartridge));
     assert(read_file(argv[2],memory,sizeof(memory))==sizeof(memory));
     assert(read_file(argv[3],&machine,sizeof(machine))==sizeof(machine));
     assert(machine.obsel==3);
     for (unsigned o=0x500;o<0x1b00;o+=0x100) store(o,0);
-    store(0x802,0x60); store(0x81c,0xcf9f); store(0x818,0xcfaf);
-    store(0x832,0x38); store(0x892,0xbecf); store(0x830,2);
-    store(0x81e,0); store(0x832,0x38);
+    store(0x802,0x60); store(0x81c,walking ? 0xcef8 : 0xcf9f); store(0x818,walking ? 3 : 0xcfaf);
+    store(0x832,walking ? 0x20 : 0x38); store(0x892,walking ? 0xbdd4 : 0xbecf); store(0x830,2);
+    store(0x81e,0);
     memset(atlas,32,sizeof(atlas));
     unsigned changed=0;
-    for (unsigned d=0;d<8;d++) for (unsigned step=0;step<8;step++) {
-        const uint8_t *table=span(cartridge,rom_size,0x82cf9f+d*2,2); assert(table);
-        const uint8_t *strip=span(cartridge,rom_size,0x820000|word(table,0),16); assert(strip);
+    for (unsigned d=0;d<8;d++) for (unsigned step=0;step<steps;step++) {
+        const uint8_t *table=span(cartridge,rom_size,(walking ? 0x82cef8 : 0x82cf9f)+d*2,2); assert(table);
+        const uint8_t *strip=span(cartridge,rom_size,0x820000|word(table,0),steps*2); assert(strip);
         uint16_t desc=(uint16_t)(word(strip,step*2)|0x8000);
         const uint8_t *header=span(cartridge,rom_size,0x820000|desc,9); assert(header);
         store(0x800,word(header,0)); store(0x814,desc);
-        store(0x816,cartridge[0x10000+0x4faf+step]/2); /* CFAF in bank82 */
-        store(0x81a,((step+1)%8)*2); store(0x82e,d);
+        store(0x816,walking ? 1 : cartridge[0x10000+0x4faf+step]/2); /* CFAF in bank82 */
+        store(0x81a,((step+1)%steps)*2); store(0x82e,d);
         uint16_t tiles[WORDS]; Geometry g; uint8_t image[SIDE][SIDE];
         assert(next_tiles(cartridge,rom_size,desc,tiles));
         memcpy(machine.vram+0x6600,tiles,sizeof(tiles));
@@ -54,8 +56,11 @@ int main(int argc,char **argv) {
         }
     }
     FILE *out=fopen(argv[4],"wb"); assert(out);
-    fprintf(out,"P6\n%d %d\n255\n",SIDE*16,SIDE*8); assert(fwrite(atlas,1,sizeof(atlas),out)==sizeof(atlas)); fclose(out);
-    printf("%u of 64 real running midpoints change native pixels\n",changed);
-    assert(changed==64);
+    fprintf(out,"P6\n%d %d\n255\n",SIDE*steps*2,SIDE*8);
+    for (unsigned y=0;y<SIDE*8;y++)
+        assert(fwrite(atlas[y],3,SIDE*steps*2,out)==SIDE*steps*2);
+    fclose(out);
+    printf("%u of %u real locomotion midpoints change native pixels\n",changed,steps*8);
+    assert(changed==steps*8);
     return 0;
 }

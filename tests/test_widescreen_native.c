@@ -13,6 +13,8 @@ void PpuSetExtraSpaceCentered(Ppu *p, uint16_t n) { p->extraLeftRight = n; p->ex
 void PpuSetExtraSideSpace(Ppu *p,int l,int r,int b) { p->extraLeftCur=l;p->extraRightCur=r;p->extraBottomCur=b; }
 void PpuSetWidescreenLayerClamp(Ppu *p, uint8_t n) { p->wsLayerClamp = n; }
 void PpuSetWidescreenLayerRepeat(Ppu *p, uint8_t n) { p->wsLayerRepeat = n; }
+void PpuSetWidescreenMarginTiles(Ppu *p, int l, uint16_t a, uint16_t b) { p->wsMarginTileLayer = l >= 0 && l < 4 ? (uint8_t)(l + 1) : 0; p->wsMarginTileMin = a; p->wsMarginTileMax = b; }
+void PpuSetWidescreenMarginRows(Ppu *p, uint8_t a, uint8_t b) { p->wsMarginRow0 = a; p->wsMarginRow1 = b; }
 void PpuSetWidescreenLayerMask(Ppu *p, uint8_t n) { p->wsLayerWidenMask = n; }
 void PpuSetWidescreenWindowExpansion(Ppu *p, uint8_t l, uint8_t w) { p->wsWindowExpandLayers = l; p->wsWindowExpandWindows = w; }
 void PpuSetWidescreenLayerClampBand(Ppu *p, uint8_t l, uint8_t a, uint8_t b) { p->wsClampY0[l] = a; p->wsClampY1[l] = b; }

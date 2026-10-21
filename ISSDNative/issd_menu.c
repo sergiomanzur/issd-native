@@ -379,7 +379,7 @@ bool issd_menu_internal_res_applies(void) {
 }
 
 #define MENU_VISIBLE_ROWS 15
-#define GRAPHICS_ROWS 21
+#define GRAPHICS_ROWS 22
 static int s_main_visible_rows = MENU_VISIBLE_ROWS, s_graphics_visible_rows = GRAPHICS_ROWS;
 static void menu_fit_height(int height) {
     s_main_visible_rows = (height - 44) / 12;
@@ -453,6 +453,7 @@ static void graphics_adjust(int direction) {
     case 17: g_issd_config.enhanced_running_animation = !g_issd_config.enhanced_running_animation; break;
     case 18: g_issd_config.crt_strength = ((g_issd_config.crt_strength / 25 + direction + 5) % 5) * 25; break;
     case 19: g_issd_config.camera_mode = (IssdCameraMode)((g_issd_config.camera_mode + direction + 3) % 3); break;
+    case 20: g_issd_config.widescreen_menus = !g_issd_config.widescreen_menus; break;
     default: issd_menu_cancel(); return;
     }
     issd_config_save(&g_issd_config, NULL);
@@ -1091,7 +1092,7 @@ static void render_graphics_preview(uint32_t *fb, int width, int height) {
         int numerator=4, denominator=3;
         switch(cfg->aspect_ratio) {
         case ISSD_ASPECT_8_7: numerator=8;denominator=7;break;
-        case ISSD_ASPECT_16_9: numerator=16;denominator=9;break;
+        case ISSD_ASPECT_16_9: case ISSD_ASPECT_FIT: numerator=16;denominator=9;break;
         case ISSD_ASPECT_16_10: numerator=16;denominator=10;break;
         case ISSD_ASPECT_21_9: numerator=21;denominator=9;break;
         case ISSD_ASPECT_AUTHENTIC: numerator=10;denominator=7;break;
@@ -1136,7 +1137,7 @@ static void render_graphics(uint32_t *fb, int width, int height, int bx, int by,
 #ifndef ISSD_ANDROID
     static const char *output[] = { "AUTO", "1280x720", "1920x1080", "2560x1440", "3840x2160" };
 #endif
-    static const char *aspect[] = { "4:3 CRT", "8:7 PIXEL", "16:9 WIDE", "16:10 PC", "21:9 ULTRA", "LEGACY INTEGER", "AUTHENTIC 320" };
+    static const char *aspect[] = { "4:3 CRT", "8:7 PIXEL", "16:9 WIDE", "16:10 PC", "21:9 ULTRA", "LEGACY INTEGER", "AUTHENTIC 320", "FIT PIXEL PERFECT" };
     static const char *filter[] = { "NEAREST", "LINEAR", "CRT SCANLINES", "SHARP" };
     static const int multiple[] = {1,2,3,4,6,8};
     char rows[GRAPHICS_ROWS][64], scale[16];
@@ -1173,7 +1174,8 @@ static void render_graphics(uint32_t *fb, int width, int height, int bx, int by,
     snprintf(rows[18], sizeof rows[18], "CRT Strength: <%d%%>", g_issd_config.crt_strength);
     snprintf(rows[19], sizeof rows[19], "Camera: <%s>", g_issd_config.camera_mode == ISSD_CAMERA_TACTICAL ? "TACTICAL 80%" :
              g_issd_config.camera_mode == ISSD_CAMERA_TACTICAL_WIDE ? "TACTICAL WIDE 67%" : "CLASSIC");
-    snprintf(rows[20], sizeof rows[20], "Back");
+    snprintf(rows[20], sizeof rows[20], "Widescreen Menus: <%s>", g_issd_config.widescreen_menus ? "ON" : "OFF (GAMEPLAY ONLY)");
+    snprintf(rows[21], sizeof rows[21], "Back");
     DrawString(fb, width, height, bx + 14, by + 4, "GRAPHICS / READABILITY", 0xFFFFD700);
     menu_keep_visible();
     for (int row = g_overlay_menu.scroll; row < GRAPHICS_ROWS && row < g_overlay_menu.scroll + s_graphics_visible_rows; row++) {
@@ -1286,7 +1288,8 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_16_9)    ? "16:9 WIDE" :
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_16_10)   ? "16:10 PC" :
                              (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9)    ? "21:9 ULTRA" :
-                             (g_issd_config.aspect_ratio == ISSD_ASPECT_AUTHENTIC) ? "AUTHENTIC 320" : "INTEGER";
+                             (g_issd_config.aspect_ratio == ISSD_ASPECT_AUTHENTIC) ? "AUTHENTIC 320" :
+                             (g_issd_config.aspect_ratio == ISSD_ASPECT_FIT)       ? "FIT PIXEL PERFECT" : "INTEGER";
 
     static const int res_multiple[] = {1,2,3,4,6,8};
     int multiple = res_multiple[g_issd_config.internal_res];

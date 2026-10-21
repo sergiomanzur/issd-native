@@ -221,6 +221,14 @@ struct Ppu {
   // Clamp keeps a layer in the authentic 256 columns. Mirror/repeat render
   // the authentic scanline in isolation and use it to fill the side margins.
   uint8_t wsLayerClamp, wsLayerMirror, wsLayerRepeat;
+  // Optional margin tile filter (PpuSetWidescreenMarginTiles): layer+1 (0 =
+  // off) renders into the side margins, but there only tiles numbered
+  // [min, max]. Used for weather drawn on the same BG3 map as the HUD.
+  uint8_t wsMarginTileLayer;
+  uint16_t wsMarginTileMin, wsMarginTileMax;
+  // Map rows [row0, row1] that hold those tiles. Margin scanlines outside
+  // the band borrow a row from inside it (row1 > row0; 0, 0 = off).
+  uint8_t wsMarginRow0, wsMarginRow1;
   // Optional scanline bands: clamp or cyclically repeat only [y0,y1).
   uint8_t wsClampY0[4], wsClampY1[4];
   uint8_t wsRepeatY0[4], wsRepeatY1[4];
@@ -385,6 +393,8 @@ static inline int PpuWidescreenLayerExtra(
   if (layer == 4 && (ppu->wsLayerClamp & 0x10))
     return 0;
   if (layer < 4) {
+    if (ppu->wsMarginTileLayer == layer + 1)
+      return extra;
     if (ppu->wsLayerWidenMask &&
         !(ppu->wsLayerWidenMask & (1u << layer)))
       return 0;
@@ -579,6 +589,13 @@ const uint8_t *PpuGetMode2Bg1Palette(const Ppu *ppu);
 // Per-layer widescreen clamp: bit L keeps BG(L+1) in the authentic 256
 // columns while other layers extend into the margins. Re-apply per frame.
 void PpuSetWidescreenLayerClamp(Ppu *ppu, uint8_t mask);
+// Let BG `layer` render into the side margins, but there only tiles numbered
+// [min, max] (e.g. weather on a HUD layer). layer < 0 turns it off.
+void PpuSetWidescreenMarginTiles(Ppu *ppu, int layer, uint16_t min,
+                                 uint16_t max);
+// Tilemap rows [row0, row1] where those tiles live; margin scanlines on
+// other rows (a HUD band) repeat rows from inside it. 0, 0 turns it off.
+void PpuSetWidescreenMarginRows(Ppu *ppu, uint8_t row0, uint8_t row1);
 
 // Extend selected game-authored PPU windows by the current widescreen margins
 // while evaluating the selected layers. Emulated window registers are not

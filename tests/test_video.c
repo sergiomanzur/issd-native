@@ -20,6 +20,24 @@ int main(void) {
         IssdVideoRect r=issd_video_viewport(w,h,320,224,ISSD_ASPECT_AUTHENTIC,true,true);
         assert(r.x>=0 && r.y>=0 && r.w>0 && r.h>0 && r.x+r.w<=w && r.y+r.h<=h);
     }
+    /* Fit: the widest tested view at the largest whole-number scale. */
+    assert(issd_video_fit_extra(1920,1080)==112);  /* 480 x4 */
+    assert(issd_video_fit_extra(2560,1440)==85);   /* 426 x6 */
+    assert(issd_video_fit_extra(3840,2160)==85);   /* 426 x9 */
+    assert(issd_video_fit_extra(1280,720)==85);    /* 426 x3 */
+    assert(issd_video_fit_extra(1280,800)==85);    /* 426 x3, Steam Deck */
+    assert(issd_video_fit_extra(3440,1440)==112);  /* 480 x6 */
+    assert(issd_video_fit_extra(800,600)==71);     /* 398 x2 */
+    assert(issd_video_fit_extra(0,0)==71);
+    expect_rect(issd_video_viewport(1920,1080,480,224,ISSD_ASPECT_FIT,true,false),0,92,1920,896);
+    expect_rect(issd_video_viewport(2560,1440,426,224,ISSD_ASPECT_FIT,true,false),2,48,2556,1344);
+    expect_rect(issd_video_viewport(1280,800,426,224,ISSD_ASPECT_FIT,true,false),1,64,1278,672);
+    for (int w=1; w<4000; w+=41) for (int h=1; h<2200; h+=59) {
+        int render_w=256+2*issd_video_fit_extra(w,h);
+        IssdVideoRect r=issd_video_viewport(w,h,render_w,224,ISSD_ASPECT_FIT,true,false);
+        assert(r.x>=0 && r.y>=0 && r.w>0 && r.h>0 && r.x+r.w<=w && r.y+r.h<=h);
+        if (h>=224 && w>=render_w) assert(r.h%224==0 && r.w==render_w*(r.h/224));
+    }
     int w,h;
     issd_video_output_dimensions(0,1280,800,&w,&h); assert(w==1280 && h==800);
     issd_video_output_dimensions(2,1280,800,&w,&h); assert(w==1920 && h==1080);

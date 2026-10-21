@@ -50,6 +50,16 @@ int issd_input_add(int device_index) {
     if (instance < 0 || !SDL_IsGameController(device_index)) return -1;
     int existing = issd_input_player(instance);
     if (existing >= 0) return existing;
+    /* SDL can report the replacement before the old removal event. Reclaim
+     * detached slots now; the eventual stale instance ID is safely ignored.
+     * Do not infer identity from GUIDs: identical pads share a model GUID. */
+    for (int i = 0; i < ISSD_LOCAL_PLAYERS; i++) {
+        if (s_controllers[i] && !SDL_GameControllerGetAttached(s_controllers[i])) {
+            SDL_GameControllerClose(s_controllers[i]);
+            s_controllers[i] = NULL;
+            s_blocked[i] = 0;
+        }
+    }
     for (int i = 0; i < ISSD_LOCAL_PLAYERS; i++) {
         if (s_controllers[i]) continue;
         SDL_GameController *pad = SDL_GameControllerOpen(device_index);

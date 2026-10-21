@@ -21,6 +21,12 @@ until all relevant sources release. Profiles follow P1–P4 slots across session
 not controller GUIDs. Connecting controllers in a different order changes which
 physical controller receives a saved profile.
 
+When a wireless controller reconnects before SDL delivers the old removal
+event, detached slots are reclaimed before assigning its replacement. Late
+removal events cannot remove the replacement. Attached controllers keep their
+slots, including identical models; held buttons must be released after reconnect.
+A reconnect uses the first vacant slot rather than persistent device identity.
+
 Overlay navigation remains D-pad, A/Enter, B/Back/Escape regardless of gameplay
 bindings. Guide and the Back+Start chord stay reserved for overlay access.
 Changes are saved immediately. Controls held while paused, changing bindings or

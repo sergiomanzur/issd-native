@@ -39,6 +39,7 @@ void issd_config_visual_preset(IssdConfig *cfg, int preset) {
     bool enhanced = preset == ISSD_VISUAL_ENHANCED;
     cfg->aspect_ratio = enhanced ? ISSD_ASPECT_16_9 : ISSD_ASPECT_4_3;
     cfg->true_widescreen = true;
+    cfg->widescreen_menus = true;
     cfg->scaling_filter = preset == ISSD_VISUAL_ORIGINAL ? ISSD_FILTER_NEAREST : ISSD_FILTER_SHARP;
     cfg->internal_res = ISSD_RES_1X;
     cfg->integer_scaling = false;
@@ -60,6 +61,7 @@ int issd_config_visual_preset_id(const IssdConfig *cfg) {
         issd_config_visual_preset(&expected, p);
         if (cfg->aspect_ratio == expected.aspect_ratio &&
             cfg->true_widescreen == expected.true_widescreen &&
+            cfg->widescreen_menus == expected.widescreen_menus &&
             cfg->scaling_filter == expected.scaling_filter &&
             cfg->internal_res == expected.internal_res &&
             cfg->integer_scaling == expected.integer_scaling &&
@@ -104,6 +106,7 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->internal_res = ISSD_RES_4X;
     cfg->scaling_filter = ISSD_FILTER_LINEAR;
     cfg->true_widescreen = true;
+    cfg->widescreen_menus = true;
     cfg->enhanced_running_animation = false;
     cfg->crt_strength = 100;
     cfg->radar_scale = 1;
@@ -306,6 +309,7 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
     if (!strcmp(key, "ball_shadow")) { if (valid_int) cfg->ball_shadow = ival != 0; return; }
     if (!strcmp(key, "player_markers")) { if (valid_int) cfg->player_markers = ival != 0; return; }
     if (!strcmp(key, "player_names")) { if (valid_int) cfg->player_names = ival != 0; return; }
+    if (!strcmp(key, "widescreen_menus")) { if (valid_int) cfg->widescreen_menus = ival != 0; return; }
     if (!strcmp(key, "enhanced_running_animation")) { if (valid_int) cfg->enhanced_running_animation = clamp(ival, 0, 1) != 0; return; }
     if (!strcmp(key, "scaling_filter")) { if (valid_int) cfg->scaling_filter = (IssdScalingFilter)clamp(ival, 0, 3); return; }
     if (!strcmp(key, "internal_res")) { if (valid_int) cfg->internal_res = (IssdInternalResolution)clamp(ival, 0, 5); return; }
@@ -411,6 +415,7 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "internal_res=%d\n", (int)cfg->internal_res);
     fprintf(f, "scaling_filter=%d\n", (int)cfg->scaling_filter);
     fprintf(f, "true_widescreen=%d\n", cfg->true_widescreen ? 1 : 0);
+    fprintf(f, "widescreen_menus=%d\n", cfg->widescreen_menus ? 1 : 0);
     fprintf(f, "camera_mode=%d\n", (int)cfg->camera_mode);
     fprintf(f, "output_resolution=%d\n", clamp(cfg->output_resolution, 0, 4));
     fprintf(f, "overlay_scale=%d\n", clamp(cfg->overlay_scale, 0, 4));

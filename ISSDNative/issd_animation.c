@@ -123,7 +123,7 @@ static bool script(const uint8_t *rom, size_t size, const Snapshot *s,
     frames[i] = descriptor;
     if (!(raw & 0x8000)) {
       *length = i + 1;
-      unsigned previous = s->cursor ? s->cursor / 2 - 1 : i;
+      unsigned previous = s->cursor ? s->cursor / 2u - 1u : i;
       if (previous >= *length || frames[previous] != s->descriptor)
         return false;
       if (s->duration & 0x8000)
@@ -139,9 +139,22 @@ bool issd_animation_running_pair(unsigned object, const uint8_t *ram,
                                  uint16_t *current, uint16_t *next) {
   if (!ram || !current || !next || object < FIRST || object >= END ||
       (object & 255) || object == 0x500 || object == 0x1000 ||
-      !ram[object + 0x30] || word(ram, object + 0x32) != 0x38 ||
-      word(ram, object + 0x92) != 0xbecf ||
-      word(ram, object + 0x1c) != 0xcf9f) return false;
+      !ram[object + 0x30]) return false;
+  /* Running ($CF9F, 8 keyframes) and ordinary walking ($CEF8, 10 keyframes
+   * at a constant 3 ticks) share the leg-interpolation path. Only the
+   * states that advance the cycle normally are accepted. */
+  unsigned state = word(ram, object + 0x32), handler = word(ram, object + 0x92);
+  unsigned expected_length;
+  switch (word(ram, object + 0x1c)) {
+    case 0xcf9f:
+      if (state != 0x38 || handler != 0xbecf) return false;
+      expected_length = 8; break;
+    case 0xcef8:
+      if (!(state == 0x20 && handler == 0xbdd4) &&
+          !(state == 0x40 && handler == 0xbf3f)) return false;
+      expected_length = 10; break;
+    default: return false;
+  }
   Snapshot live = {0};
   live.descriptor = word(ram, object + 0x14);
   live.timer = word(ram, object + 0x16);
@@ -152,7 +165,7 @@ bool issd_animation_running_pair(unsigned object, const uint8_t *ram,
   live.type = ram[object + 0x30];
   uint16_t frames[STEPS];
   unsigned length;
-  if (!script(rom, size, &live, frames, &length) || length != 8) return false;
+  if (!script(rom, size, &live, frames, &length) || length != expected_length) return false;
   unsigned descriptor = live.descriptor, remaining = live.timer;
   const Slot *slot = &slots[(object - FIRST) / 0x100];
   /* The widescreen preparation has already advanced its frozen presentation
@@ -160,7 +173,7 @@ bool issd_animation_running_pair(unsigned object, const uint8_t *ram,
   if (word(ram, object + 0x1e) && slot->seen &&
       slot->live.script == live.script && slot->live.direction == live.direction &&
       slot->live.descriptor == live.descriptor &&
-      slot->live.state == 0x38 && slot->live.handler == 0xbecf) {
+      slot->live.state == state && slot->live.handler == handler) {
     descriptor = slot->descriptor;
     remaining = slot->timer;
   }

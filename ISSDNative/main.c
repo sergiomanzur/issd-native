@@ -561,6 +561,7 @@ static void IssdDrawPpuFrame(void) {
     }
     issd_hd_set_stadium_context(stadium_id,generation);
 
+    issd_widescreen_set_menus(g_issd_config.widescreen_menus);
     issd_widescreen_begin(g_snes->ppu, g_ram, g_rom_data, g_rom_size,
                          g_ws_active ? g_ws_extra : 0);
     int camera_width=SNES_WIDTH+2*(g_ws_active ? g_ws_extra : 0);
@@ -1158,6 +1159,8 @@ static bool PromptForRomFile(char *out, size_t out_size) {
 static SDL_Window *g_window = NULL;
 static SDL_Renderer *g_renderer = NULL;
 static void CalculateViewport(int win_w, int win_h, IssdAspectRatio aspect, int render_w, int render_h, SDL_Rect *out_rect);
+static int g_fit_output_w = 398, g_fit_output_h = 224;
+
 static int IssdWsExtraForAspect(void);
 
 /* SDL reports touches normalised to the window, and reports each finger
@@ -1745,7 +1748,9 @@ static void ProcessInputEvent(const SDL_Event *ev) {
                                      (g_issd_config.aspect_ratio == ISSD_ASPECT_8_7) ? "8:7 PIXEL" :
                                      (g_issd_config.aspect_ratio == ISSD_ASPECT_16_9) ? "16:9 WIDE" :
                                      (g_issd_config.aspect_ratio == ISSD_ASPECT_16_10) ? "16:10 PC" :
-                                     (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9) ? "21:9 ULTRA" : "INTEGER SCALE";
+                                     (g_issd_config.aspect_ratio == ISSD_ASPECT_21_9) ? "21:9 ULTRA" :
+                                     (g_issd_config.aspect_ratio == ISSD_ASPECT_AUTHENTIC) ? "AUTHENTIC 320" :
+                                     (g_issd_config.aspect_ratio == ISSD_ASPECT_FIT) ? "FIT PIXEL PERFECT" : "INTEGER SCALE";
                 printf("[Video] Aspect Ratio set to: %s\n", a_name);
                 return;
             } else if (code == SDL_SCANCODE_F4) {
@@ -1948,6 +1953,11 @@ static int IssdWsExtraForAspect(void) {
         case ISSD_ASPECT_16_10:     return 51; /* 358x224 */
         case ISSD_ASPECT_16_9:      return 71; /* 398x224 */
         case ISSD_ASPECT_21_9:      return ISSD_WIDESCREEN_MAX_EXTRA;
+        case ISSD_ASPECT_FIT: {
+            int w = g_fit_output_w, h = g_fit_output_h;
+            if (g_renderer) SDL_GetRendererOutputSize(g_renderer, &w, &h);
+            return issd_video_fit_extra(w, h);
+        }
         default:                    return 0;
     }
 }
@@ -2055,6 +2065,9 @@ int main(int argc, char **argv) {
             g_target_frames = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
             g_screenshot_path = argv[++i];
+        } else if (strcmp(argv[i], "--fit-output") == 0 && i + 1 < argc) {
+            if (sscanf(argv[++i], "%dx%d", &g_fit_output_w, &g_fit_output_h) != 2)
+                g_fit_output_w = g_fit_output_h = 0;
         } else if (strcmp(argv[i], "--graphics-report") == 0 && i + 1 < argc) {
             g_graphics_report_path = argv[++i];
         } else if (strcmp(argv[i], "--dump-state") == 0 && i + 1 < argc) {

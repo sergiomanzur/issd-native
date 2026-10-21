@@ -36,6 +36,9 @@ bool issd_widescreen_menu_layout(const Ppu *ppu, const uint8_t *ram);
  * than black bars. */
 bool issd_widescreen_title_layout(const Ppu *ppu, const uint8_t *ram);
 bool Issd_IsWidescreenActive(void);
+/* When off, every scene except match play, replays and penalties is
+ * pillarboxed at its original 256 columns. Applies from the next Begin. */
+void issd_widescreen_set_menus(bool widen);
 /* Drop the remembered previous-frame WRAM. Call whenever continuity with the
  * last presented frame is broken (state load, scene cut) so the supplement
  * reconstructs from the frame in hand instead of an unrelated one. */

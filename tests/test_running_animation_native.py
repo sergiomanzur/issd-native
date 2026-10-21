@@ -48,32 +48,38 @@ def live_seed(tmp_path_factory):
     return folder / "saves/quicksave.sav"
 
 
-def test_all_real_running_midpoints(tmp_path, live_seed):
+@pytest.mark.parametrize("walking", [False, True], ids=["run-64", "walk-80"])
+def test_all_real_running_midpoints(tmp_path, live_seed, walking):
     exe = tmp_path / "atlas.exe"
     compile_c(exe, ROOT, [ROOT / "tests/running_animation_atlas.c",
                          ROOT / "ISSDNative/issd_animation.c"],
               [ROOT / "ISSDNative", ROOT / "deps/snesrecomp/runner/src"])
     boot = live_seed.parent.parent
     output = tmp_path / "running-atlas.ppm"
-    result = subprocess.run([str(exe), str(ROM), str(boot / "state.wram"),
-                             str(boot / "state.ppu"), str(output)],
+    command = [str(exe), str(ROM), str(boot / "state.wram"), str(boot / "state.ppu"), str(output)]
+    if walking:
+        command.append("walk")
+    result = subprocess.run(command,
                             capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "64 of 64" in result.stdout
+    assert ("80 of 80" if walking else "64 of 64") in result.stdout
     # Save a reviewable local artifact without redistributing cartridge art.
     artifacts = ROOT / "build/running-animation-acceptance"
     artifacts.mkdir(exist_ok=True)
     image = Image.open(output)
-    image.resize((image.width * 2, image.height * 2), Image.Resampling.NEAREST).save(artifacts / "running-atlas.png")
+    image.resize((image.width * 2, image.height * 2), Image.Resampling.NEAREST).save(artifacts / ("walking-atlas.png" if walking else "running-atlas.png"))
 
 
 @pytest.mark.parametrize("aspect,camera", [(0,0),(2,0),(2,1),(2,2)],
                          ids=["classic","widescreen","tactical","tactical-wide"])
-def test_running_changes_pixels_without_changing_match(tmp_path, live_seed, aspect, camera):
+@pytest.mark.parametrize("dash", [True, False], ids=["dash", "walk"])
+def test_running_changes_pixels_without_changing_match(tmp_path, live_seed, aspect, camera, dash):
     # Drive every direction naturally. AI running provides additional overlap/depth
     # coverage; unit tests separately pin all eight strip selectors and palettes.
     directions = ["UP,Y", "UP,RIGHT,Y", "RIGHT,Y", "DOWN,RIGHT,Y", "DOWN,Y",
                   "DOWN,LEFT,Y", "LEFT,Y", "UP,LEFT,Y"]
+    if not dash:
+        directions = [direction.replace(",Y", "") for direction in directions]
     script = "0 P1 B\n10 NONE\n" + "".join(f"{20+i * 60} P1 {direction}\n" for i, direction in enumerate(directions))
     original = run(tmp_path / "original", 480, aspect=aspect, camera=camera, seed=live_seed, script=script,
                    extra=("--dump-frames", "30:119", "--save-state", "480"))

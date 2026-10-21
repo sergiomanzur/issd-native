@@ -31,7 +31,7 @@ int main(void) {
     issd_menu_confirm();
     assert(g_overlay_menu.page == ISSD_MENU_PAGE_GRAPHICS);
     assert(prepared_contexts == 0);
-    issd_menu_navigate_up(); assert(g_overlay_menu.current_item == 20);
+    issd_menu_navigate_up(); assert(g_overlay_menu.current_item == 21);
     issd_menu_navigate_down(); assert(g_overlay_menu.current_item == 0);
     g_overlay_menu.current_item=19;
     assert(g_issd_config.camera_mode==ISSD_CAMERA_CLASSIC);
@@ -39,7 +39,13 @@ int main(void) {
     issd_menu_navigate_right();assert(g_issd_config.camera_mode==ISSD_CAMERA_TACTICAL_WIDE);
     issd_menu_navigate_right();assert(g_issd_config.camera_mode==ISSD_CAMERA_CLASSIC);
     issd_menu_navigate_left();assert(g_issd_config.camera_mode==ISSD_CAMERA_TACTICAL_WIDE);
-    g_overlay_menu.current_item=20;issd_menu_confirm();
+    g_overlay_menu.current_item=20;
+    assert(g_issd_config.widescreen_menus);
+    issd_menu_navigate_right();assert(!g_issd_config.widescreen_menus);
+    { IssdConfig loaded; issd_config_init_defaults(&loaded);
+      assert(issd_config_load(&loaded,"graphics-test.ini") && !loaded.widescreen_menus); }
+    issd_menu_navigate_left();assert(g_issd_config.widescreen_menus);
+    g_overlay_menu.current_item=21;issd_menu_confirm();
     assert(g_overlay_menu.page==ISSD_MENU_PAGE_MAIN);
     g_overlay_menu.current_item=20;issd_menu_confirm();
     assert(g_overlay_menu.page==ISSD_MENU_PAGE_GRAPHICS);
@@ -211,7 +217,7 @@ int main(void) {
     /* Short displays scroll graphics rows too; Back remains clickable. */
     issd_menu_render_display(large,400,120);
     issd_menu_navigate_up();
-    assert(g_overlay_menu.current_item == 20 && g_overlay_menu.scroll == 16);
+    assert(g_overlay_menu.current_item == 21 && g_overlay_menu.scroll == 17);
     issd_menu_render_display(large,400,120);
     issd_menu_handle_display_click(40,2+18+4*14,400,120);
     assert(g_overlay_menu.page == ISSD_MENU_PAGE_MAIN);

@@ -131,6 +131,30 @@ static void project(const uint8_t a[SIDE][SIDE],const uint8_t b[SIDE][SIDE],
         if (coverage[my][mx]) out[my][mx]=(uint8_t)c;
     }
 }
+/* Per-pixel projection can split thin limbs into gaps and floating specks.
+ * Close one-pixel gaps bridged by the same ink, then drop pixels with no
+ * inked neighbour at all. Both passes stay inside the authored footprint. */
+static void tidy(uint8_t mid[SIDE][SIDE],const uint8_t coverage[SIDE][SIDE]) {
+    uint8_t out[SIDE][SIDE];
+    memcpy(out,mid,sizeof(out));
+    for (int y=LEGS;y<SIDE-1;y++) for (int x=1;x<SIDE-1;x++) {
+        if (mid[y][x] || !coverage[y][x]) continue;
+        unsigned l=mid[y][x-1],r=mid[y][x+1],u=y>LEGS ? mid[y-1][x] : 0,d=mid[y+1][x];
+        if (l && l==r) out[y][x]=(uint8_t)l;
+        else if (u && u==d) out[y][x]=(uint8_t)u;
+    }
+    memcpy(mid,out,sizeof(out));
+    for (int y=LEGS;y<SIDE;y++) for (int x=0;x<SIDE;x++) {
+        if (!mid[y][x]) continue;
+        bool alone=true;
+        for (int dy=-1;dy<=1 && alone;dy++) for (int dx=-1;dx<=1;dx++) {
+            int nx=x+dx,ny=y+dy;
+            if ((dx||dy) && nx>=0 && nx<SIDE && ny>=0 && ny<SIDE && mid[ny][nx]) { alone=false; break; }
+        }
+        if (alone) out[y][x]=0;
+    }
+    memcpy(mid,out,sizeof(out));
+}
 static bool enhance(Ppu *ppu,const uint8_t *ram,unsigned object,
                      const uint8_t *rom,size_t size) {
     uint16_t from,to;
@@ -154,6 +178,7 @@ static bool enhance(Ppu *ppu,const uint8_t *ram,unsigned object,
         }
     }
     project(a,b,coverage,mid,false); project(b,a,coverage,mid,true);
+    tidy(mid,coverage);
     for (unsigned i=0;i<current.count;i++) {
         const Part *p=&current.parts[i];
         for (unsigned y=0;y<p->size;y++) for (unsigned x=0;x<p->size;x++) {

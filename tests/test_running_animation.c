@@ -119,6 +119,42 @@ int main(void) {
         issd_running_end(&ppu);
         assert(!memcmp(ppu.vram,saved_vram,sizeof(saved_vram)));
     }
-    puts("eight-direction running animation tests passed");
+    /* Ordinary walking has ten authored keys, a fixed three-tick duration,
+     * and two verified locomotion states. It must use the same reversible
+     * visual enhancement without touching game state. */
+    for (unsigned d=0;d<8;d++) for (unsigned moving=0;moving<2;moving++) {
+        fixture(d);
+        put(ram,0x81c,0xcef8); put(ram,0x818,3); put(ram,0x816,1);
+        put(ram,0x832,moving ? 0x40 : 0x20); put(ram,0x892,moving ? 0xbf3f : 0xbdd4);
+        put(rom,offset(0x82,0xcef8+d*2),0xd100);
+        for (unsigned i=0;i<10;i++) {
+            unsigned desc=0xa749+i*9;
+            put(rom,offset(0x82,0xd100+i*2),i==9 ? desc&0x7fff : desc);
+            if(i>=8) {
+                unsigned o=offset(0x82,desc);
+                put(rom,o,0x4500);put(rom,o+2,0x8000);rom[o+4]=0x90;
+            }
+        }
+        memcpy(saved_ram,ram,sizeof(ram));
+        assert(issd_running_begin(&ppu,ram,rom,sizeof(rom))==1);
+        assert(memcmp(ppu.vram,saved_vram,sizeof(saved_vram))!=0);
+        assert(!memcmp(ram,saved_ram,sizeof(ram)));
+        issd_running_end(&ppu);
+        assert(!memcmp(ppu.vram,saved_vram,sizeof(saved_vram)));
+        /* Culled walkers must enhance the advanced presentation phase,
+         * never the stale timer left in guest WRAM. */
+        put(ram,0x81e,1);put(ram,0x816,3);
+        uint16_t pose, from, to;
+        assert(issd_animation_pose(0x800,ram,rom,sizeof(rom),false,&pose));
+        assert(!issd_animation_running_pair(0x800,ram,rom,sizeof(rom),&from,&to));
+        assert(issd_animation_pose(0x800,ram,rom,sizeof(rom),false,&pose));
+        assert(!issd_animation_running_pair(0x800,ram,rom,sizeof(rom),&from,&to));
+        assert(issd_animation_pose(0x800,ram,rom,sizeof(rom),false,&pose));
+        assert(issd_animation_running_pair(0x800,ram,rom,sizeof(rom),&from,&to));
+        assert(from==pose && to==0xa752);
+        put(ram,0x892,0xc189); /* standing/other actions remain authored */
+        assert(!issd_running_begin(&ppu,ram,rom,sizeof(rom)));
+    }
+    puts("eight-direction walking and running animation tests passed");
     return 0;
 }

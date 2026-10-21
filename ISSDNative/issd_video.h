@@ -8,6 +8,8 @@ typedef struct { int x, y, w, h; } IssdVideoRect;
 
 IssdVideoRect issd_video_viewport(int output_w, int output_h, int render_w, int render_h,
                                 IssdAspectRatio aspect, bool true_widescreen, bool integer_scaling);
+/* Per-side widescreen margin for ISSD_ASPECT_FIT on this output. */
+int issd_video_fit_extra(int output_w, int output_h);
 void issd_video_output_dimensions(int preset, int current_w, int current_h, int *w, int *h);
 /* Nearest-neighbor prescale before final linear presentation. Bounded to 8x and
  * 4096 per texture axis, avoiding an arbitrary full-output CPU scaling pass. */

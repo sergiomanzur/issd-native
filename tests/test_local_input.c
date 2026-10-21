@@ -91,6 +91,53 @@ int main(void) {
         SDL_JoystickClose(sticks[i]);
         assert(SDL_JoystickDetachVirtual(devices[i]) == 0);
     }
+    /* A detached old connection may still occupy P1 when SDL reports the
+     * replacement first. Reap it, keep P2 stable, and ignore late removal. */
+    int first = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                         SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+    int second = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                          SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+    SDL_JoystickID old_id = SDL_JoystickGetDeviceInstanceID(first);
+    SDL_JoystickID second_id = SDL_JoystickGetDeviceInstanceID(second);
+    assert(issd_input_add(first) == 0 && issd_input_add(second) == 1);
+    assert(SDL_JoystickDetachVirtual(first) == 0);
+    int replacement = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                               SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+    SDL_Joystick *fresh = SDL_JoystickOpen(replacement); assert(fresh);
+    SDL_JoystickSetVirtualButton(fresh, SDL_CONTROLLER_BUTTON_A, 1); update();
+    assert(issd_input_add(replacement) == 0);
+    assert(issd_input_player(second_id) == 1);
+    assert(issd_input_remove(old_id) == -1);
+    assert(issd_input_read(0, ISSD_SCHEMA_CLASSIC) == 0); /* held input guard */
+    SDL_JoystickSetVirtualButton(fresh, SDL_CONTROLLER_BUTTON_A, 0); update();
+    assert(issd_input_read(0, ISSD_SCHEMA_CLASSIC) == 0);
+    SDL_JoystickSetVirtualButton(fresh, SDL_CONTROLLER_BUTTON_A, 1); update();
+    assert(issd_input_read(0, ISSD_SCHEMA_CLASSIC) == 1);
+    assert(issd_input_player(second_id) == 1);
+    issd_input_shutdown(); SDL_JoystickClose(fresh);
+    assert(SDL_JoystickDetachVirtual(replacement) == 0);
+    /* Removing first shifted the second device's index down by one. */
+    assert(SDL_JoystickDetachVirtual(second - 1) == 0);
+    /* An independently connected identical pad must not be mistaken for a
+     * reconnect simply because it appeared just before another pad left. */
+    first = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                      SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+    second = SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                       SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+    old_id=SDL_JoystickGetDeviceInstanceID(first);
+    second_id=SDL_JoystickGetDeviceInstanceID(second);
+    assert(issd_input_add(first)==0 && issd_input_add(second)==1);
+    SDL_Delay(1100);
+    int newcomer=SDL_JoystickAttachVirtual(SDL_JOYSTICK_TYPE_GAMECONTROLLER,
+                                          SDL_CONTROLLER_AXIS_MAX, SDL_CONTROLLER_BUTTON_MAX, 0);
+    SDL_JoystickID newcomer_id=SDL_JoystickGetDeviceInstanceID(newcomer);
+    assert(issd_input_add(newcomer)==2);
+    assert(SDL_JoystickDetachVirtual(first)==0);
+    assert(issd_input_remove(old_id)==0);
+    assert(issd_input_player(second_id)==1 && issd_input_player(newcomer_id)==2);
+    issd_input_shutdown();
+    assert(SDL_JoystickDetachVirtual(newcomer-1)==0);
+    assert(SDL_JoystickDetachVirtual(second-1)==0);
     SDL_Quit();
     puts("four local gamepads: PASS");
     return 0;

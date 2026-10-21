@@ -220,6 +220,20 @@ int main(int argc, char **argv) {
     assert(issd_config_load(&loaded,argv[1]));
     assert(loaded.camera_mode==ISSD_CAMERA_CLASSIC);
     assert(!loaded.gameplay_bug_fixes); /* old config preserves original behavior */
+    /* New aspect IDs append to the old range; menu widening defaults on
+     * for legacy configs and malformed values must not disable it. */
+    assert(loaded.widescreen_menus);
+    loaded.aspect_ratio=ISSD_ASPECT_FIT;loaded.widescreen_menus=false;
+    assert(issd_config_save(&loaded,argv[1]));
+    assert(issd_config_load(&loaded,argv[1]));
+    assert(loaded.aspect_ratio==ISSD_ASPECT_FIT && !loaded.widescreen_menus);
+    f=fopen(argv[1],"w");assert(f);fputs("aspect_ratio=6\nwidescreen_menus=oops\n",f);fclose(f);
+    assert(issd_config_load(&loaded,argv[1]));
+    assert(loaded.aspect_ratio==ISSD_ASPECT_AUTHENTIC && loaded.widescreen_menus);
+    issd_config_visual_preset(&loaded,ISSD_VISUAL_ENHANCED);
+    assert(loaded.widescreen_menus && issd_config_visual_preset_id(&loaded)==ISSD_VISUAL_ENHANCED);
+    loaded.widescreen_menus=false;
+    assert(issd_config_visual_preset_id(&loaded)==ISSD_VISUAL_CUSTOM);
     puts("config persistence tests passed");
     return 0;
 }

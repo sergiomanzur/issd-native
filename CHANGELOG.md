@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- Backport selected presentation and input improvements from
+  [Mabec-games/iss-deluxed](https://github.com/Mabec-games/iss-deluxed/tree/54344cb):
+  Fit Pixel Perfect, optional original-width menus, widescreen rain/snow,
+  boundary-ground filling and centered announcement bars.
+- Extend optional Enhanced Running Animation to ordinary walking in all eight
+  directions, clean isolated interpolation pixels, and align continued offscreen
+  walking with its displayed animation phase. Keep the existing defaults.
+- Reclaim detached controller slots before delayed SDL removal events, preserving
+  independent attached controllers and reconnect held-input suppression.
+
 ## 0.5.0-beta.3 — 2026-10-10
 
 - Replace misleading fixed touch action names with native A/B/X/Y letters.

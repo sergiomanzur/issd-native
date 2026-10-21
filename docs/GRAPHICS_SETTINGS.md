@@ -28,8 +28,11 @@ fullscreen and VSync.
 default to Original. Enhanced adds intermediate palette-indexed lower-body poses
 to the verified eight-direction running/dash loop (hold **Y / Dash**), derived
 from sprites in the loaded ROM. Eight original keyframes plus eight new
-intermediate poses make a 16-pose cycle per direction. Ordinary walking,
-goalkeepers, shots, tackles, special states and other scenes stay original.
+intermediate poses make a 16-pose cycle per direction. Enhanced also applies
+lower-body midpoint poses to the verified ten-keyframe ordinary walking loops
+in all eight directions. Interpolation closes small gaps and removes isolated
+pixels within the authored footprint. Goalkeepers, shots, tackles, special
+states and other scenes stay original.
 It changes the displayed poses while retaining the game's original movement,
 animation timing and simulation. It does not replace other actions or install
 external sprite artwork. Original and Sharp presets, and Reset Graphics, disable
@@ -58,6 +61,25 @@ retaining the chosen aspect ratio; 4:3 horizontal pixel correction remains
 possible. Choose square pixels or the legacy integer aspect for uniform square
 pixel multiples. A window smaller than the native image falls back to fitting
 the whole image instead of cropping it.
+
+**Fit Pixel Perfect** selects a tested native width of 398, 426 or 480 columns
+at the largest whole-number scale that fits the output, preferring the wider
+view when scales tie. For example, 1920x1080 uses 480x224 at 4x; 2560x1440 uses
+426x224 at 6x; Steam Deck's 1280x800 uses 426x224 at 3x. It follows window size
+and always applies integer viewport scaling, independently of the Integer Scale
+switch. Windows smaller than the native surface fall back to a bounded downscale.
+With True Widescreen off, it scales the original 256-column surface. The default
+aspect and filter remain unchanged. Headless checks can supply `--fit-output WxH`.
+
+**Widescreen Menus** defaults On and saves as `widescreen_menus`. Turn it Off
+to keep menus, title, coin toss and statistics at their original centered width;
+match play, replays and goal-facing penalties remain widened. Visual presets and
+Reset Graphics restore this switch to On.
+
+Widescreen margins continue rain/snow without duplicating HUD tiles. Outside
+the authored stadium edges, repeated fence and advertisement fragments give
+way to ground sampled from nearby boundary tiles. Framed announcement bars
+retain their original width; full-screen effects can still cover the margins.
 
 **Game Filter** offers Nearest, Linear, CRT Scanlines and **Sharp**. Sharp
 first enlarges by an integer factor with nearest sampling, then uses linear

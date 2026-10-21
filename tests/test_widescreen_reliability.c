@@ -7,6 +7,27 @@ static uint8_t before_ram[sizeof(ram)];
 static uint16_t before_vram[0x8000], before_oam[0x100];
 static uint8_t before_high[0x20];
 
+static void test_menu_policy_and_edge_ground(void) {
+  fixture();
+  issd_widescreen_set_menus(false);
+  word(0x70,0); /* original-width title/menu presentation */
+  assert(!issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
+  assert(ppu.extraLeftCur==0 && ppu.extraRightCur==0);
+  issd_widescreen_end(&ppu);
+  word(0x70,8);
+  assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
+  assert(ppu.extraLeftCur==71 && ppu.extraRightCur==71);
+  issd_widescreen_end(&ppu);
+  issd_widescreen_set_menus(true);
+  fixture();
+  ppu.hScroll[0]=0;ppu.vScroll[0]=0;
+  for(unsigned i=0;i<16;i++) word(0x18020+i*2,0x2001);
+  word(0x18020,0x2aaa); /* isolated fence ink at the outer corner */
+  assert(issd_widescreen_begin(&ppu,ram,rom,sizeof(rom),71));
+  assert(ppu.vram[0x400+31]==0x2001); /* added x=-8 continues track, not fence */
+  issd_widescreen_end(&ppu);
+}
+
 static void test_scene_and_reset(void) {
   fixture();
   word(0x808, 100);
@@ -137,6 +158,7 @@ static void test_cold_authored_action(void) {
 }
 
 int main(void) {
+  test_menu_policy_and_edge_ground();
   test_scene_and_reset();
   test_ultrawide_scroll_phases();
   test_cold_authored_action();

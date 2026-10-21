@@ -46,9 +46,12 @@ typedef enum {
      * player is still simulated, animated and in the game's own draw list.
      * Wider presets can continue learned locomotion but unlearned actions may hold.
      * Appended rather than renumbered so saved configs keep their meaning. */
-    ISSD_ASPECT_AUTHENTIC = 6
+    ISSD_ASPECT_AUTHENTIC = 6,
+    /* Widest tested view (398, 426 or 480) at the largest whole-number scale
+     * the output allows; always integer scaled. Appended like AUTHENTIC. */
+    ISSD_ASPECT_FIT = 7
 } IssdAspectRatio;
-#define ISSD_ASPECT_COUNT 7
+#define ISSD_ASPECT_COUNT 8
 
 typedef enum {
     ISSD_RES_1X = 0,        /* Native 256 x 224 */
@@ -84,6 +87,7 @@ typedef struct {
     IssdInternalResolution internal_res;
     IssdScalingFilter scaling_filter;
     bool true_widescreen;
+    bool widescreen_menus;  /* false: widen only match play, replays and penalties */
     IssdCameraMode camera_mode;
     int output_resolution; /* 0 current/auto, 1 720p, 2 1080p, 3 1440p, 4 2160p */
     int overlay_scale;     /* 0 automatic, 1..4 output-pixel UI scale */

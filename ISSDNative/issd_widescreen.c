@@ -309,16 +309,74 @@ bool issd_widescreen_world_sample(const uint8_t *ram,const IssdWorldLayer *layer
   return world_tile(ram,layer->layer,x,y,layer->first,layer->last,layer->top,layer->bottom,tile);
 }
 
+/* Beyond the authored map's left and right edges there is no artwork, and
+ * continuing the outermost column repeats whatever it crosses: a corner's
+ * fence spikes, a wall, or the first letters of an advertising board.
+ * The outermost column itself shows what the ground there is: plain track
+ * fills most of it, while each fence, wall or board piece occurs once or
+ * twice, and grass never. So each row continues with whichever of its
+ * first few tiles occurs most often in that column (at least EDGE_MIN
+ * times), and otherwise with the column's most common tile. */
+enum { EDGE_WINDOW = 8, EDGE_MIN = 3, EDGE_ROWS = 512 };
+
+typedef struct {
+  uint16_t tiles[EDGE_ROWS];
+  int count;
+  uint16_t mode;
+} EdgeColumn;
+
+static int edge_uses(const EdgeColumn *edge, uint16_t tile) {
+  int uses = 0;
+  for (int i = 0; i < edge->count; i++) uses += edge->tiles[i] == tile;
+  return uses;
+}
+
+static void edge_column(const uint8_t *ram, unsigned layer, int x, int first, int last,
+                        int top, int bottom, EdgeColumn *edge) {
+  edge->count = 0;
+  for (int y = top; y < bottom + 32 && edge->count < EDGE_ROWS; y += 8) {
+    uint16_t tile;
+    if (world_tile(ram, layer, x, y, first, last, top, bottom, &tile))
+      edge->tiles[edge->count++] = tile;
+  }
+  int best = -1;
+  edge->mode = 0;
+  for (int i = 0; i < edge->count; i++) {
+    int uses = edge_uses(edge, edge->tiles[i]);
+    if (uses > best) { best = uses; edge->mode = edge->tiles[i]; }
+  }
+}
+
+/* The fill tile for row y beyond one edge: x0 is the outermost column and
+ * step points into the map. */
+static uint16_t edge_tile(const uint8_t *ram, unsigned layer, const EdgeColumn *edge,
+                          int x0, int step, int y, int first, int last, int top, int bottom) {
+  uint16_t pick = edge->mode;
+  int best = EDGE_MIN - 1;
+  for (int k = 0; k < EDGE_WINDOW; k++) {
+    uint16_t tile;
+    if (!world_tile(ram, layer, x0 + k * step, y, first, last, top, bottom, &tile)) continue;
+    int uses = edge_uses(edge, tile);
+    if (uses > best) { best = uses; pick = tile; }
+  }
+  return pick;
+}
+
 static void fill_pitch(Ppu *ppu, const uint8_t *ram, int left, int right) {
   for (unsigned layer = 0; layer < 2; layer++) {
     int first, last, top, bottom;
     world_bounds(ram, layer, &first, &last, &top, &bottom);
+    EdgeColumn left_edge, right_edge;
+    edge_column(ram, layer, first, first, last, top, bottom, &left_edge);
+    edge_column(ram, layer, last + 24, first, last, top, bottom, &right_edge);
     /* PPU scroll registers retain ten bits. Recover the current world page
      * from WRAM, retaining the actual scanout offset (vertical is minus one). */
     int sx = (word(ram,0x13a0+layer*32)&~1023) | ppu->hScroll[layer];
     int sy = (word(ram,0x13b0+layer*32)&~1023) | ppu->vScroll[layer];
     int first_x = (sx - left) & ~7, last_x = (sx + 255 + right) & ~7;
     for (int y = sy & ~7; y <= ((sy + 223) & ~7); y += 8) {
+      bool have_left = false, have_right = false;
+      uint16_t left_tile = 0, right_tile = 0;
       for (int x = first_x; x <= last_x; x += 8) {
         /* Shared partial edge tiles already belong to the original view. */
         if (x + 7 >= sx && x < sx + 256) continue;
@@ -326,6 +384,18 @@ static void fill_pitch(Ppu *ppu, const uint8_t *ram, int left, int right) {
         unsigned address = layer * 0x1000 + (ty & 31) * 32 +
                            (tx & 31) + (tx >> 5) * 0x400 + (ty >> 5) * 0x800;
         uint16_t tile;
+        if (x < first || x >= last + 32) {
+          bool *have = x < first ? &have_left : &have_right;
+          uint16_t *fill = x < first ? &left_tile : &right_tile;
+          if (!*have) {
+            *fill = x < first
+                ? edge_tile(ram, layer, &left_edge, first, 8, y, first, last, top, bottom)
+                : edge_tile(ram, layer, &right_edge, last + 24, -8, y, first, last, top, bottom);
+            *have = true;
+          }
+          ppu->vram[address] = *fill;
+          continue;
+        }
         if (!world_tile(ram, layer, x, y, first, last, top, bottom, &tile)) {
           ppu->vram[address] = 0;
           continue;
@@ -887,6 +957,9 @@ bool Issd_IsWidescreenActive(void) {
   return s_ws_extra > 0;
 }
 
+static bool s_widen_menus = true;
+void issd_widescreen_set_menus(bool widen) { s_widen_menus = widen; }
+
 bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
                           size_t rom_size, int extra) {
   if (frame.owner) issd_widescreen_end(frame.owner);
@@ -920,6 +993,8 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   PpuSetWidescreenLayerClamp(ppu,0);
   PpuSetWidescreenLayerRepeat(ppu,0);
   for (int l=0;l<4;l++) PpuSetWidescreenLayerClampBand(ppu,l,0,0);
+  PpuSetWidescreenMarginTiles(ppu,-1,0,0);
+  PpuSetWidescreenMarginRows(ppu,0,0);
   /* Classic 4:3 takes none of the presentation branches: no VRAM/OAM
    * transaction, no supplemental sprites, no reconstructed margins. */
   if (!extra) {
@@ -932,7 +1007,9 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
     s_ws_extra = 0;
     unsigned submode = word(ram, 0x70);
     bool is_pillarboxed = (submode == 0x0F || submode == 0x10 || submode == 0x12 || submode == 0x1C);
-    if (issd_widescreen_coin_layout(ppu, ram)) {
+    if (!s_widen_menus && !penalty_layout(ppu, ram)) {
+      PpuSetExtraSpaceCentered(ppu, (uint16_t)extra);
+    } else if (issd_widescreen_coin_layout(ppu, ram)) {
       PpuSetExtraSpace(ppu, (uint16_t)extra);
       PpuSetExtraSideSpace(ppu, extra, extra, 0);
       frame.owner=ppu;
@@ -942,6 +1019,9 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
       fill_coin_crowd(ppu);
       PpuSetWidescreenLayerMask(ppu, 1);
       PpuSetWidescreenLayerClamp(ppu, 0x1e);
+      /* Snow and rain fall over the whole stadium here, on BG3 tiles
+       * $1F0-$1F9 with no HUD on that layer: let them into the margins. */
+      PpuSetWidescreenMarginTiles(ppu, 2, 0x1f0, 0x1f9);
     } else if (issd_widescreen_stats_layout(ppu, ram)) {
       PpuSetExtraSpace(ppu, (uint16_t)extra);
       PpuSetExtraSideSpace(ppu, extra, extra, 0);
@@ -988,6 +1068,15 @@ bool issd_widescreen_begin(Ppu *ppu, const uint8_t *ram, const uint8_t *rom,
   PpuSetWidescreenLayerMask(ppu, 3);
   PpuSetWidescreenWindowExpansion(ppu, 3, 3);
   PpuSetWidescreenLayerClamp(ppu, 4);
+  /* Rain and snow are BG3 tiles $1F0-$1F9 scattered over the same map as
+   * the HUD (whose own tiles sit just either side, $1EA-$1ED, $1FA-$1FD).
+   * Let BG3 into the margins for those tiles only: the 32-column map wraps,
+   * so the weather continues across the whole screen, the HUD stays put.
+   * The game keeps weather to map rows 4-19, clear of the score (rows 0-3)
+   * and the name/radar panel (rows 20-26); the margins have no HUD, so
+   * there those rows repeat weather rows instead of staying empty. */
+  PpuSetWidescreenMarginTiles(ppu, 2, 0x1f0, 0x1f9);
+  PpuSetWidescreenMarginRows(ppu, 4, 19);
   /* Reconstruct against the WRAM generation that produced the native OAM and
    * the currently latched scroll registers, not this frame's fresh one. */
   const uint8_t *rec = frame.ram;

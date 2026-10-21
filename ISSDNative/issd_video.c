@@ -16,6 +16,7 @@ IssdVideoRect issd_video_viewport(int output_w, int output_h, int render_w, int 
         case ISSD_ASPECT_21_9: num = 21; den = 9; break;
         case ISSD_ASPECT_AUTHENTIC: num = 10; den = 7; break;
         case ISSD_ASPECT_INTEGER:
+        case ISSD_ASPECT_FIT:
             num = render_w; den = render_h; integer_scaling = true; break;
         default: break;
     }
@@ -40,6 +41,21 @@ IssdVideoRect issd_video_viewport(int output_w, int output_h, int render_w, int 
     r.x = (output_w - r.w) / 2;
     r.y = (output_h - r.h) / 2;
     return r;
+}
+
+/* Only widths verified on real scenes are offered: 398 (16:9), 426 (1440p,
+ * 4K, 720p, Steam Deck) and 480 (1080p). Prefer the largest whole-number
+ * scale, then the widest view at that scale. */
+int issd_video_fit_extra(int output_w, int output_h) {
+    static const int widths[] = { 480, 426, 398 };
+    int best_w = 398, best_k = 0;
+    if (output_w <= 0 || output_h <= 0) return (best_w - 256) / 2;
+    for (int i = 0; i < 3; i++) {
+        int k = output_h / 224, kw = output_w / widths[i];
+        if (kw < k) k = kw;
+        if (k > best_k) { best_k = k; best_w = widths[i]; }
+    }
+    return (best_w - 256) / 2;
 }
 
 void issd_video_output_dimensions(int preset, int current_w, int current_h, int *w, int *h) {
