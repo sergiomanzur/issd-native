@@ -40,9 +40,9 @@ def test_archive_rejects_unsafe_member_names(tmp_path,name):
         with pytest.raises(ValueError):archive(tmp_path/'output', {name:file})
 
 
-@pytest.mark.parametrize('version,code',[('0.5.0-beta.3',8),('0.5.0-beta.2',9)])
+@pytest.mark.parametrize('version,code',[('0.5.0-beta.4',9),('0.5.0-beta.3',10)])
 def test_android_metadata_rejects_stale_name_or_upgrade_code_before_packaging(tmp_path,version,code):
     (tmp_path/'output-metadata.json').write_text(json.dumps({'elements':[
         {'versionName':version,'versionCode':code,'outputFile':'app-release.apk'}]}))
     with pytest.raises(ValueError,match='Rebuild Android'):
-        release.android_apk(tmp_path,'0.5.0-beta.3',9)
+        release.android_apk(tmp_path,'0.5.0-beta.4',10)

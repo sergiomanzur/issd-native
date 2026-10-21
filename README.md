@@ -4,7 +4,7 @@ A native recompilation and modernization of **International Superstar Soccer Del
 
 The goal is to preserve the original gameplay while adding modern controls, presentation options, saves, and editable mod packs. This is a **beta project working toward 1.0**; recompilation coverage does not establish complete gameplay or hardware fidelity.
 
-The current release is **[v0.5.0-beta.3](https://github.com/sergiomanzur/issd-native/releases/tag/v0.5.0-beta.3)**, a GitHub prerelease for Windows, Linux and Android. It improves touch controls with clear button letters and an eight-direction thumb pad that retains movement while sliding. It also includes two tactical camera zoom-outs, centered campaign cards and recorded replay edge-player history. It also includes audio timing, shootout/persistence, substitution and widescreen replay fixes, bounded independent stadium profiles, and the improved Mod Studio with two example stadiums. Four-player local play, configurable controls, campaign recovery, cartridge password interoperability, exhibition shortcuts and optional AI/bug fixes remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.5.0-beta.3.md).
+The current release is **[v0.5.0-beta.4](https://github.com/sergiomanzur/issd-native/releases/tag/v0.5.0-beta.4)**, a GitHub prerelease for Windows, Linux and Android. It adds Fit Pixel Perfect scaling, gameplay-only widescreen presentation, weather and boundary polish, walking animation interpolation, and detached-controller slot reclamation. It also retains responsive touch controls, two tactical camera zoom-outs, centered campaign cards, recorded replay edge-player history, audio timing, shootout/persistence, substitution and widescreen replay fixes, bounded independent stadium profiles, and the improved Mod Studio with two example stadiums. Four-player local play, configurable controls, campaign recovery, cartridge password interoperability, exhibition shortcuts and optional AI/bug fixes remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.5.0-beta.4.md).
 
 Ball Outline has been removed, including legacy saved enables.
 
@@ -14,8 +14,7 @@ Project metadata for [recomp.board](https://recomp.fyi) and other tools lives in
 
 ## Latest source improvements
 
-The following changes are available in source builds after **v0.5.0-beta.3**;
-they are not included in that packaged release:
+The following features and improvements are included in **v0.5.0-beta.4**:
 
 - **Fit Pixel Perfect:** Choose **Graphics → Aspect Ratio → Fit Pixel Perfect**
   to select a tested widescreen width at the largest whole-number scale that
@@ -229,7 +228,7 @@ python -m pytest tests/test_local_multiplayer.py -q
 
 Tests need Python and pytest, with compiler/SDL2 requirements for native harnesses. Some also require Pillow. ROM-backed checks require your supported ROM and a built executable; see the individual test files for setup.
 
-The [v0.5.0-beta.3 release validation](docs/RELEASE_VALIDATION_0_5_0_BETA_3.md) records the current regression suite, Windows/Linux/Android builds, clean extracted-package checks and Android signing/version compatibility. The [acceptance records](docs/ACCEPTANCE_TESTS.md) distinguish uninterrupted natural campaign/custom-stadium runs from controlled or accelerated fixtures. Physical display/touch and four-controller device acceptance remain pending. See [graphics settings](docs/GRAPHICS_SETTINGS.md) and the [supported features and limitations](docs/SUPPORTED_FEATURES.md).
+The [v0.5.0-beta.4 release validation](docs/RELEASE_VALIDATION_0_5_0_BETA_4.md) records the current regression suite, Windows/Linux/Android builds, clean extracted-package checks and Android signing/version compatibility. The [acceptance records](docs/ACCEPTANCE_TESTS.md) distinguish uninterrupted natural campaign/custom-stadium runs from controlled or accelerated fixtures. Physical display/touch and four-controller device acceptance remain pending. See [graphics settings](docs/GRAPHICS_SETTINGS.md) and the [supported features and limitations](docs/SUPPORTED_FEATURES.md).
 
 Final graphics verification against the updated Windows executable returned **17 passed in 68.07 seconds**, including a live graphical match replay and paused HD capture geometry.
 

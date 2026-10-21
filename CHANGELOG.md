@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.0-beta.4 — 2026-10-21
 
 - Backport selected presentation and input improvements from
   [Mabec-games/iss-deluxed](https://github.com/Mabec-games/iss-deluxed/tree/54344cb):
