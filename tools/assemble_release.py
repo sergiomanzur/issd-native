@@ -109,7 +109,7 @@ def android_apk(android_build, version, version_code):
     return source
 
 
-def assemble(windows_build, linux_build, android_build, studio_exe):
+def assemble(windows_build, linux_build, android_build, studio_exe, appimage=None):
     version = (ROOT/'VERSION').read_text().strip()
     if not re.fullmatch(r'\d+\.\d+\.\d+-beta\.\d+', version):
         raise ValueError('Expected a beta version in VERSION')
@@ -126,7 +126,7 @@ def assemble(windows_build, linux_build, android_build, studio_exe):
               'licenses/LICENSE': ROOT/'LICENSE',
               'licenses/SNESRecomp.txt': ROOT/'deps/snesrecomp/LICENSE',
               'licenses/SDL2.txt': ROOT/'deps/SDL2/LICENSE.txt'}
-    documents = ('GAMEPLAY_TWEAKS LOCAL_MULTIPLAYER CAMPAIGN_SAVES CAMPAIGN_CARTRIDGE_FLOW '
+    documents = ('MATCHDAY_OPTIONS APPIMAGE UPSTREAM_ADAPTATIONS RELEASE_VALIDATION_0_6_0_BETA_1 GAMEPLAY_TWEAKS LOCAL_MULTIPLAYER CAMPAIGN_SAVES CAMPAIGN_CARTRIDGE_FLOW '
                  'PASSWORD_BRIDGE MODDING CONTROLS SUPPORTED_FEATURES ACCEPTANCE_TESTS '
                  'MATCH_SHORTCUTS ORIGINAL_BUG_FIXES GRAPHICS_SETTINGS GRAPHICS_MATCH_ACCEPTANCE '
                  'TEAM_CHANGES_ACCEPTANCE NETPLAY_DESIGN AUDIO_SYSTEM AUDIO_TIMING_FIX '
@@ -188,6 +188,12 @@ def assemble(windows_build, linux_build, android_build, studio_exe):
         if manifest not in files:
             raise ValueError(f'Missing tracked mod manifest: {manifest}')
         assets.append(archive_zip(output/f'{Path(manifest).stem}.zip', files))
+    if appimage is not None:
+        image = output/f'ISSDNative-{tag}-steamos-x64.AppImage'
+        temporary_image = image.with_suffix('.AppImage.tmp')
+        shutil.copy2(appimage, temporary_image)
+        os.replace(temporary_image, image)
+        assets.append(image)
     checksums = output/'SHA256SUMS.txt'
     checksums.write_text(''.join(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n'
                                  for path in assets), encoding='ascii')
@@ -202,10 +208,11 @@ def main():
     linux_default = ROOT/'build/release-validation/linux' if (ROOT/'build/release-validation/linux/ISSDNative').is_file() else ROOT/'build-linux'
     parser.add_argument('--linux-build', type=Path, default=linux_default)
     parser.add_argument('--android-build', type=Path, default=ROOT/'android/app/build/outputs/apk/release')
+    parser.add_argument('--appimage', type=Path, default=ROOT/'dist/appimage/ISSDNative-x86_64.AppImage')
     parser.add_argument('--studio-exe', type=Path, default=ROOT/'tools/mod_studio/dist/ISSDModStudio.exe')
     options = parser.parse_args()
     assemble(options.windows_build.resolve(), options.linux_build.resolve(),
-             options.android_build.resolve(), options.studio_exe.resolve())
+             options.android_build.resolve(), options.studio_exe.resolve(), options.appimage.resolve())
 
 
 if __name__ == '__main__':

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0-beta.1 — 2026-10-21
+
+- Add an original retro broadcast launcher with ROM validation, presentation,
+  controls, gameplay and mod settings across Windows, Linux/SteamOS and Android.
+- Correct penalty timing input routing in the optional bug-fix bundle.
+- Add separate default-off short goal kicks and final-attack protection.
+- Add roster-based team-strength summaries and Original/1/2/3/5/7/10/15/20-minute
+  durations for Exhibition, Cup and World Series.
+- Add ROM-free Steam Deck AppImage packaging, writable XDG state and mod preservation.
+
+
 ## 0.5.0-beta.4 — 2026-10-21
 
 - Backport selected presentation and input improvements from

@@ -4,7 +4,7 @@ A native recompilation and modernization of **International Superstar Soccer Del
 
 The goal is to preserve the original gameplay while adding modern controls, presentation options, saves, and editable mod packs. This is a **beta project working toward 1.0**; recompilation coverage does not establish complete gameplay or hardware fidelity.
 
-The current release is **[v0.5.0-beta.4](https://github.com/sergiomanzur/issd-native/releases/tag/v0.5.0-beta.4)**, a GitHub prerelease for Windows, Linux and Android. It adds Fit Pixel Perfect scaling, gameplay-only widescreen presentation, weather and boundary polish, walking animation interpolation, and detached-controller slot reclamation. It also retains responsive touch controls, two tactical camera zoom-outs, centered campaign cards, recorded replay edge-player history, audio timing, shootout/persistence, substitution and widescreen replay fixes, bounded independent stadium profiles, and the improved Mod Studio with two example stadiums. Four-player local play, configurable controls, campaign recovery, cartridge password interoperability, exhibition shortcuts and optional AI/bug fixes remain available. See [CHANGELOG.md](CHANGELOG.md) and [the release notes](docs/releases/v0.5.0-beta.4.md).
+The current release is **[v0.6.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.6.0-beta.1)**, a GitHub prerelease for Windows, Linux, Steam Deck (AppImage) and Android. It adds an original retro broadcast launcher, a penalty timing-input correction in the bug-fix bundle, optional short goal kicks and final-attack protection, roster-based team summaries and expanded match durations. It retains the existing widescreen, tactical camera, touch/controller, replay, campaign and Mod Studio features. See [CHANGELOG.md](CHANGELOG.md) and [release notes](docs/releases/v0.6.0-beta.1.md).
 
 Ball Outline has been removed, including legacy saved enables.
 
@@ -12,17 +12,16 @@ The [supported-feature inventory](docs/SUPPORTED_FEATURES.md) records actual beh
 
 Project metadata for [recomp.board](https://recomp.fyi) and other tools lives in [`.recomp.json`](.recomp.json), following the [recomp.board specification](https://recomp.fyi/spec). Its `released` status means a public build is available and maintained; the project remains a beta working toward 1.0. Update the manifest whenever the project status, toolchain, or supported original release changes.
 
-## Unreleased Matchday additions
+## Matchday additions
 
 An original retro broadcast launcher, optional short goal kicks and final-attack
 protection, roster-based team summaries, expanded match durations and a penalty
 input correction are available in source. See [Matchday options](docs/MATCHDAY_OPTIONS.md)
-and [Steam Deck AppImage builds](docs/APPIMAGE.md). These additions are not part
-of the published beta release described below.
+and [Steam Deck AppImage builds](docs/APPIMAGE.md). These additions ship in v0.6.0-beta.1.
 
 ## Latest source improvements
 
-The following features and improvements are included in **v0.5.0-beta.4**:
+The following earlier improvements from **v0.5.0-beta.4** are retained:
 
 - **Fit Pixel Perfect:** Choose **Graphics → Aspect Ratio → Fit Pixel Perfect**
   to select a tested widescreen width at the largest whole-number scale that

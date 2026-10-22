@@ -130,7 +130,7 @@ The old `test_full_suite.py` directory/screenshot smoke script is not evidence
 of 100% game coverage. A build, boot, or passing unit test is not a completed
 campaign or physical hardware acceptance.
 
-## Unreleased Matchday additions
+## Matchday additions (0.6.0-beta.1)
 
 Shared broadcast launcher, roster strength summaries, optional short goal kicks and
 final-attack protection, extended durations and the penalty timing-input correction
