@@ -30,6 +30,7 @@ bool issd_android_find_rom(char *out, size_t out_size);
 void issd_android_pick_rom(void);
 void issd_android_pick_mods_folder(void);
 bool issd_android_is_picker_cancelled(void);
+unsigned issd_android_rom_generation(void);
 bool issd_android_is_finishing(void);
 void issd_android_set_game_running(bool running);
 /* Unconsumed overlay-safe edges, in SDL window-coordinate pixels. Renderer
@@ -47,6 +48,7 @@ static inline bool issd_android_find_rom(char *out, size_t out_size) {
 static inline void issd_android_pick_rom(void) {}
 static inline void issd_android_pick_mods_folder(void) {}
 static inline bool issd_android_is_picker_cancelled(void) { return false; }
+static inline unsigned issd_android_rom_generation(void) { return 0; }
 static inline bool issd_android_is_finishing(void) { return false; }
 static inline void issd_android_set_game_running(bool running) { (void)running; }
 static inline void issd_android_safe_insets(int *left, int *top, int *right, int *bottom) {

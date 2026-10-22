@@ -94,3 +94,5 @@ tools/mod_studio/__pycache__/
 
 # Original authored stadium example resources (no cartridge pixels).
 !mods/independent_stadium_example/**/*.bin
+# Local execution ledgers and transient build logs.
+/.superpowers/

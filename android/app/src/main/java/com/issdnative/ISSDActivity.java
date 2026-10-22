@@ -42,6 +42,7 @@ public class ISSDActivity extends SDLActivity {
     private static final String PREF_MODS_TREE_URI = "mods_tree_uri";
 
     private static volatile boolean sRomPickerCancelled = false;
+    private static volatile int sRomImportGeneration = 0;
     private static volatile boolean sGameRunning = false;
     private boolean mPickerActive = false;
     // Each array is published once, never mutated. The SDL native thread can
@@ -111,6 +112,9 @@ public class ISSDActivity extends SDLActivity {
     public static boolean isPickerCancelled() {
         return sRomPickerCancelled;
     }
+    public static int getRomImportGeneration() {
+        return sRomImportGeneration;
+    }
 
     public static void setGameRunning(boolean running) {
         sGameRunning = running;
@@ -149,11 +153,8 @@ public class ISSDActivity extends SDLActivity {
 
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
-        // Check if any .sfc or .smc ROM exists in target directory
-        if (!hasRomFile(targetDir)) {
-            Log.i(TAG, "No ROM detected in " + targetDir.getAbsolutePath() + ", launching file picker");
-            promptPickRom();
-        }
+        // The shared launcher owns cartridge selection, including first launch.
+
     }
 
     private void prepareAotDenySet() {
@@ -175,6 +176,7 @@ public class ISSDActivity extends SDLActivity {
     }
 
     public void requestRomPickerFromNative() {
+        sRomPickerCancelled = false;
         runOnUiThread(this::promptPickRom);
     }
 
@@ -215,6 +217,7 @@ public class ISSDActivity extends SDLActivity {
         } catch (Exception e) {
             Log.e(TAG, "Failed to launch ACTION_OPEN_DOCUMENT", e);
             mPickerActive = false;
+            sRomPickerCancelled = true;
         }
     }
 
@@ -240,14 +243,7 @@ public class ISSDActivity extends SDLActivity {
                 copyRomFromUri(data.getData());
             } else {
                 sRomPickerCancelled = true;
-                File ext = getExternalFilesDir(null);
-                File targetDir = ext != null ? ext : getFilesDir();
-                if (!hasRomFile(targetDir)) {
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, "No ROM selected. ISS Deluxe requires a ROM file to run.", Toast.LENGTH_LONG).show();
-                        finish();
-                    });
-                }
+
             }
         } else if (requestCode == REQUEST_PICK_MODS_FOLDER && resultCode == RESULT_OK && data != null) {
             Uri uri = data.getData();
@@ -271,6 +267,7 @@ public class ISSDActivity extends SDLActivity {
         try (InputStream in = getContentResolver().openInputStream(uri);
              OutputStream out = new FileOutputStream(tmpFile)) {
             if (in == null) {
+                sRomPickerCancelled = true;
                 runOnUiThread(() -> Toast.makeText(this, "Failed to open selected file", Toast.LENGTH_SHORT).show());
                 return;
             }
@@ -284,6 +281,7 @@ public class ISSDActivity extends SDLActivity {
                 throw new IllegalStateException("selected ROM was empty");
             }
             replaceFile(tmpFile, dstFile);
+            sRomImportGeneration++;
             Log.i(TAG, "ROM copied successfully to " + dstFile.getAbsolutePath() + " (" + dstFile.length() + " bytes)");
 
             runOnUiThread(() -> {
@@ -296,6 +294,7 @@ public class ISSDActivity extends SDLActivity {
             });
         } catch (Exception e) {
             deleteRecursively(tmpFile);
+            sRomPickerCancelled = true;
             Log.e(TAG, "Failed to copy ROM from URI: " + uri, e);
             runOnUiThread(() -> Toast.makeText(this, "Failed to copy ROM: " + e.getMessage(), Toast.LENGTH_LONG).show());
         }

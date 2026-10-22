@@ -484,7 +484,7 @@ static void mods_step(int direction) {
 static void gameplay_select(void) {
     int row = g_overlay_menu.current_item;
     if (row == 2) { issd_match_menu_open(); return; }
-    if (row == 4) {
+    if (row == 8) {
         g_overlay_menu.page = ISSD_MENU_PAGE_MAIN;
         g_overlay_menu.current_item = MENU_ITEM_GAMEPLAY;
         return;
@@ -492,6 +492,12 @@ static void gameplay_select(void) {
     if (row == 0) g_issd_config.gameplay_goalkeeper_ai = !g_issd_config.gameplay_goalkeeper_ai;
     if (row == 1) g_issd_config.gameplay_player_ai = !g_issd_config.gameplay_player_ai;
     if (row == 3) g_issd_config.gameplay_bug_fixes = !g_issd_config.gameplay_bug_fixes;
+    if(row==4)g_issd_config.gameplay_short_goal_kicks=!g_issd_config.gameplay_short_goal_kicks;
+    if(row==5)g_issd_config.gameplay_final_attack=!g_issd_config.gameplay_final_attack;
+    if(row==6){static const int values[]={0,1,2,3,5,7,10,15,20};int i=0;
+        while(i<8&&values[i]!=g_issd_config.match_minutes)i++;
+        g_issd_config.match_minutes=values[(i+1)%9];}
+    if(row==7)g_issd_config.team_strength=!g_issd_config.team_strength;
     if (s_prepare_save_context) s_prepare_save_context();
     issd_menu_refresh_continue();
     issd_config_save(&g_issd_config, NULL);
@@ -506,7 +512,7 @@ bool issd_menu_navigate_up(void) {
     if (issd_controls_active()) { issd_controls_step(-1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_up(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
-        g_overlay_menu.current_item = (g_overlay_menu.current_item + 4) % 5; return true;
+        g_overlay_menu.current_item = (g_overlay_menu.current_item + 8) % 9; return true;
     }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(-1); return true; }
     g_overlay_menu.current_item = main_item((main_row(g_overlay_menu.current_item) - 1 + MENU_TOTAL_ITEMS) % MENU_TOTAL_ITEMS);
@@ -523,7 +529,7 @@ bool issd_menu_navigate_down(void) {
     if (issd_controls_active()) { issd_controls_step(1); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_PASSWORD) { issd_password_ui_down(); return true; }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
-        g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % 5; return true;
+        g_overlay_menu.current_item = (g_overlay_menu.current_item + 1) % 9; return true;
     }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_MODS) { mods_step(1); return true; }
     g_overlay_menu.current_item = main_item((main_row(g_overlay_menu.current_item) + 1) % MENU_TOTAL_ITEMS);
@@ -901,9 +907,9 @@ bool issd_menu_handle_click(int fb_x, int fb_y, int width, int height) {
         return true;
     }
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
-        for (int row = 0; row < 5; row++) {
-            int y = box_y + 28 + row * 24;
-            if (fb_y >= y && fb_y < y + 24) {
+        for (int row = 0; row < 9; row++) {
+            int y = box_y + 28 + row * 16;
+            if (fb_y >= y && fb_y < y + 16) {
                 g_overlay_menu.current_item = row; gameplay_select(); return true;
             }
         }
@@ -1243,24 +1249,23 @@ void issd_menu_render(uint32_t *fb, int width, int height) {
 
     if (g_overlay_menu.page == ISSD_MENU_PAGE_GAMEPLAY) {
         DrawString(fb, width, height, box_x + 48, box_y + 4, "GAMEPLAY TWEAKS", 0xFFFFD700);
-        char rows[5][29];
+        char rows[9][29];
         snprintf(rows[0], sizeof rows[0], "Goalkeeper AI: <%s>", g_issd_config.gameplay_goalkeeper_ai ? "ON" : "OFF");
         snprintf(rows[1], sizeof rows[1], "Player AI:     <%s>", g_issd_config.gameplay_player_ai ? "ON" : "OFF");
         snprintf(rows[2], sizeof rows[2], "Match Shortcuts / Presets...");
         snprintf(rows[3], sizeof rows[3], "Original Bug Fixes: <%s>", g_issd_config.gameplay_bug_fixes ? "ON" : "OFF");
-        snprintf(rows[4], sizeof rows[4], "Back");
-        for (int row = 0; row < 5; row++) {
-            int y = box_y + 28 + row * 24;
+        snprintf(rows[4],sizeof rows[4],"Short goal kicks: <%s>",g_issd_config.gameplay_short_goal_kicks?"ON":"OFF");
+        snprintf(rows[5],sizeof rows[5],"Final attack: <%s>",g_issd_config.gameplay_final_attack?"ON":"OFF");
+        if(g_issd_config.match_minutes)snprintf(rows[6],sizeof rows[6],"Match time: <%d min>",g_issd_config.match_minutes);
+        else snprintf(rows[6],sizeof rows[6],"Match time: <ORIGINAL>");
+        snprintf(rows[7],sizeof rows[7],"Team strength: <%s>",g_issd_config.team_strength?"ON":"OFF");
+        snprintf(rows[8],sizeof rows[8],"Back");
+        for (int row = 0; row < 9; row++) {
+            int y = box_y + 28 + row * 16;
             uint32_t color = row == g_overlay_menu.current_item ? 0xFF00FF66 : 0xFFE0E0E0;
             if (row == g_overlay_menu.current_item) DrawChar(fb, width, height, box_x + 4, y, '>', color);
             DrawString(fb, width, height, box_x + 14, y, rows[row], color);
         }
-        const char *help = g_overlay_menu.current_item == 0 ? "Tracks angled shots sooner" :
-                           g_overlay_menu.current_item == 1 ? "Formation and substitute AI" :
-                           g_overlay_menu.current_item == 3 ? "Fix original game exploits" : "Rematch, drill and favorites";
-        DrawString(fb, width, height, box_x + 8, box_y + 148, help, 0xFFB0B0B0);
-        DrawString(fb, width, height, box_x + 8, box_y + 160, "Combine any tweaks freely", 0xFFB0B0B0);
-        DrawString(fb, width, height, box_x + 8, box_y + 172, "Saves need matching tweaks", 0xFFB0B0B0);
         DrawString(fb, width, height, box_x + 8, box_y + box_h - 11, "A/< >:Toggle  ESC:Back", 0xFF888888);
         return;
     }

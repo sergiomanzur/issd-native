@@ -11,13 +11,14 @@ def test_production_gameplay_hook_contract(tmp_path):
     fixture = (repo / "tests/test_gameplay_tweaks.c").read_text().split("int main(void)")[0]
     source = fixture + r'''
 #include "issd_config.h"
+#include "issd_match_options.h"
 #include "issd_bugfix_keeper.h"
 #include "issd_bugfix_skills.h"
 #include "issd_bugfix_goal.h"
 #include "issd_bugfix_name.h"
 #include <stdio.h>
 #include <stdlib.h>
-typedef struct { uint8_t *ram; uint16_t D, S, X, Y, A; uint8_t P, _flag_N, _flag_C; } CpuState;
+typedef struct { uint8_t *ram; uint16_t D, S, X, Y, A; uint8_t P, _flag_N, _flag_C, _flag_Z; } CpuState;
 IssdConfig g_issd_config;
 static struct { void *ppu,*cart; } test_snes, *g_snes=&test_snes;
 static uint8_t *g_rom_data;
@@ -38,6 +39,8 @@ static void issd_replay_observe(const uint8_t *memory,uint32_t pc) {(void)memory
 static void Die(const char *message) { (void)message;abort(); }
 typedef void (*TestHook)(CpuState *, uint32_t);
 static TestHook native_hook;
+static uint32_t s_match_native_pc;
+static void cpu_set_native_read16_hook(uint16_t (*hook)(CpuState *,uint8_t,uint16_t,uint16_t)){(void)hook;}
 static uint32_t opcode_pcs[192];
 static unsigned opcode_count;
 static void cpu_set_native_block_hook(TestHook h) { native_hook = h; }
@@ -62,11 +65,26 @@ static void cpu_write16(CpuState *c, unsigned bank, uint16_t a, uint16_t v) {
 }
 '''
     definitions = main[main.index("static unsigned IssdGameplayRamWord("):]
-    for name in ("static unsigned IssdGameplayRamWord(", "static void IssdGameplayKeeper(", "static void IssdGameplayPlayer(", "static bool IssdBugFixDecision(", "static void IssdGameplayDecision(",
+    for name in ("static unsigned IssdGameplayRamWord(", "static void IssdGameplayKeeper(", "static void IssdGameplayPlayer(", "static bool IssdBugFixDecision(", "static uint16_t IssdMatchNativeRead(", "static void IssdMatchOptionsOpcode(", "static void IssdGameplayDecision(",
                  "static void IssdGameplayNativeBlock(", "static void IssdGameplayInterpreted(", "static void IssdConfigureGameplayHooks("):
         source += function(definitions, name)
     source += r'''
 int main(void) {
+    fixture();CpuState kick={0};kick.ram=ram;kick.D=0x500;kick.X=16;kick.Y=11;
+    put(0x32,6);put(0x70,8);put(0x88,0x1aa0);put(0x1acc,0x500);put(0x1ab4,0x8000);
+    g_issd_config.gameplay_short_goal_kicks=true;IssdMatchOptionsOpcode(&kick,0x85f5a2);
+    assert(kick.X==1 && kick.Y==4); /* original grounded ball action */
+    g_issd_config.gameplay_short_goal_kicks=false;
+    g_issd_config.match_minutes=20;
+    put(0xa8,0);put(0x1648,0xffff);
+    unsigned modes[]={0,4,0x20,1,8,0x24};
+    for(unsigned i=0;i<6;i++){
+        put(0xde07,modes[i]);kick.A=0x500;
+        IssdMatchOptionsOpcode(&kick,0xa4927c);
+        assert(kick.A==(i<3?0x2000:0x500));
+    }
+    g_issd_config.match_minutes=0;
+
     IssdConfigureGameplayHooks(); assert(native_hook && opcode_count==3);
     assert(opcode_pcs[0]==0x8ba997 && opcode_pcs[1]==0x8baafd);
     g_issd_config.gameplay_bug_fixes = true;
@@ -90,7 +108,7 @@ int main(void) {
     profiles=false;IssdConfigureGameplayHooks();assert(native_hook&&opcode_count==3);
     g_issd_config.gameplay_goalkeeper_ai = true;
     g_issd_config.gameplay_player_ai = true;
-    fixture(); CpuState cpu = {ram, 0x500, 0x1ac, 123, 456, 0xa55a, 0x81, 1, 1};
+    fixture(); CpuState cpu = {ram, 0x500, 0x1ac, 123, 456, 0xa55a, 0x81, 1, 1, 0};
     CpuState saved = cpu; memcpy(original, ram, sizeof ram);
     deadline = true;
     IssdGameplayDecision(&cpu, 0x04dede, true);
@@ -152,6 +170,6 @@ int main(void) {
     path.write_text(source)
     exe = tmp_path / "hooks.exe"
     compile_c(exe, repo, [path, repo / "ISSDNative/issd_gameplay.c", repo / "ISSDNative/issd_bugfix_keeper.c",
-              repo / "ISSDNative/issd_bugfix_skills.c", repo / "ISSDNative/issd_bugfix_goal.c", repo / "ISSDNative/issd_bugfix_name.c"], [repo / "ISSDNative"])
+              repo / "ISSDNative/issd_bugfix_skills.c", repo / "ISSDNative/issd_bugfix_goal.c", repo / "ISSDNative/issd_bugfix_name.c", repo / "ISSDNative/issd_match_options.c"], [repo / "ISSDNative"])
     result = subprocess.run([str(exe)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -129,3 +129,10 @@ stadium dimensions do not prove playable field boundaries were changed.
 The old `test_full_suite.py` directory/screenshot smoke script is not evidence
 of 100% game coverage. A build, boot, or passing unit test is not a completed
 campaign or physical hardware acceptance.
+
+## Unreleased Matchday additions
+
+Shared broadcast launcher, roster strength summaries, optional short goal kicks and
+final-attack protection, extended durations and the penalty timing-input correction
+are implemented. See [settings and limits](MATCHDAY_OPTIONS.md) and
+[Steam Deck packaging](APPIMAGE.md). Physical Deck and Android acceptance remains pending.

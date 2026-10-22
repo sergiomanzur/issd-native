@@ -377,6 +377,8 @@ uint8 cpu_read8(CpuState *cpu, uint8 bank, uint16 addr) {
     return cpu_latch_read8(cpu, *RomPtr(((uint32)bank << 16) | addr));
 }
 
+static CpuNativeRead16Hook s_native_read16_hook;
+void cpu_set_native_read16_hook(CpuNativeRead16Hook hook) { s_native_read16_hook=hook; }
 uint16 cpu_read16(CpuState *cpu, uint8 bank, uint16 addr) {
     if (g_snes && g_snes->cart)
         cart_note_cpu_bus(g_snes->cart, bank, addr);
@@ -393,7 +395,10 @@ uint16 cpu_read16(CpuState *cpu, uint8 bank, uint16 addr) {
         uint8 hi = (hi_off >= 0)
             ? cpu->ram[hi_off]
             : cpu_read8(cpu, bank, hi_addr);
-        return cpu_latch_read16(cpu, (uint16)lo | ((uint16)hi << 8));
+        uint16 value=(uint16)lo | ((uint16)hi << 8);
+        if (s_native_read16_hook)
+            value=s_native_read16_hook(cpu,bank,addr,value);
+        return cpu_latch_read16(cpu,value);
     }
     if (is_hw_reg(bank, addr)) {
         uint8 lo;
@@ -456,7 +461,9 @@ uint16 cpu_read16(CpuState *cpu, uint8 bank, uint16 addr) {
     }
     /* ROM word read. */
     const uint8 *p = RomPtr(((uint32)bank << 16) | addr);
-    return cpu_latch_read16(cpu, (uint16)p[0] | ((uint16)p[1] << 8));
+    uint16 value=(uint16)p[0] | ((uint16)p[1] << 8);
+    if(s_native_read16_hook)value=s_native_read16_hook(cpu,bank,addr,value);
+    return cpu_latch_read16(cpu,value);
 }
 
 static void cpu_diag_nmi_busy_write(CpuState *cpu, uint8 bank, uint16 addr,

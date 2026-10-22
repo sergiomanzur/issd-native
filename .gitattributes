@@ -10,3 +10,7 @@ Makefile  text eol=lf
 # Batch files are the mirror image: they need CRLF.
 *.cmd text eol=crlf
 *.bat text eol=crlf
+
+# Extensionless AppImage entry point is a Linux shell script.
+packaging/appimage/AppRun text eol=lf
+packaging/appimage/*.desktop text eol=lf

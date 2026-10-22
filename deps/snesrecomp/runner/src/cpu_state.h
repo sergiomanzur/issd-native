@@ -37,6 +37,11 @@ struct CpuState;
 typedef void (*CpuNativeBlockHook)(struct CpuState *cpu, uint32_t pc24);
 extern CpuNativeBlockHook g_cpu_native_block_hook;
 void cpu_set_native_block_hook(CpuNativeBlockHook hook);
+/* Optional title policy for a native 16-bit WRAM/ROM read. Return the value seen
+ * by this instruction without changing guest memory. Interpreter opcode
+ * policies use their own precise PC hooks. NULL preserves the normal path. */
+typedef uint16_t (*CpuNativeRead16Hook)(struct CpuState *, uint8_t bank, uint16_t address, uint16_t value);
+void cpu_set_native_read16_hook(CpuNativeRead16Hook hook);
 extern uint32_t g_interp816_cur_pc;
 void cpu_set_stage_window_store_hook(CpuStageWindowStoreHook hook);
 

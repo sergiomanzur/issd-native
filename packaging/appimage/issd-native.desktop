@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=ISSD Native
+Comment=Classic 16-bit football with a native Matchday launcher
+Exec=ISSDNative %f
+Icon=issd-native
+Categories=Game;SportsGame;
+Terminal=false
+StartupWMClass=ISSDNative

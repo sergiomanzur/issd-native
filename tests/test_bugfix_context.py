@@ -68,6 +68,10 @@ int main(void) {
     IssdRefreshSaveContext();assert(configure_count==before+1&&extra_epoch==2);
     profiles=false;
     IssdRefreshSaveContext();assert(save_flags==0&&native_enabled&&!has_extra);
+    g_issd_config.gameplay_short_goal_kicks=true;
+    IssdRefreshSaveContext();assert(save_flags==32&&password_flags==32);
+    g_issd_config.gameplay_final_attack=true;g_issd_config.match_minutes=20;
+    IssdRefreshSaveContext();assert(save_flags==(32|64|(20<<8))&&password_flags==save_flags);
     return 0;
 }
 '''

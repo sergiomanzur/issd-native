@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Writable-state layout adapted from Mabec-games/iss-deluxed (54344cb),
+# with non-destructive asset seeding and argument resolution for ISSD Native.
+set -euo pipefail
+HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+ORIGINAL_DIRECTORY="$PWD"
+DATA="${ISSD_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/issd-native}"
+mkdir -p -- "$DATA/mods" "$DATA/saves"
+DATA="$(cd -- "$DATA" && pwd -P)"
+export LD_LIBRARY_PATH="$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+# Existing user content always wins, including edits to bundled pack names.
+# A version update must never remove/recreate the user's mods directory.
+if [[ -d "$HERE/usr/share/issd-native/mods" ]]; then
+    cp -a -n -- "$HERE/usr/share/issd-native/mods/." "$DATA/mods/"
+    chmod -R u+w -- "$DATA/mods"
+fi
+
+arguments=()
+path_next=false
+for arg in "$@"; do
+    if $path_next; then
+        [[ "$arg" = /* ]] || arg="$ORIGINAL_DIRECTORY/$arg"
+        arguments+=("$arg")
+        path_next=false
+        continue
+    fi
+    arguments+=("$arg")
+    case "$arg" in
+        --rom|--config|--save-dir|--mods-dir|--script|--screenshot|--dump-state|--graphics-report|--hd-pack|--dump-tiles|--launcher-preview|--launcher-actions|--import-password-symbols|--export-password-symbols)
+            path_next=true ;;
+        *.sfc|*.smc|*.SFC|*.SMC)
+            if [[ "$arg" != /* ]]; then arguments[${#arguments[@]}-1]="$ORIGINAL_DIRECTORY/$arg"; fi ;;
+    esac
+done
+if $path_next; then printf 'Missing path after %s\n' "${arguments[-1]}" >&2; exit 2; fi
+cd -- "$DATA"
+exec "$HERE/usr/bin/ISSDNative" --config "$DATA/issd_native.cfg" --save-dir "$DATA/saves" "${arguments[@]}"

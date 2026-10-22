@@ -100,6 +100,16 @@ void issd_android_pick_mods_folder(void) {
     call_activity_picker("requestModsFolderPickerFromNative");
 }
 
+unsigned issd_android_rom_generation(void) {
+    JNIEnv *env=SDL_AndroidGetJNIEnv();
+    if(!env)return 0;
+    jclass cls=(*env)->FindClass(env,"com/issdnative/ISSDActivity");
+    if(!cls){if((*env)->ExceptionCheck(env))(*env)->ExceptionClear(env);return 0;}
+    jmethodID mid=(*env)->GetStaticMethodID(env,cls,"getRomImportGeneration","()I");
+    unsigned generation=mid?(unsigned)(*env)->CallStaticIntMethod(env,cls,mid):0;
+    if((*env)->ExceptionCheck(env))(*env)->ExceptionClear(env);
+    (*env)->DeleteLocalRef(env,cls);return generation;
+}
 bool issd_android_is_picker_cancelled(void) {
     JNIEnv *env = SDL_AndroidGetJNIEnv();
     if (!env) return false;

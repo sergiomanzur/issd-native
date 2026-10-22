@@ -126,6 +126,10 @@ void issd_config_init_defaults(IssdConfig *cfg) {
     cfg->gameplay_goalkeeper_ai = false;
     cfg->gameplay_player_ai = false;
     cfg->gameplay_bug_fixes = false;
+    cfg->gameplay_short_goal_kicks = false;
+    cfg->gameplay_final_attack = false;
+    cfg->team_strength = true;
+    cfg->match_minutes = 0;
     cfg->match_preset = ISSD_MATCH_ORIGINAL;
     cfg->match_custom = (IssdMatchRules){1, 2, 0, 0, 0, 1};
     cfg->active_mod_packs[0] = 0;
@@ -258,6 +262,14 @@ static void apply_config_value(IssdConfig *cfg, const char *key, const char *val
                                uint16_t seen[ISSD_PROFILE_PLAYERS]) {
     int ival = 0;
     bool valid_int = parse_int(value, &ival);
+    if (!strcmp(key, "match_minutes")) {
+        if (valid_int && (ival==0||ival==1||ival==2||ival==3||ival==5||ival==7||ival==10||ival==15||ival==20))
+            cfg->match_minutes=ival;
+        return;
+    }
+    if (!strcmp(key,"gameplay_short_goal_kicks")) { if(valid_int)cfg->gameplay_short_goal_kicks=ival!=0; return; }
+    if (!strcmp(key,"gameplay_final_attack")) { if(valid_int)cfg->gameplay_final_attack=ival!=0; return; }
+    if (!strcmp(key,"team_strength")) { if(valid_int)cfg->team_strength=ival!=0; return; }
     char field[64];
     const char *rule_keys[] = {"match_preset", "match_duration", "match_difficulty",
         "match_offside", "match_fouls", "match_cards", "match_extra_time"};
@@ -441,6 +453,8 @@ bool issd_config_save(const IssdConfig *cfg, const char *filepath) {
     fprintf(f, "gameplay_goalkeeper_ai=%d\n", cfg->gameplay_goalkeeper_ai ? 1 : 0);
     fprintf(f, "gameplay_player_ai=%d\n", cfg->gameplay_player_ai ? 1 : 0);
     fprintf(f, "gameplay_bug_fixes=%d\n", cfg->gameplay_bug_fixes ? 1 : 0);
+    fprintf(f,"gameplay_short_goal_kicks=%d\ngameplay_final_attack=%d\nteam_strength=%d\nmatch_minutes=%d\n",
+            cfg->gameplay_short_goal_kicks,cfg->gameplay_final_attack,cfg->team_strength,cfg->match_minutes);
     fprintf(f, "match_preset=%d\nmatch_duration=%d\nmatch_difficulty=%d\n",
             cfg->match_preset, cfg->match_custom.duration, cfg->match_custom.difficulty);
     fprintf(f, "match_offside=%d\nmatch_fouls=%d\nmatch_cards=%d\nmatch_extra_time=%d\n",

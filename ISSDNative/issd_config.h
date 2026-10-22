@@ -117,6 +117,10 @@ typedef struct {
     bool gameplay_goalkeeper_ai;
     bool gameplay_player_ai;
     bool gameplay_bug_fixes; /* Master switch for verified original-game fixes. */
+    bool gameplay_short_goal_kicks;
+    bool gameplay_final_attack;
+    bool team_strength;
+    int match_minutes; /* 0: original; native override, not a cartridge enum. */
     int match_preset; /* Original leaves the cartridge's settings untouched */
     IssdMatchRules match_custom;
 

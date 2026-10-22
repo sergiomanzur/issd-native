@@ -30,6 +30,9 @@
 #include "issd_running.h"
 #include "issd_team_visual.h"
 #include "issd_gameplay.h"
+#include "issd_match_options.h"
+#include "issd_strength.h"
+#include "issd_launcher.h"
 #include "issd_bugfix_keeper.h"
 #include "issd_bugfix_skills.h"
 #include "issd_bugfix_goal.h"
@@ -305,6 +308,9 @@ static void IssdRefreshSaveContext(void) {
     if (g_issd_config.gameplay_player_ai) flags |= 4u;
     if (g_issd_config.gameplay_bug_fixes) flags |= 8u;
     if (issd_stadium_has_profiles()) flags |= 16u;
+    if (g_issd_config.gameplay_short_goal_kicks) flags |= 32u;
+    if (g_issd_config.gameplay_final_attack) flags |= 64u;
+    flags |= (uint32_t)g_issd_config.match_minutes << 8;
     uint8_t stadium_digest[32] = {0};
     if (flags & 16u) issd_stadium_gameplay_digest(stadium_digest);
     cpu_set_native_block_hook(IssdGameplayNativeBlock);
@@ -749,6 +755,37 @@ static bool IssdBugFixDecision(CpuState *cpu, uint32_t pc, bool native) {
         default: return false;
     }
 }
+static uint32_t s_match_native_pc;
+static uint16_t IssdMatchNativeRead(CpuState *cpu,uint8_t bank,uint16_t address,uint16_t value) {
+    if(s_match_native_pc==0x06dbc0 && address==0x16d0 &&
+       (bank==0||bank==0x7e||bank==0x80) &&
+       issd_final_attack(cpu->ram,g_issd_config.gameplay_final_attack)) return 1;
+    if((s_match_native_pc==0x249279||s_match_native_pc==0x24927d||s_match_native_pc==0x24926f) &&
+       address>=0xe893&&address<=0xe8a1 && g_issd_config.match_minutes){
+        unsigned flags=cpu->ram[0xde07]|(unsigned)cpu->ram[0xde08]<<8;
+        if(!flags||(flags&0x24)==4||(flags&0x24)==0x20)
+            return issd_duration_bcd(g_issd_config.match_minutes,cpu->ram[0xa8],value);
+    }
+    return value;
+}
+static void IssdMatchOptionsOpcode(CpuState *cpu,uint32_t pc) {
+    pc &= 0x7fffff;
+    if(g_watchdog_tripped)return;
+    if(pc==0x0c970e && g_issd_config.gameplay_bug_fixes) {
+        cpu->A=issd_penalty_timing_input(cpu->ram,cpu->A,true);
+    } else if(pc==0x06dbc3 && issd_final_attack(cpu->ram,g_issd_config.gameplay_final_attack)) {
+        cpu->A=1;cpu->_flag_Z=0;cpu->_flag_N=0;cpu->P &= (uint8_t)~0x82;
+    } else if((pc==0x24927c||pc==0x249280) && g_issd_config.match_minutes) {
+        unsigned flags=cpu->ram[0xde07]|(unsigned)cpu->ram[0xde08]<<8;
+        unsigned period=cpu->ram[0xa8]|(unsigned)cpu->ram[0xa9]<<8;
+        if(!flags||(flags&0x24)==4||(flags&0x24)==0x20)
+            cpu->A=issd_duration_bcd(g_issd_config.match_minutes,period,cpu->A);
+    } else if(pc==0x05f5a2 && issd_short_goal_kick(cpu->ram,cpu->D,g_issd_config.gameplay_short_goal_kicks)) {
+        /* Original goal-kick release only. Use the original grounded-pass
+         * ball action and moderate power; other keeper kicks are untouched. */
+        cpu->X=1;cpu->Y=4;
+    }
+}
 static void IssdGameplayDecision(CpuState *cpu, uint32_t pc, bool native) {
     pc &= 0x7fffff;
     if (pc != 0x04dede && pc != 0x04c638 && pc != 0x04c63d &&
@@ -786,6 +823,7 @@ static void IssdGameplayDecision(CpuState *cpu, uint32_t pc, bool native) {
     }
 }
 static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc) {
+    s_match_native_pc=pc & 0x7fffff;
     if (!interp_bridge_lle_master_deadline_reached(cpu)) issd_replay_observe(cpu->ram,pc);
     issd_stadium_scene_transfer(g_snes ? g_snes->ppu : NULL,cpu->ram,pc);
     if (!issd_stadium_scene_opcode(g_snes ? g_snes->cart : NULL, cpu->ram,
@@ -795,6 +833,8 @@ static void IssdGameplayNativeBlock(CpuState *cpu, uint32_t pc) {
     IssdGameplayDecision(cpu, pc, true);
 }
 static void IssdGameplayInterpreted(CpuState *cpu, uint32_t pc) {
+    s_match_native_pc=UINT32_MAX;
+    IssdMatchOptionsOpcode(cpu,pc);
     issd_replay_observe(cpu->ram,pc);
     issd_stadium_scene_transfer(g_snes ? g_snes->ppu : NULL,cpu->ram,pc);
     if (!issd_stadium_scene_opcode(g_snes ? g_snes->cart : NULL, cpu->ram,
@@ -834,6 +874,12 @@ static void IssdConfigureGameplayHooks(void) {
         interp_bridge_set_pre_opcode_hook(0xA4DBF6, IssdGameplayInterpreted);
         interp_bridge_set_pre_opcode_hook(0x8AB3FE, IssdGameplayInterpreted);
     }
+    cpu_set_native_read16_hook((g_issd_config.gameplay_final_attack||g_issd_config.match_minutes) ? IssdMatchNativeRead : NULL);
+    if(g_issd_config.gameplay_bug_fixes) interp_bridge_set_pre_opcode_hook(0x8c970e, IssdGameplayInterpreted);
+    if(g_issd_config.gameplay_final_attack) interp_bridge_set_pre_opcode_hook(0x86dbc3, IssdGameplayInterpreted);
+    if(g_issd_config.match_minutes){interp_bridge_set_pre_opcode_hook(0xa4927c, IssdGameplayInterpreted);
+        interp_bridge_set_pre_opcode_hook(0xa49280, IssdGameplayInterpreted);}
+    if(g_issd_config.gameplay_short_goal_kicks) interp_bridge_set_pre_opcode_hook(0x85f5a2, IssdGameplayInterpreted);
     if (g_issd_config.gameplay_goalkeeper_ai)
         interp_bridge_set_pre_opcode_hook(0x84DEDE, IssdGameplayInterpreted);
     if (g_issd_config.gameplay_player_ai) {
@@ -2043,12 +2089,17 @@ int main(int argc, char **argv) {
     signal(SIGFPE,  CrashSignalHandler);
     signal(SIGILL,  CrashSignalHandler);
 #endif
+    bool cli_no_launcher=false,launcher_started=false;
+    const char *launcher_capture=NULL,*launcher_actions=NULL;
     const char *cli_config_path = NULL;
     const char *cli_rom_path = NULL;
     const char *cli_mods_dir = NULL;
     const char *cli_save_dir = NULL;
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--continue") == 0) {
+        if (!strcmp(argv[i],"--no-launcher")) {cli_no_launcher=true;
+        } else if (!strcmp(argv[i],"--launcher-preview") && i+1<argc) {launcher_capture=argv[++i];
+        } else if (!strcmp(argv[i],"--launcher-actions") && i+1<argc) {launcher_actions=argv[++i];
+        } else if (strcmp(argv[i], "--continue") == 0) {
             g_continue_requested = true;
         } else if (strcmp(argv[i], "--allow-legacy-save") == 0) {
             g_allow_legacy_save = true;
@@ -2172,31 +2223,25 @@ int main(int argc, char **argv) {
     };
     issd_password_ui_set_callbacks(&password_callbacks);
 
-    char rom_path_buffer[ISSD_CONFIG_ROM_PATH_MAX];
-    rom_path_buffer[0] = '\0';
-    bool picked_rom = false;
-    if (cli_rom_path && cli_rom_path[0]) {
-        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", cli_rom_path);
+    char rom_path_buffer[ISSD_CONFIG_ROM_PATH_MAX]={0};
+    bool picked_rom=false;
+    bool use_launcher=!g_headless&&!cli_no_launcher&&(g_target_frames<0||launcher_capture||launcher_actions)&&!g_script_path;
+    if(cli_rom_path&&cli_rom_path[0])snprintf(rom_path_buffer,sizeof rom_path_buffer,"%s",cli_rom_path);
+    else if(g_issd_config.rom_path[0])snprintf(rom_path_buffer,sizeof rom_path_buffer,"%s",g_issd_config.rom_path);
+    else if(FileExists(DEFAULT_ROM_PATH))snprintf(rom_path_buffer,sizeof rom_path_buffer,"%s",DEFAULT_ROM_PATH);
 #ifdef ISSD_ANDROID
-    } else if (g_issd_config.rom_path[0] && FileExists(g_issd_config.rom_path)) {
-        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
-    } else if (!g_headless && PromptForRomFile(rom_path_buffer, sizeof(rom_path_buffer))) {
-        picked_rom = true;
-    } else if (FileExists(DEFAULT_ROM_PATH)) {
-        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", DEFAULT_ROM_PATH);
-#else
-    } else if (g_issd_config.rom_path[0] && FileExists(g_issd_config.rom_path)) {
-        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
-    } else if (FileExists(DEFAULT_ROM_PATH)) {
-        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", DEFAULT_ROM_PATH);
-    } else if (!g_headless && PromptForRomFile(rom_path_buffer, sizeof(rom_path_buffer))) {
-        picked_rom = true;
+    else issd_android_find_rom(rom_path_buffer,sizeof rom_path_buffer);
 #endif
-    } else if (g_issd_config.rom_path[0]) {
-        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", g_issd_config.rom_path);
-    } else {
-        snprintf(rom_path_buffer, sizeof(rom_path_buffer), "%s", DEFAULT_ROM_PATH);
-    }
+    if(use_launcher){
+        issd_mod_enable_from_list(g_issd_config.active_mod_packs);
+        int choice=issd_launcher_run(&g_issd_config,rom_path_buffer,sizeof rom_path_buffer,&g_window,&g_renderer,launcher_capture,launcher_actions);
+        if(choice<=0){if(g_renderer)SDL_DestroyRenderer(g_renderer);if(g_window)SDL_DestroyWindow(g_window);SDL_Quit();return choice<0?1:0;}
+        launcher_started=true;picked_rom=true;
+        issd_input_configure(g_issd_config.player_profiles);
+        issd_hd_apply(mods_dir);
+        IssdResetMenuInput();
+    }else if(!rom_path_buffer[0]&&!g_headless)picked_rom=PromptForRomFile(rom_path_buffer,sizeof rom_path_buffer);
+    if(!rom_path_buffer[0])snprintf(rom_path_buffer,sizeof rom_path_buffer,"%s",DEFAULT_ROM_PATH);
     if (rom_path_buffer[0]) {
         snprintf(g_issd_config.rom_path, sizeof(g_issd_config.rom_path), "%s", rom_path_buffer);
         if (picked_rom) issd_config_save(&g_issd_config, NULL);
@@ -2264,7 +2309,7 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    if (!g_headless) issd_input_init();
+    if (!g_headless && !launcher_started) issd_input_init();
 
     g_apu_mutex = SDL_CreateMutex();
     if (!g_apu_mutex) {
@@ -2295,7 +2340,7 @@ int main(int argc, char **argv) {
         Die(issd_save_error());
     }
 
-    SDL_Renderer *renderer = NULL;
+    SDL_Renderer *renderer = g_renderer;
     SDL_Texture *texture = NULL;
     SDL_Texture *source_texture = NULL;
     SDL_Texture *menu_texture = NULL;
@@ -2329,7 +2374,13 @@ int main(int argc, char **argv) {
         issd_video_output_dimensions(g_issd_config.output_resolution,win_w,win_h,&win_w,&win_h);
 #endif
 
-        g_window = SDL_CreateWindow(
+#ifndef ISSD_ANDROID
+        if(g_window) {
+            SDL_SetWindowFullscreen(g_window, g_issd_config.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+            if(!g_issd_config.fullscreen) SDL_SetWindowSize(g_window,win_w,win_h);
+        }
+#endif
+        if(!g_window) g_window = SDL_CreateWindow(
             "ISSD Native — International Superstar Soccer Deluxe",
             SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
             win_w, win_h,
@@ -2345,7 +2396,7 @@ int main(int argc, char **argv) {
             ren_flags |= SDL_RENDERER_PRESENTVSYNC;
         }
 
-        renderer = SDL_CreateRenderer(g_window, -1, ren_flags);
+        if(!renderer) renderer = SDL_CreateRenderer(g_window, -1, ren_flags);
         if (!renderer) {
             renderer = SDL_CreateRenderer(g_window, -1, 0);
         }
@@ -2647,6 +2698,8 @@ int main(int argc, char **argv) {
                         if (issd_script_players() & (1u << player))
                             pads[player] = (uint16_t)issd_script_mask_player(frame_count, player);
                 }
+                if(g_issd_config.team_strength)issd_strength_draw(g_pixel_buffer,cur_render_w,cur_render_h,
+                    g_ws_active?g_ws_extra:0,g_ram,g_rom_data,g_rom_size,g_issd_font8x8);
                 if (g_main_menu_returning) {
                     /* Original START presses leave boot/title. Once the guest
                      * reaches its menu dispatcher, NONE prevents selecting a game.

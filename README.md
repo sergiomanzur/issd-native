@@ -12,6 +12,14 @@ The [supported-feature inventory](docs/SUPPORTED_FEATURES.md) records actual beh
 
 Project metadata for [recomp.board](https://recomp.fyi) and other tools lives in [`.recomp.json`](.recomp.json), following the [recomp.board specification](https://recomp.fyi/spec). Its `released` status means a public build is available and maintained; the project remains a beta working toward 1.0. Update the manifest whenever the project status, toolchain, or supported original release changes.
 
+## Unreleased Matchday additions
+
+An original retro broadcast launcher, optional short goal kicks and final-attack
+protection, roster-based team summaries, expanded match durations and a penalty
+input correction are available in source. See [Matchday options](docs/MATCHDAY_OPTIONS.md)
+and [Steam Deck AppImage builds](docs/APPIMAGE.md). These additions are not part
+of the published beta release described below.
+
 ## Latest source improvements
 
 The following features and improvements are included in **v0.5.0-beta.4**:
