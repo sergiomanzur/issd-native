@@ -21,3 +21,12 @@ asset checksums are checked before publication.
 Physical Steam Deck Gaming Mode/suspend/resume, Android document providers and
 touch, four physical controllers and complete Cup/World Series playthroughs
 remain pending. Automated headless checks do not establish device acceptance.
+
+Publication checks: merged-master focused run 14 passed; release packaging/AppRun
+run 9 passed. Packaged Windows completed a 900-frame dummy-driver run. Rebuilt
+frozen Mod Studio selftest passed with both authored stadium profiles and 12/12
+captures. Android APK signature verified and matches beta.4 certificate SHA-256
+4259e5033f3128b6cce50ba4fe9f43d966af9add3ddcc4d2e9fdc5baff390fa0.
+Windows checkout line-ending expansion in binary stadium assets was detected
+by release validation and fixed with an explicit Git binary attribute.
+AppImage stages tracked public resources, including binary stadium resources.

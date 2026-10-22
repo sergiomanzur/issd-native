@@ -14,3 +14,6 @@ Makefile  text eol=lf
 # Extensionless AppImage entry point is a Linux shell script.
 packaging/appimage/AppRun text eol=lf
 packaging/appimage/*.desktop text eol=lf
+
+# Stadium tile/map resources are bytes, even when they contain no NULs.
+*.bin -text

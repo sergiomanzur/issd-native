@@ -47,8 +47,12 @@ done <<< "$dependencies"
     cd "$ROOT"
     # Explicit asset whitelist prevents ROMs, save states and build products
     # from accidentally entering a release when present in a local mods tree.
-    find mods -type f \( -iname '*.json' -o -iname '*.bmp' -o -iname '*.png' -o -iname '*.md' -o -iname '*.txt' \) \
-        -exec cp --parents -- '{}' "$APPDIR/usr/share/issd-native/" \;
+    while IFS= read -r -d '' asset; do
+        case "$asset" in
+            *.json|*.bmp|*.png|*.md|*.txt|*.bin)
+                cp --parents -- "$asset" "$APPDIR/usr/share/issd-native/" ;;
+        esac
+    done < <(git ls-files -z -- mods)
 )
 cp -- "$ROOT/LICENSE" "$APPDIR/usr/share/licenses/issd-native/GPL-3.0.txt"
 cp -- "$ROOT/deps/snesrecomp/LICENSE" "$APPDIR/usr/share/licenses/issd-native/SNESRecomp-LICENSE.txt"
