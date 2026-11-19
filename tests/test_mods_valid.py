@@ -3,19 +3,87 @@
 Two of them did not, when the checker was first written: legacy integer
 `formation` keys, names longer than the cartridge stores, and ratings packed
 so tightly that a whole squad quantised to the same two values.
+
+The second half of this file checks `skin_tones` directly. A team can offer
+two palettes - one per player `skin_tone` value - and the loader is lenient
+where the checker is not: a mistyped colour is skipped in silence there and
+must be an error here, so a pack cannot look right and draw the wrong team.
 """
 import subprocess
 import sys
 from pathlib import Path
 
+REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "tools"))
+
+import validate_mod  # noqa: E402
+
 
 def test_shipped_packs_validate():
-    repo = Path(__file__).resolve().parents[1]
-    packs = sorted((repo / "mods").glob("*.json"))
+    packs = sorted((REPO / "mods").glob("*.json"))
     assert packs, "no mod packs to check"
     result = subprocess.run(
-        [sys.executable, str(repo / "tools/validate_mod.py"), "--strict"]
+        [sys.executable, str(REPO / "tools/validate_mod.py"), "--strict"]
         + [str(p) for p in packs],
-        capture_output=True, text=True, cwd=repo,
+        capture_output=True, text=True, cwd=REPO,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def _report(team):
+    report = validate_mod.Report()
+    validate_mod.check_team(report, team, 0, [], set())
+    return report
+
+
+def _team(**fields):
+    team = {"team_id": 9, "name": "France", "players": []}
+    team.update(fields)
+    return team
+
+
+def test_skin_tones_must_be_one_or_two_objects():
+    for tones in ("#EAC086", {}, [], [{"skin": "#EAC086"}] * 3,
+                  ["#EAC086"]):
+        report = _report(_team(skin_tones=tones))
+        assert report.errors, "skin_tones %r was accepted" % (tones,)
+
+
+def test_skin_tone_parts_must_be_six_hex_digits():
+    for tone in ({"skin": "red"}, {"hair": "#12345"},
+                 {"skin": "#12345G"}, {"hair": 0x101010}):
+        report = _report(_team(skin_tones=[tone]))
+        assert any("must be a colour" in e for e in report.errors), \
+            "skin tone %r was accepted: %s" % (tone, report.errors)
+
+
+def test_skin_tone_with_neither_part_changes_nothing():
+    report = _report(_team(skin_tones=[{"other": "value"}]))
+    assert any("neither" in e and "skin" in e and "hair" in e
+               for e in report.errors), report.errors
+
+
+def test_player_using_tone_one_without_a_second_tone_warns_about_the_cartridge():
+    report = _report(_team(skin_tones=[{"skin": "#EAC086", "hair": "#3A2A1A"}],
+                           players=[{"shirt_number": 10, "name": "Mbappe",
+                                     "skin_tone": 1}]))
+    assert not report.errors, report.errors
+    assert any("cartridge" in w and "skin_tone 1" in w
+               for w in report.warnings), report.warnings
+
+
+def test_skin_tone_above_one_names_the_goalkeeper_and_referee_palettes():
+    report = _report(_team(players=[{"shirt_number": 1, "name": "Maignan",
+                                     "skin_tone": 2}]))
+    warnings = " ".join(report.warnings)
+    assert "goalkeeper" in warnings and "referee" in warnings, report.warnings
+
+
+def test_two_complete_tones_used_by_players_are_clean():
+    report = _report(_team(
+        skin_tones=[{"skin": "#EAC086", "hair": "#3A2A1A"},
+                    {"skin": "#6B4226", "hair": "#101010"}],
+        players=[{"shirt_number": 10, "name": "Mbappe", "skin_tone": 0},
+                 {"shirt_number": 17, "name": "Saliba", "skin_tone": 1}]))
+    assert not report.errors and not report.warnings, (report.errors,
+                                                       report.warnings)

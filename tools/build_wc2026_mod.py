@@ -123,6 +123,10 @@ def build_mod():
         "formation": "4-2-3-1", "tactics": "attacking", "plate_name": "FRANCE",
         "flag": "world_cup_2026/flags/france.bmp",
         "shirt": "#002654", "shorts": "#FFFFFF", "socks": "#ED2939",
+        "skin_tones": [
+            {"skin": "#EAC086", "hair": "#3A2A1A"},
+            {"skin": "#6B4226", "hair": "#101010"},
+        ],
         "players": make_squad("France", fra_players)
     })
 
