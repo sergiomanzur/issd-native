@@ -207,17 +207,19 @@ def pitch_size(length: int, width: int, size=(210, 140)) -> Image.Image:
     return im
 
 
-# What the appearance byte really is. The high nibble picks the palette the
-# sprite is drawn with; measured by setting it and looking. 0 and 1 are the
-# only ones the cartridge uses and the only ones that leave a footballer on
-# the screen - 2 and 3 select palettes the strip does not fit and turn the
-# whole player orange or green. The low nibble changes nothing in a match,
-# though the cartridge's own squads vary it from 0 to 13.
+# What the appearance byte really is. The high nibble chooses which of a
+# team's two skins the sprite is drawn with, and 2 and 3 are not skin tones at
+# all: they select the goalkeeper's palette and the referee's, which is why a
+# footballer drawn with one looks orange or green. The low nibble picks a hair
+# actor variant; the cartridge's own squads use 0 to 13.
 APPEARANCE = {
-    0: ("Dark hair", "what most of the cartridge's players have"),
-    1: ("Fair hair", "the other one it uses - 101 of its 720 players"),
-    2: ("Breaks the sprite", "the whole player turns orange"),
-    3: ("Breaks the sprite", "the whole player turns green"),
+    0: ("Tone 0 (team default skin)", "the team's own skin and hair"),
+    1: ("Tone 1 (team alternate skin)", "the team's second tone, when a pack "
+                                        "gives one"),
+    2: ("Goalkeeper palette", "the colours a goalkeeper is drawn with, not a "
+                              "skin tone"),
+    3: ("Referee palette", "the colours the referee is drawn with, not a skin "
+                           "tone"),
 }
 
 

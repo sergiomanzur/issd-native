@@ -27,7 +27,8 @@ PLAYER_KEYS = ("name", "shirt_number", "position", "skin_tone", "hair_style") \
     + ATTRIBUTES
 TEAM_KEYS = ("new_team", "team_id", "name", "short_name", "country_code",
              "plate_name", "photo", "formation", "tactics",
-             "shirt", "shorts", "socks", "kit_record", "players")
+             "shirt", "shorts", "socks", "kit_record", "skin_tones",
+             "players")
 STADIUM_KEYS = ("stadium_id", "name", "display_name", "pitch_length",
                 "pitch_width", "stadium_profile")
 PACK_KEYS = ("name", "author", "version", "description", "stadium_count",

@@ -740,7 +740,7 @@ class Studio(tk.Tk):
         look.grid(row=6, column=0, columnspan=4, sticky="w")
         ttk.Label(look, text="Appearance", style="Head.TLabel").grid(
             row=0, column=0, columnspan=3, sticky="w")
-        ttk.Label(look, text="One byte, and it is not what its name says. The top half picks the palette the sprite is drawn with - dark hair or fair, and nothing else the strip survives. The bottom half changes nothing in a match, though the cartridge varies it from 0 to 13. Measured by setting it and looking; the pictures are that player with that value.",
+        ttk.Label(look, text="The appearance byte is two halves. The top half chooses which of the team's two skins the player is drawn with; 2 and 3 are the goalkeeper's and the referee's palettes instead, and a footballer drawn with one looks orange or green. The bottom half chooses a hair actor variant. The pictures are that player with that value.",
                   style="Muted.TLabel", wraplength=470, justify="left").grid(
             row=1, column=0, columnspan=3, sticky="w", pady=(2, 8))
 
@@ -759,11 +759,11 @@ class Studio(tk.Tk):
             what, why = preview.APPEARANCE.get(value, ("?", ""))
             look_note.configure(text="%s - %s" % (what, why))
 
-        self._bind_int(look, 2, "Hair colour", player, "skin_tone", 0, 3,
-                       note="0 dark, 1 fair; 2 and 3 break the sprite",
+        self._bind_int(look, 2, "Skin tone", player, "skin_tone", 0, 1,
+                       note="0 or 1: the team's two tones",
                        on_change=redraw_head)
-        self._bind_int(look, 3, "Unused", player, "hair_style", 0, 15,
-                       note="kept so a squad round-trips; nothing reads it")
+        self._bind_int(look, 3, "Hair style", player, "hair_style", 0, 13,
+                       note="hair actor variant, 0-13")
         redraw_head()
 
         ttk.Separator(f, orient="horizontal").grid(row=7, column=0, columnspan=4,
@@ -1283,14 +1283,16 @@ class Studio(tk.Tk):
             "  - replace any of the 36 squads, completely\n"
             "  - add up to %d teams, replacing nobody\n"
             "  - up to %d stadiums\n"
-            "  - kit colours, name plates and squad photographs\n\n"
+            "  - kit colours, two skin tones per team - each with its own\n"
+            "    hair - name plates and squad photographs\n\n"
             "What it cannot:\n\n"
             "  - more than 20 players in a squad\n"
             "  - names longer than %d characters, or with digits or accents\n"
             "  - a squad for one of the all-star sides: they pick their "
             "players from their group when the match loads\n"
             "  - striped or hooped shirts - a kit is one colour per part\n"
-            "  - per-player hair colour: the cartridge has no such field\n"
+            "  - more than two skin tones per team: a player picks one of "
+            "the two\n"
             "  - the team name in the match HUD, or the flag beside it"
             % (repo.ADDED_SLOTS, repo.STADIUM_MAX, repo.NAME_MAX),
             parent=self)
