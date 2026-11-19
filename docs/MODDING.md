@@ -534,9 +534,10 @@ not a guarantee that records 36-43 are free for every other pack.
 A team has two skins, and each player's `skin_tone` chooses between them. The
 first object is tone 0, the team's default; the second is tone 1, the
 alternate. Either part can be left out, and a part left out stays as it was.
-A team that gives no `skin_tones` keeps the cartridge's own pair. Writing
-`"skin_tones": null` is the same as leaving the key out, as it is for a kit
-colour.
+A team that gives no `skin_tones` keeps the cartridge's own pair. The
+validator treats `"skin_tones": null` as absent, as it does a kit colour, but
+the game's loader expects an array there and refuses the whole pack
+otherwise. Leave the key out entirely.
 
 Tone 0 is stored in the team's kit record, beside its strip: colour 1 is
 hair, and colours 2 to 6 are a five-step skin ramp. The ramp is derived from
