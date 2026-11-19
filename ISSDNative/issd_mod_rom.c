@@ -566,10 +566,23 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
             issd_mod_result_note_warning(why);
             return false;
         }
-        rec = ROM_KIT_BASE + (size_t)team->kit_record * ROM_KIT_STRIDE;
-    } else {
-        rec = kit_offset(rom, rom_size, team->team_id, false);
+        /* An explicit record only chooses the strip when the pack also
+         * gives a strip colour. On a skin-only entry the record nobody
+         * points at cannot reach the pitch, so the table's own record is
+         * used and the pack is told its record was ignored rather than
+         * having a pointer moved behind its back. */
+        if (has_strip) {
+            rec = ROM_KIT_BASE + (size_t)team->kit_record * ROM_KIT_STRIDE;
+        } else {
+            char why[112];
+            snprintf(why, sizeof why,
+                     "%s: team %u's kit record needs a strip colour; "
+                     "skin written to its own kit",
+                     pack_name, team->team_id);
+            issd_mod_result_note_warning(why);
+        }
     }
+    if (!rec) rec = kit_offset(rom, rom_size, team->team_id, false);
     if (!rec || rec + ROM_KIT_STRIDE > rom_size) {
         char why[112];
         snprintf(why, sizeof why, "%s: team %u has no strip to repaint",
@@ -588,10 +601,12 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
         return false;
     }
 
-    /* An explicit record selects the strip the team wears, not just where
-     * to paint. Redirect only after the palette signature passes, so a bad
-     * cartridge or override cannot change either pointer table. */
-    if (team->kit_record >= 0 && team->team_id < ROM_KIT_PTR_TEAMS) {
+    /* With a strip colour, an explicit record selects the strip the team
+     * wears, not just where to paint. Redirect only after the palette
+     * signature passes, so a bad cartridge or override cannot change
+     * either pointer table - and never on a skin-only entry. */
+    if (has_strip && team->kit_record >= 0 &&
+        team->team_id < ROM_KIT_PTR_TEAMS) {
         const uint16_t addr = (uint16_t)(0x8000u +
             (rec - (size_t)(ROM_KIT_BANK & 0x7Fu) * 0x8000u) - 2u);
         const size_t home_ptr = ROM_KIT_PTRS_HOME + (size_t)team->team_id * 2u;
@@ -649,6 +664,22 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
             (uint16_t)(rom[rec_away + 32] | (rom[rec_away + 33] << 8));
         if (!has_tone0 ||
             (atail_a == ROM_KIT_TAIL_A && atail_b == ROM_KIT_TAIL_B)) {
+            /* The change kit is picked by its own table, so its sharers
+             * need not match the home record's. Recolouring a change kit
+             * another team wears is the same surprise, so say so. */
+            if (has_tone0) {
+                int away_sharers = 0;
+                for (int t = 0; t < ROM_KIT_PTR_TEAMS; t++)
+                    if (kit_offset(rom, rom_size, t, true) == rec_away)
+                        away_sharers++;
+                if (away_sharers > 1) {
+                    char why[112];
+                    snprintf(why, sizeof why,
+                             "%s: this change strip is worn by %d teams",
+                             pack_name, away_sharers);
+                    issd_mod_result_note_warning(why);
+                }
+            }
             if (has_strip) {
                 if (team->shirt_rgb)  write_part(rom, rec_away, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
                 if (team->shorts_rgb) write_part(rom, rec_away, ROM_KIT_SHORTS, team->shorts_rgb, 3);

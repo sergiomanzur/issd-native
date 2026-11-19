@@ -575,6 +575,52 @@ int main(void) {
                "a shared kit record must warn when skin is written into it");
         assert(kit_word(rom, home, 2) != 0xEEEEu);
 
+        /* Naming a record only chooses a strip when a strip colour is
+         * given. On a skin-only entry the pointers must stay put and the
+         * skin goes into the record the table already names, because a
+         * record nobody points at cannot reach the pitch. */
+        memset(rom, 0xEE, sizeof rom);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_tail(rom, kit_at(20));
+        kit_point(rom, KITS_HOME, 0, 20);
+        kit_point(rom, KITS_AWAY, 0, 53);
+        uint8_t named[12], ptr_home[2], ptr_away[2];
+        memcpy(named, rom + home + 2, sizeof named);
+        memcpy(ptr_home, rom + KITS_HOME, sizeof ptr_home);
+        memcpy(ptr_away, rom + KITS_AWAY, sizeof ptr_away);
+        sp->teams[0].team_id = 0;
+        sp->teams[0].kit_record = 27;
+        sp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "an ignored kit_record must be reported");
+        assert(memcmp(ptr_home, rom + KITS_HOME, sizeof ptr_home) == 0 &&
+               memcmp(ptr_away, rom + KITS_AWAY, sizeof ptr_away) == 0 &&
+               "a skin-only pack must not move a kit pointer");
+        assert(kit_word(rom, kit_at(20), 2) == 0x1D4Du &&
+               "skin lands in the record the table names");
+        assert(memcmp(named, rom + home + 2, sizeof named) == 0 &&
+               "the named record is not painted behind the pointer's back");
+
+        /* The change record is chosen by its own table, so a change kit
+         * shared with another team is recoloured too. Say so, the way a
+         * shared home record is reported. */
+        memset(rom, 0xEE, sizeof rom);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 0, 27);
+        kit_point(rom, KITS_AWAY, 0, 53);
+        kit_point(rom, KITS_AWAY, 1, 53);
+        sp->teams[0].kit_record = -1;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "a shared change strip must warn when skin is written into it");
+        assert(kit_word(rom, away, 2) == 0x1D4Du &&
+               "the warning names a record that really is recoloured");
+
         /* The stock pack names no skin_tones, so the whole feature is
          * invisible to it: colours 1-6 keep exactly what the cartridge
          * had. */
