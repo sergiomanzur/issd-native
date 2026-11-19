@@ -321,7 +321,8 @@ half-read.
 | `shirt` | `"#RRGGBB"` | Shirt colour. The three shades the cartridge uses are derived from it. |
 | `shorts` | `"#RRGGBB"` | Shorts colour. |
 | `socks` | `"#RRGGBB"` | Sock colour. |
-| `kit_record` | 0-83 | Redirects the team's home and away strip to this palette before painting it. Use a unique record to isolate a shared strip - see section 6a. |
+| `kit_record` | 0-83 | Redirects the team's home and away strip to this palette before painting it. Use a unique record to isolate a shared strip - see section 6a. Needs a strip colour to take effect. |
+| `skin_tones` | array | One or two `{ "skin": "#RRGGBB", "hair": "#RRGGBB" }` objects: the team's default tone and its alternate. A player's `skin_tone` picks between them. See section 6a. |
 | `formation` | text | See section 6. Optional. |
 | `tactics` | text | `attacking`, `balanced`, `defensive`. Optional. |
 | `players` | array | Optional: leave it out to change only the shape. |
@@ -335,8 +336,8 @@ A pack may also carry a `stadiums` array alongside `teams`; see section 8.
 | `shirt_number` | 1-99 | **Required.** Starts a player entry. |
 | `name` | text | **8 characters**, A-Z a-z, space and a full stop. Longer names are cut; anything else becomes a space. Leading spaces are how the cartridge sits a name on screen - `" Pabi"` - and are kept. |
 | `position` | `GK` `DF` `MF` `FW`, or 0-15 | The letters shown beside the name. The cartridge has six codes, not four: 3 and 5 sit between defence and midfield and between midfield and attack, and 51 of its 720 players have one. Write the number to keep one exactly. |
-| `skin_tone` | 0-1 | Misnamed, and the name is kept so packs already written still load. It is the palette the player is drawn with: 0 dark hair, 1 fair. Those are the only two the cartridge uses; 2 and 3 select palettes the strip does not fit and turn the whole player orange or green. |
-| `hair_style` | 0-15 | The low half of the appearance byte. Nonzero values select special hair graphics through the cartridge's hair actor routines ($83:C903 and $83:CAD7); stock squads use 0-13. Outfield values are preserved. For `GK` or numeric position 1, this is always stored as 0, matching all 72 stock keepers; `skin_tone` is still preserved. |
+| `skin_tone` | 0-1 | Which of the team's two skins the player is drawn with: 0 the default, 1 the alternate. Both come from the team's `skin_tones`; a team without them keeps the cartridge's own pair. 2 selects the goalkeeper's palette and 3 the referee's, so neither is a skin tone an outfield player can wear. |
+| `hair_style` | 0-15 | The low half of the appearance byte: a hair actor variant. 0 is the ordinary head; 1-13 select the alternatives the cartridge's own squads use, through its hair actor routines ($83:C903 and $83:CAD7). Outfield values are preserved. For `GK` or numeric position 1, this is always stored as 0, matching all 72 stock keepers; `skin_tone` is still preserved. |
 | the ten attributes | 0-99 | see below |
 
 ### Attributes
@@ -479,9 +480,9 @@ library counts its roles the way its label claims.
 
 ---
 
-## 6a. Strips, plates and squad photographs
+## 6a. Strips, skin tones, plates and squad photographs
 
-Three things carry a team's identity on screen, and each is reached a
+Four things carry a team's identity on screen, and each is reached a
 different way.
 
 ### The strip
@@ -491,11 +492,14 @@ different way.
 ```
 
 The cartridge keeps a seventeen-colour palette per kit: three shirt shades,
-three shorts shades, two sock shades, plus skin and hair it shares with
-everyone. Give the colour you want and the shades are derived from it the
-way the cartridge shades its own - the lit shade is your colour, the others
-roughly three quarters and three fifths of it. Leave a part out and it is
-not touched. `#RRGGBB`, with or without the hash, upper or lower case.
+three shorts shades, two sock shades, a hair colour, a five-step skin ramp,
+plus two constants at the end that every record shares. The hair and skin
+are part of the record, so each record carries a pair; a pack sets them with
+`skin_tones`. Give the colour you want and the shades are
+derived from it the way the cartridge shades its own - the lit shade is your
+colour, the others roughly three quarters and three fifths of it. Leave a
+part out and it is not touched. `#RRGGBB`, with or without the hash, upper or
+lower case.
 
 Palette recoloring alone is flat per part. The mod loader also supports vertical
 shirt stripes through the `stripes` field and the original jersey-detail
@@ -517,6 +521,52 @@ away strips for teams that both packs replace; their away pointers move to
 their home strips when those replacements load. The allocation avoids the
 original home and all-star palettes. These numbers are a pack-specific choice,
 not a guarantee that records 36-43 are free for every other pack.
+
+### The two skin tones
+
+```json
+  { "team_id": 35, "skin_tones": [
+      { "skin": "#EAC086", "hair": "#3A2A1A" },
+      { "skin": "#6B4226", "hair": "#101010" }
+  ] }
+```
+
+A team has two skins, and each player's `skin_tone` chooses between them. The
+first object is tone 0, the team's default; the second is tone 1, the
+alternate. Either part can be left out, and a part left out stays as it was.
+A team that gives no `skin_tones` keeps the cartridge's own pair. The key is
+all or nothing: once it is present, both the validator and the game's loader
+require an array of one or two tone objects, and `"skin_tones": null` is
+refused like any other value that is not an array. Leave the key out entirely
+to keep what the cartridge has.
+
+Tone 0 is stored in the team's kit record, beside its strip: colour 1 is
+hair, and colours 2 to 6 are a five-step skin ramp. The ramp is derived from
+the colour you give by darkening it to 46, 68, 82, 89 and 100 percent, dark to
+light, so the colour in the pack is the lightest of the five - the way the
+cartridge shades its own skins. Skin colours without a strip colour are
+written into whichever record the team already wears; `kit_record` selects a
+record only when there is a strip to paint, and the loader says so when it is
+ignored. Tone 0 is written into both records the cartridge's tables name for
+the team, its home record and its change record.
+
+Tone 1 has no place in the kit record, so the loader writes it into free
+space at the end of bank `$89` (`$89:FA42`, file offset `$4FA42`) and points
+the team's entry in two 43-word tables at it: `DATA_82837C` for skin and
+`DATA_8283D2` for hair. Each entry is the address of a length-prefixed
+record - `$0009` and five colours for skin, `$0001` and one colour for hair.
+The loader checks that the space still holds filler before writing, and backs
+out with a warning rather than overwrite a different cartridge revision.
+
+The select screen draws two head portraits per team, and those follow the
+tones: each is pointed at whichever of the cartridge's twelve head palettes
+is nearest the skin colour given. The portraits are fixed artwork, so this is
+a nearest match rather than a recolour.
+
+The goalkeeper and the referee are drawn with palettes of their own, which is
+why `skin_tone` 2 and 3 put a footballer in the keeper's or the official's
+colours instead - orange or green when the rest of the side wears something
+else.
 
 ### The name plate
 
@@ -875,6 +925,12 @@ Being straight about the ceiling saves everyone time.
 - **The team name in the match HUD.** Select-screen plates can be renamed and
   select/HUD flags replaced; the match name graphic still has its original limit.
 - **More than 20 players per squad.**
+- **More than two skin tones per team.** Each team has a default and an
+  alternate, and a player picks one with `skin_tone`. Hair belongs to the
+  tone, so every player on the same tone shares it. The alternate goes in
+  the free run at `$89:FA42`, which holds about 84 teams' records (1470
+  bytes, 16 per team); stacked packs that allocate for many teams can
+  exhaust it, and a team that no longer fits is skipped with a warning.
 - **Player names longer than 8 characters**, and no accents or digits. A
   full stop is fine: the cartridge is full of them.
 - **New formation labels.** The screen can only print three numbers and the

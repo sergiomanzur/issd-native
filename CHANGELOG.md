@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add two skin and hair tones per team for roster packs, chosen per player;
+  let Mod Studio select the tone and describe the appearance byte, and make
+  the validator reject malformed `skin_tones`.
+
 ## 0.6.0-beta.1 — 2026-10-21
 
 - Add an original retro broadcast launcher with ROM validation, presentation,

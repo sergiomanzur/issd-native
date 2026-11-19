@@ -371,6 +371,10 @@
       "shirt": "#002654",
       "shorts": "#FFFFFF",
       "socks": "#ED2939",
+      "skin_tones": [
+        { "skin": "#EAC086", "hair": "#3A2A1A" },
+        { "skin": "#6B4226", "hair": "#101010" }
+      ],
       "players": [
         {
           "shirt_number": 16,

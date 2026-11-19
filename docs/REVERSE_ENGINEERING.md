@@ -466,6 +466,27 @@ It belongs to the select screen. The lesson is the usual one - a table whose
 shape fits the theory is not evidence for the theory, and one mutation
 settles it in two minutes.
 
+### Skin and hair: where a second tone lives
+
+The kit record already holds one skin - a five-step ramp at 46, 68, 82, 89
+and 100 percent of one base colour - and one hair colour. A second
+tone needs somewhere else to live, so the cartridge keeps a pair of 43-word
+tables in bank `$82`: `DATA_82837C` for skin and `DATA_8283D2` for hair, at
+file offsets 0x1037C and 0x103D2. Each word is not a palette index but the
+address of a length-prefixed record in bank `$89` - `$0009` then five colours
+for skin, `$0001` then one for hair - and a zero word means the team has no
+override. `CODE_8BCFBB` (`$8B:CFBB`) reads both while it builds a side's
+palettes, and `$98:F869` reads them again for the close-up screen, so the
+pitch and the portraits agree. There is one entry per select-screen token,
+43 in all, including the six slots an added team can take.
+
+The last asset in bank `$89`, `DATA_89FA20`, ends at file 0x4FA42, and the
+`$FF` filler from there to the end of the bank is where an alternate tone's
+records fit. The head portraits take the same idea one step further:
+`DATA_82F95F` holds two combo bytes per team into twelve length-prefixed
+palettes at `$89:DD6A` (file 0x4DD6A, 24 bytes apart), and a modded tone
+points each byte at the palette whose first colour is nearest its skin.
+
 ---
 
 ## The team plate and photograph, drawn host-side

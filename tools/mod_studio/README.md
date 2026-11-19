@@ -68,11 +68,11 @@ Numbers in a pack are not what a player sees, so the editor shows them:
 - **The pitch dimensions.** 138 x 90 and 114 x 74 are the same two numbers
   until they are side by side.
 - **The player, with the appearance byte he has.** Four screenshots of one
-  frame with nothing changed but that byte. This is worth showing because
-  the field names lie: `skin_tone` is the palette the sprite is drawn with -
-  0 dark hair, 1 fair - and 2 and 3 turn the whole player orange or green;
-  `hair_style` is read by nothing in a match. The names are kept so packs
-  already written still load.
+  frame with nothing changed but that byte. The field names are only half the
+  story: `skin_tone` picks one of the team's two skins, from `skin_tones` -
+  2 and 3 are the goalkeeper's and referee's palettes, which is why those
+  look orange and green - and `hair_style` picks a hair actor variant, 0 to
+  13. The names are kept so packs already written still load.
 
 The pitches and the players are photographs rather than drawings, cut out of
 screenshots by `tools/capture_editor_assets.py` into `mod_studio/assets/`.

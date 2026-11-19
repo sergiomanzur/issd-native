@@ -117,6 +117,35 @@ static bool player_element(JsonReader *r, void *ctx) {
     return true;
 }
 
+/* One entry of a team's "skin_tones" array, an object giving either part of
+ * that tone. The index is the tone number, which is also the player value
+ * that selects it. */
+typedef struct {
+    IssdModTeam *team;
+    int count;
+    int index;
+} SkinToneParse;
+
+static bool skin_tone_member(JsonReader *r, const char *key, void *ctx) {
+    SkinToneParse *s = (SkinToneParse *)ctx;
+    if (strcmp(key, "skin") == 0)
+        return json_colour(r, &s->team->skin_rgb[s->index]);
+    if (strcmp(key, "hair") == 0)
+        return json_colour(r, &s->team->hair_rgb[s->index]);
+    return json_skip_value(r);
+}
+
+static bool skin_tone_element(JsonReader *r, void *ctx) {
+    SkinToneParse *s = (SkinToneParse *)ctx;
+    /* The cartridge has two tones. A third is read past the way a
+     * twenty-first player is, so the rest of the file still parses. */
+    if (s->count >= 2) return json_skip_value(r);
+    s->index = s->count;
+    if (!json_object(r, skin_tone_member, s)) return false;
+    s->count++;
+    return true;
+}
+
 static bool team_member(JsonReader *r, const char *key, void *ctx) {
     IssdModTeam *t = (IssdModTeam *)ctx;
     if (strcmp(key, "team_id") == 0)      return json_u8(r, &t->team_id);
@@ -161,6 +190,13 @@ static bool team_member(JsonReader *r, const char *key, void *ctx) {
         return true;
     }
     if (strcmp(key, "players") == 0)      return json_array(r, player_element, t);
+    if (strcmp(key, "skin_tones") == 0) {
+        SkinToneParse s;
+        s.team = t;
+        s.count = 0;
+        s.index = 0;
+        return json_array(r, skin_tone_element, &s);
+    }
     return json_skip_value(r);
 }
 

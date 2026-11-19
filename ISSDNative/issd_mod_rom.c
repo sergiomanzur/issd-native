@@ -478,6 +478,8 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
 #define ROM_KIT_BANK            0x89u
 #define ROM_KIT_STRIDE            34u   /* seventeen colours */
 #define ROM_KIT_RECORDS           84
+#define ROM_KIT_HAIR               1    /* one colour */
+#define ROM_KIT_SKIN               2    /* five shades, dark to light */
 #define ROM_KIT_SHIRT              7    /* three shades, dark to light */
 #define ROM_KIT_SHORTS            10    /* three shades */
 #define ROM_KIT_SOCKS             13    /* two shades */
@@ -536,10 +538,28 @@ static void write_part(uint8_t *rom, size_t rec, unsigned slot, uint32_t rgb,
     }
 }
 
+/* The cartridge shades a skin by darkening one base colour in five steps.
+ * Measured off its own ramps, the steps sit at 46, 68, 82, 89 and 100
+ * percent, running dark to light so the last is the colour a pack asked
+ * for. Tone 1's free-space records use the same five steps. */
+static void write_skin_steps(uint8_t *rom, size_t at, uint32_t rgb) {
+    static const unsigned kSteps[5] = { 46, 68, 82, 89, 100 };
+    unsigned i;
+    for (i = 0; i < 5; i++)
+        write_colour(rom, at, i, to_bgr555(rgb, kSteps[i], 100));
+}
+
+/* Inside a kit record the ramp starts at colour 2, after hair. */
+static void write_skin_ramp(uint8_t *rom, size_t rec, uint32_t rgb) {
+    write_skin_steps(rom, rec + (size_t)ROM_KIT_SKIN * 2u, rgb);
+}
+
 /* Repaint one team's strip. Returns true when anything changed. */
 static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
                       const IssdModTeam *team) {
-    if (!team->shirt_rgb && !team->shorts_rgb && !team->socks_rgb) return false;
+    const bool has_strip = team->shirt_rgb || team->shorts_rgb || team->socks_rgb;
+    const bool has_tone0 = team->skin_rgb[0] || team->hair_rgb[0];
+    if (!has_strip && !has_tone0) return false;
 
     size_t rec = 0;
     if (team->kit_record >= 0) {
@@ -550,10 +570,23 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
             issd_mod_result_note_warning(why);
             return false;
         }
-        rec = ROM_KIT_BASE + (size_t)team->kit_record * ROM_KIT_STRIDE;
-    } else {
-        rec = kit_offset(rom, rom_size, team->team_id, false);
+        /* An explicit record only chooses the strip when the pack also
+         * gives a strip colour. On a skin-only entry the record nobody
+         * points at cannot reach the pitch, so the table's own record is
+         * used and the pack is told its record was ignored rather than
+         * having a pointer moved behind its back. */
+        if (has_strip) {
+            rec = ROM_KIT_BASE + (size_t)team->kit_record * ROM_KIT_STRIDE;
+        } else {
+            char why[112];
+            snprintf(why, sizeof why,
+                     "%s: team %u's kit record needs a strip colour; "
+                     "skin written to its own kit",
+                     pack_name, team->team_id);
+            issd_mod_result_note_warning(why);
+        }
     }
+    if (!rec) rec = kit_offset(rom, rom_size, team->team_id, false);
     if (!rec || rec + ROM_KIT_STRIDE > rom_size) {
         char why[112];
         snprintf(why, sizeof why, "%s: team %u has no strip to repaint",
@@ -572,10 +605,12 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
         return false;
     }
 
-    /* An explicit record selects the strip the team wears, not just where
-     * to paint. Redirect only after the palette signature passes, so a bad
-     * cartridge or override cannot change either pointer table. */
-    if (team->kit_record >= 0 && team->team_id < ROM_KIT_PTR_TEAMS) {
+    /* With a strip colour, an explicit record selects the strip the team
+     * wears, not just where to paint. Redirect only after the palette
+     * signature passes, so a bad cartridge or override cannot change
+     * either pointer table - and never on a skin-only entry. */
+    if (has_strip && team->kit_record >= 0 &&
+        team->team_id < ROM_KIT_PTR_TEAMS) {
         const uint16_t addr = (uint16_t)(0x8000u +
             (rec - (size_t)(ROM_KIT_BANK & 0x7Fu) * 0x8000u) - 2u);
         const size_t home_ptr = ROM_KIT_PTRS_HOME + (size_t)team->team_id * 2u;
@@ -602,8 +637,19 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
     if (team->shorts_rgb) write_part(rom, rec, ROM_KIT_SHORTS, team->shorts_rgb, 3);
     if (team->socks_rgb)  write_part(rom, rec, ROM_KIT_SOCKS,  team->socks_rgb, 2);
 
-    /* Also update away/change kit so teams playing as P2/away wear the customized strip */
-    if (team->team_id < ROM_KIT_PTR_TEAMS) {
+    /* Tone 0 lives in the record itself: colour 1 is hair and colours 2-6
+     * the five-step skin ramp. Nothing else has to change - each player's
+     * appearance nibble already selects between this and the tone-1
+     * tables. */
+    if (team->hair_rgb[0])
+        write_colour(rom, rec, ROM_KIT_HAIR,
+                     to_bgr555(team->hair_rgb[0], 100, 100));
+    if (team->skin_rgb[0]) write_skin_ramp(rom, rec, team->skin_rgb[0]);
+
+    /* Only a strip changes which record the change kit wears. Skin and
+     * hair go into whichever record each table already names, because a
+     * pack may recolour a team without repainting its shirts. */
+    if (has_strip && team->team_id < ROM_KIT_PTR_TEAMS) {
         size_t home_ptr = ROM_KIT_PTRS_HOME + (size_t)team->team_id * 2u;
         size_t away_ptr = ROM_KIT_PTRS_AWAY + (size_t)team->team_id * 2u;
         if (home_ptr + 2 <= rom_size && away_ptr + 2 <= rom_size) {
@@ -612,10 +658,49 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
         }
     }
     size_t rec_away = kit_offset(rom, rom_size, team->team_id, true);
-    if (rec_away && rec_away + ROM_KIT_STRIDE <= rom_size) {
-        if (team->shirt_rgb)  write_part(rom, rec_away, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
-        if (team->shorts_rgb) write_part(rom, rec_away, ROM_KIT_SHORTS, team->shorts_rgb, 3);
-        if (team->socks_rgb)  write_part(rom, rec_away, ROM_KIT_SOCKS,  team->socks_rgb, 2);
+    if (rec_away && rec_away + ROM_KIT_STRIDE <= rom_size && rec_away != rec) {
+        /* A skin-only pack reaches the change record through its own table
+         * entry, which the strip path never has to trust. Check the
+         * signature the way the home record is checked before writing. */
+        const uint16_t atail_a =
+            (uint16_t)(rom[rec_away + 30] | (rom[rec_away + 31] << 8));
+        const uint16_t atail_b =
+            (uint16_t)(rom[rec_away + 32] | (rom[rec_away + 33] << 8));
+        if (!has_tone0 ||
+            (atail_a == ROM_KIT_TAIL_A && atail_b == ROM_KIT_TAIL_B)) {
+            /* The change kit is picked by its own table, so its sharers
+             * need not match the home record's. Recolouring a change kit
+             * another team wears is the same surprise, so say so. */
+            if (has_tone0) {
+                int away_sharers = 0;
+                for (int t = 0; t < ROM_KIT_PTR_TEAMS; t++)
+                    if (kit_offset(rom, rom_size, t, true) == rec_away)
+                        away_sharers++;
+                if (away_sharers > 1) {
+                    char why[112];
+                    snprintf(why, sizeof why,
+                             "%s: this change strip is worn by %d teams",
+                             pack_name, away_sharers);
+                    issd_mod_result_note_warning(why);
+                }
+            }
+            if (has_strip) {
+                if (team->shirt_rgb)  write_part(rom, rec_away, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
+                if (team->shorts_rgb) write_part(rom, rec_away, ROM_KIT_SHORTS, team->shorts_rgb, 3);
+                if (team->socks_rgb)  write_part(rom, rec_away, ROM_KIT_SOCKS,  team->socks_rgb, 2);
+            }
+            if (team->hair_rgb[0])
+                write_colour(rom, rec_away, ROM_KIT_HAIR,
+                             to_bgr555(team->hair_rgb[0], 100, 100));
+            if (team->skin_rgb[0])
+                write_skin_ramp(rom, rec_away, team->skin_rgb[0]);
+        } else {
+            char why[112];
+            snprintf(why, sizeof why,
+                     "%s: team %u's change strip is not where it was measured",
+                     pack_name, team->team_id);
+            issd_mod_result_note_warning(why);
+        }
     }
 
     if (team->stripes && team->team_id < ROM_TEAMS) {
@@ -626,8 +711,202 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
             printf("[ModLoader] Team %u '%s' wears vertical stripes.\n", team->team_id, team->name);
         }
     }
-    printf("[ModLoader] Team %u wears a new strip.\n", team->team_id);
+    printf(has_strip ? "[ModLoader] Team %u wears a new strip.\n"
+                     : "[ModLoader] Team %u wears new skin and hair colours.\n",
+           team->team_id);
     return true;
+}
+
+/* ------------------------------------------------- tone 1 skin/hair ---- */
+
+/* A team has two skins. Tone 0 is the one baked into its kit record; tone 1
+ * is reached through a pair of per-team tables, DATA_82837C for skin and
+ * DATA_8283D2 for hair. CODE_8BCFBB ($8B:CFBB) reads them when it builds
+ * each side's palettes: it takes the side's team token, loads the word from
+ * each table, and skips that entry when the word is zero. The close-up
+ * screen reads the same pair ($98:F869), and the appearance nibble that
+ * chooses between the two tones is handled at $83:C9.., so the tables, the
+ * portraits and the pitch all agree.
+ *
+ * An entry is not a pointer to a palette but the address of a
+ * length-prefixed record in bank $89: $0009 then five BGR555 words for
+ * skin, $0001 then one word for hair. The addresses live in that bank's own
+ * space, so file = $48000 + (address - $8000). This is also why tone 1 can
+ * be a per-team override at all: an empty entry costs the cartridge
+ * nothing, and both tables have 43 entries, one per select-screen token.
+ *
+ * New records go in the $FF filler after the last asset of the bank -
+ * DATA_89FA20, a sixteen-colour record ending at file $4FA42 - which runs
+ * to the end of the bank at $4FFFF. Reading the cartridge shows the whole
+ * run is filler and no pointer names it. A different revision of the image
+ * is warned about rather than written to. */
+#define ROM_TONE1_SKIN_PTRS   0x01037Cu
+#define ROM_TONE1_HAIR_PTRS   0x0103D2u
+#define ROM_TONE1_PTR_TEAMS         43
+#define ROM_TONE1_FREE_BASE   0x04FA42u
+#define ROM_TONE1_FREE_END    0x050000u
+#define ROM_TONE1_SKIN_BYTES        12u   /* $0009 and five words */
+#define ROM_TONE1_HAIR_BYTES         4u   /* $0001 and one word */
+#define ROM_TONE1_SKIN_LENGTH  0x0009u
+#define ROM_TONE1_HAIR_LENGTH  0x0001u
+
+/* Point one team's tone-1 entries at fresh records in the free run.
+ * `cursor` is shared by every team in one apply so records pack end to end
+ * instead of landing on each other. Returns true when anything changed. */
+static bool patch_tone1(uint8_t *rom, size_t rom_size, const char *pack_name,
+                        const IssdModTeam *team, int slot, size_t *cursor) {
+    const bool has_skin = team->skin_rgb[1] != 0;
+    const bool has_hair = team->hair_rgb[1] != 0;
+    if (!has_skin && !has_hair) return false;
+
+    if (slot < 0 || slot >= ROM_TONE1_PTR_TEAMS) {
+        char why[112];
+        snprintf(why, sizeof why, "%s: team %u has no tone-1 entry",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    const size_t needed = (has_skin ? ROM_TONE1_SKIN_BYTES : 0u) +
+                          (has_hair ? ROM_TONE1_HAIR_BYTES : 0u);
+    const size_t skin_ptr = ROM_TONE1_SKIN_PTRS + (size_t)slot * 2u;
+    const size_t hair_ptr = ROM_TONE1_HAIR_PTRS + (size_t)slot * 2u;
+    if (skin_ptr + 2u > rom_size || hair_ptr + 2u > rom_size) return false;
+    if (*cursor > ROM_TONE1_FREE_END ||
+        needed > ROM_TONE1_FREE_END - *cursor) {
+        char why[112];
+        snprintf(why, sizeof why,
+                 "%s: no room left for team %u's alternate skin",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+    if (*cursor + needed > rom_size) return false;
+
+    /* Never assume the run is free: another revision may keep something
+     * here, and the table must be left as it was rather than point at a
+     * record written over data. */
+    for (size_t i = 0; i < needed; i++) {
+        if (rom[*cursor + i] != 0xFF) {
+            char why[112];
+            snprintf(why, sizeof why,
+                     "%s: the space for team %u's alternate skin is not free",
+                     pack_name, team->team_id);
+            issd_mod_result_note_warning(why);
+            return false;
+        }
+    }
+
+    size_t at = *cursor;
+    if (has_skin) {
+        /* The length word occupies the record's first word, so the five
+         * steps follow it rather than sitting at a kit record's colour 2. */
+        const uint16_t addr = (uint16_t)(0x8000u + at - 0x48000u);
+        write_colour(rom, at, 0, ROM_TONE1_SKIN_LENGTH);
+        write_skin_steps(rom, at + 2u, team->skin_rgb[1]);
+        rom[skin_ptr]     = (uint8_t)(addr & 0xFF);
+        rom[skin_ptr + 1] = (uint8_t)(addr >> 8);
+        at += ROM_TONE1_SKIN_BYTES;
+    }
+    if (has_hair) {
+        const uint16_t addr = (uint16_t)(0x8000u + at - 0x48000u);
+        write_colour(rom, at, 0, ROM_TONE1_HAIR_LENGTH);
+        write_colour(rom, at, 1, to_bgr555(team->hair_rgb[1], 100, 100));
+        rom[hair_ptr]     = (uint8_t)(addr & 0xFF);
+        rom[hair_ptr + 1] = (uint8_t)(addr >> 8);
+        at += ROM_TONE1_HAIR_BYTES;
+    }
+    *cursor = at;
+    printf("[ModLoader] Team %u wears an alternate skin and hair.\n",
+           team->team_id);
+    return true;
+}
+
+/* -------------------------------------- select-screen head portraits ---- */
+
+/* The select screen shows two head portraits per team. DATA_82F95F (file
+ * 0x1795F) holds two bytes per team, head 0 then head 1, and each byte is
+ * twice the index of a combo palette in DATA_82F945. The twelve palettes
+ * are length-prefixed and start at $89:DD6A (file 0x4DD6A). A record is
+ * its $15 length word and eleven colours, so the next one is 24 bytes on -
+ * the pointer table confirms it, $DD6A to $DD82 is $18. Only each palette's
+ * first colour is skin, so combo i is identified by the word at file
+ * 0x4DD6C + i*24.
+ *
+ * A modded tone picks the combo whose first colour is nearest to the
+ * authored skin: expand the BGR555 word with v*255/31 per channel and take
+ * the least squared channel distance. The loop only replaces on a strictly
+ * closer word, so a tie stays with the lower combo index. The table itself
+ * is 84 bytes and ends where DATA_82F9B3 begins - one pair for every
+ * select-screen token, including the six slots an added team can take. */
+#define ROM_HEAD_INDEX        0x01795Fu
+#define ROM_HEAD_INDEX_TEAMS        42
+#define ROM_HEAD_COMBO_SKIN   0x04DD6Cu
+#define ROM_HEAD_COMBO_STRIDE       24
+#define ROM_HEAD_COMBOS             12
+
+/* The combo whose first colour is closest to `rgb`, or -1 when the palette
+ * table is not wholly inside the image. */
+static int head_combo(const uint8_t *rom, size_t rom_size, uint32_t rgb) {
+    const long want_r = (long)((rgb >> 16) & 0xFFu);
+    const long want_g = (long)((rgb >>  8) & 0xFFu);
+    const long want_b = (long)( rgb        & 0xFFu);
+    int best = 0;
+    long best_dist = -1;
+    int i;
+    for (i = 0; i < ROM_HEAD_COMBOS; i++) {
+        const size_t at = ROM_HEAD_COMBO_SKIN +
+                          (size_t)i * ROM_HEAD_COMBO_STRIDE;
+        uint16_t c;
+        long dr, dg, db, dist;
+        if (at + 2u > rom_size) return -1;
+        c = (uint16_t)(rom[at] | (rom[at + 1] << 8));
+        dr = (long)((c & 31u) * 255u / 31u) - want_r;
+        dg = (long)(((c >> 5) & 31u) * 255u / 31u) - want_g;
+        db = (long)(((c >> 10) & 31u) * 255u / 31u) - want_b;
+        dist = dr * dr + dg * dg + db * db;
+        if (best_dist < 0 || dist < best_dist) {
+            best_dist = dist;
+            best = i;
+        }
+    }
+    return best;
+}
+
+/* Point one team's two head bytes at the combos nearest its authored
+ * tones. A tone whose skin is not given keeps the cartridge's portrait.
+ * `slot` is the select-screen table index - the stock id, or the slot an
+ * added team was handed. Returns true when a byte changed. */
+static bool patch_heads(uint8_t *rom, size_t rom_size, const char *pack_name,
+                        const IssdModTeam *team, int slot) {
+    if (!team->skin_rgb[0] && !team->skin_rgb[1]) return false;
+
+    if (slot < 0 || slot >= ROM_HEAD_INDEX_TEAMS) {
+        char why[112];
+        snprintf(why, sizeof why,
+                 "%s: team %u has no select-screen head slot",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    const size_t at = ROM_HEAD_INDEX + (size_t)slot * 2u;
+    if (at + 2u > rom_size) return false;
+
+    bool wrote = false;
+    int tone;
+    for (tone = 0; tone < 2; tone++) {
+        int combo;
+        if (!team->skin_rgb[tone]) continue;
+        combo = head_combo(rom, rom_size, team->skin_rgb[tone]);
+        if (combo < 0) return wrote;
+        rom[at + (size_t)tone] = (uint8_t)(combo * 2);
+        wrote = true;
+    }
+    if (wrote)
+        printf("[ModLoader] Team %u's select-screen heads follow its skin "
+               "tones.\n", team->team_id);
+    return wrote;
 }
 
 /* Turn `count` of the seventh group's cells into teams with rosters of
@@ -918,7 +1197,12 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
     }
 
     int players_patched = 0, teams_patched = 0, formations_patched = 0;
-    int stadiums_patched = 0, kits_patched = 0;
+    int stadiums_patched = 0, kits_patched = 0, tone1_patched = 0;
+    int heads_patched = 0;
+    /* Tone-1 records share the free run at the end of bank $89. The cursor
+     * starts at its base on every apply so re-applying the same stack is
+     * deterministic rather than walking further each time. */
+    size_t tone1_cursor = ROM_TONE1_FREE_BASE;
 
     /* Expansion rewrites code and moves tables, so it happens once, before
      * any pack writes a stadium. The largest ask across the stack wins:
@@ -1086,6 +1370,19 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
             if (patch_formation(rom, rom_size, pack->name, team, n))
                 formations_patched++;
             if (patch_kit(rom, rom_size, pack->name, team)) kits_patched++;
+            /* Tone 1 and the select-screen heads are not part of the kit
+             * record, so both are reached by the team's table slot - the
+             * stock id, or the slot an added team was just handed. */
+            {
+                const int table_slot = team->assigned_slot >= 0
+                                           ? team->assigned_slot
+                                           : (int)team->team_id;
+                if (patch_tone1(rom, rom_size, pack->name, team, table_slot,
+                                &tone1_cursor))
+                    tone1_patched++;
+                if (patch_heads(rom, rom_size, pack->name, team, table_slot))
+                    heads_patched++;
+            }
         }
 
         for (int si = 0; si < pack->stadium_count; si++)
@@ -1101,6 +1398,14 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
 
     if (kits_patched)
         printf("[ModLoader] Repainted %d strip(s).\n", kits_patched);
+
+    if (tone1_patched)
+        printf("[ModLoader] Wrote alternate skin and hair for %d team(s).\n",
+               tone1_patched);
+
+    if (heads_patched)
+        printf("[ModLoader] Select-screen heads follow the new skin for %d "
+               "team(s).\n", heads_patched);
 
     if (stadiums_patched)
         printf("[ModLoader] Rebuilt %d stadium(s).\n", stadiums_patched);

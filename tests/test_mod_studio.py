@@ -73,6 +73,35 @@ def test_shipped_packs_survive_a_round_trip(tmp_path):
         assert _same(first, second), "%s changed on a round trip" % path
 
 
+def test_skin_tones_are_carried_through_unchanged(tmp_path):
+    """A team's two skin tones have no field in the editor, so they must
+    survive as the pack wrote them. The World Cup pack's France entry is the
+    shipped example: same values, and the block still ahead of the squad,
+    because a person reads the file as well as the game."""
+    pack = model.load(os.path.join(REPO, "mods", "world_cup_2026.json"))
+    france = next(t for t in pack["teams"] if t.get("name") == "France")
+    tones = france["skin_tones"]
+    assert [t["skin"] for t in tones] == ["#EAC086", "#6B4226"]
+
+    out = tmp_path / "world_cup_2026.json"
+    model.save(pack, str(out))
+    again = model.load(str(out))
+    team = next(t for t in again["teams"] if t.get("name") == "France")
+    assert team["skin_tones"] == tones
+    keys = list(team)
+    assert keys.index("skin_tones") < keys.index("players")
+
+
+def test_the_appearance_labels_name_the_team_tones():
+    """The byte's top half is not a hair colour: 0 and 1 are the team's own
+    skins, and 2 and 3 belong to the goalkeeper and the referee. Anyone
+    reading the editor is shown what the value does, not what it is called."""
+    assert preview.APPEARANCE[0][0] == "Tone 0 (team default skin)"
+    assert preview.APPEARANCE[1][0] == "Tone 1 (team alternate skin)"
+    assert "goalkeeper" in preview.APPEARANCE[2][1].lower()
+    assert "referee" in preview.APPEARANCE[3][1].lower()
+
+
 def _same(a, b):
     if isinstance(a, dict):
         return set(a) == set(b) and all(_same(a[k], b[k]) for k in a)

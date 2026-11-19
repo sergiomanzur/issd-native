@@ -164,10 +164,11 @@ def check_player(report, where, player, slot):
         elif not 0 <= value <= 99:
             report.error(where, "%s is %s; the scale is 0 to 99" % (key, value))
 
-    # The appearance byte. Neither half does what its name says, and the
-    # names are kept only so packs already written still load: skin_tone
-    # picks the palette the sprite is drawn with - dark hair or fair - and
-    # hair_style is read by nothing. Each is half a byte.
+    # The appearance byte in two halves. The high nibble picks which of the
+    # team's two skin tones the player wears: 0 is the kit record's own skin
+    # and hair, 1 the team's alternate, and 2 and 3 the goalkeeper's and
+    # referee's palettes. The low nibble is the hair actor variant, 0 to 13.
+    # The names are kept so packs already written still load.
     for key in ("skin_tone", "hair_style"):
         if key in player:
             value = player[key]
@@ -177,9 +178,10 @@ def check_player(report, where, player, slot):
                              % (key, value))
             elif key == "skin_tone" and value > 1:
                 report.warn(where, "skin_tone is %s; it picks the palette "
-                                   "the player is drawn with, and only 0 "
-                                   "(dark hair) and 1 (fair) leave a "
-                                   "footballer on the screen" % value)
+                                   "the player is drawn with. Only 0 and 1 "
+                                   "are the team's own tones; 2 is the "
+                                   "goalkeeper's palette and 3 the "
+                                   "referee's" % value)
 
 
 def check_spread(report, where, players):
@@ -298,6 +300,44 @@ def check_team(report, team, index, formations, seen_ids):
         report.warn(where, "this team shares its strip with others, so "
                            "recolouring it recolours them too")
 
+    # The two skin/hair tones the cartridge offers a team. Index 0 is the
+    # default carried in the kit record's colours 1-6, index 1 the alternate
+    # reached through the per-team pointer tables; a player's skin_tone
+    # nibble is the index. A part left out keeps the cartridge's own.
+    tones = team.get("skin_tones")
+    one_tone = False
+    if "skin_tones" in team:
+        if not isinstance(tones, list):
+            report.error(where, "skin_tones must be an array of one or two "
+                                "tone objects")
+        elif not 1 <= len(tones) <= 2:
+            report.error(where, "skin_tones has %d entries; the cartridge "
+                                "offers two tones, one per skin_tone value"
+                         % len(tones))
+        else:
+            one_tone = len(tones) == 1
+            for tone_index, tone in enumerate(tones):
+                tone_where = "%s skin_tones[%d]" % (where, tone_index)
+                if not isinstance(tone, dict):
+                    report.error(tone_where,
+                                 "each skin tone must be an object")
+                    continue
+                given = [key for key in ("skin", "hair")
+                         if tone.get(key) is not None]
+                if not given:
+                    report.error(tone_where, "gives neither skin nor hair, so "
+                                             "it changes nothing")
+                for key in given:
+                    colour = tone[key]
+                    text = (colour[1:] if isinstance(colour, str)
+                            and colour.startswith("#") else colour)
+                    if (not isinstance(colour, str) or len(str(text)) != 6 or
+                            any(c not in "0123456789abcdefABCDEF"
+                                for c in str(text))):
+                        report.error(tone_where, '%s must be a colour like '
+                                                 '"#EAC086", not %r'
+                                     % (key, colour))
+
     tactics = team.get("tactics", team.get("strategy"))
     if tactics is not None and str(tactics).lower() not in TACTICS:
         report.error(where, 'tactics "%s" is not attacking, balanced or defensive'
@@ -317,6 +357,20 @@ def check_team(report, team, index, formations, seen_ids):
     for slot, player in enumerate(players):
         check_player(report, "%s slot %d" % (where, slot), player, slot)
     check_spread(report, where, players[:SQUAD_SLOTS])
+
+    # A team that authored one tone but fields players on tone 1 gets the
+    # cartridge's tone-1 palette for them, which for most teams only
+    # overrides hair. Say so rather than let the pack look half applied.
+    if one_tone:
+        users = sum(1 for p in players[:SQUAD_SLOTS]
+                    if isinstance(p, dict) and p.get("skin_tone") == 1)
+        if users:
+            who = ("a player uses" if users == 1
+                   else "%d players use" % users)
+            report.warn(where, "%s skin_tone 1, but the team gives one tone; "
+                               "the cartridge's own tone-1 palette is used "
+                               "instead, which for most teams only changes "
+                               "hair" % who)
 
 
 def check_stadium(report, st, index, seen_ids):

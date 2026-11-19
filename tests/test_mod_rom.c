@@ -34,6 +34,56 @@ static size_t attr_at(int team, int player) {
 
 static uint8_t rating_nibble_for_50(void) { return (uint8_t)(2u + (50u*7u+49u)/99u); }
 
+/* A kit is seventeen colours at $89:83C0 + record * 34, and a team reaches
+ * one through a table of addresses, each naming two bytes before the
+ * palette. The skin-tone tests plant both so a synthetic image behaves like
+ * the cartridge's own. */
+#define KITS_BASE 0x0483C0u
+#define KITS_HOME 0x01027Au
+#define KITS_AWAY 0x0102D0u
+static size_t kit_at(unsigned record) {
+    return KITS_BASE + (size_t)record * 34u;
+}
+static void kit_point(uint8_t *rom, size_t table, int team, unsigned record) {
+    const uint16_t addr = (uint16_t)(0x8000u + kit_at(record) - 0x48000u - 2u);
+    rom[table + (size_t)team * 2u]     = (uint8_t)(addr & 0xFF);
+    rom[table + (size_t)team * 2u + 1] = (uint8_t)(addr >> 8);
+}
+static uint16_t kit_word(const uint8_t *rom, size_t rec, unsigned slot) {
+    return (uint16_t)(rom[rec + (size_t)slot * 2u] |
+                      (rom[rec + (size_t)slot * 2u + 1u] << 8));
+}
+static void kit_tail(uint8_t *rom, size_t rec) {
+    rom[rec + 30] = 0x20; rom[rec + 31] = 0x01;
+    rom[rec + 32] = 0x1F; rom[rec + 33] = 0x00;
+}
+
+/* Tone 1 is not part of the kit record: it lives behind two per-team tables
+ * of addresses, DATA_82837C (skin) and DATA_8283D2 (hair), whose entries are
+ * either zero or the bank $89 address of a length-prefixed record. New
+ * records go in the free run at the end of that bank, so the tone-1 tests
+ * fill it with $FF the way the cartridge does. */
+#define TONE1_SKIN_PTRS 0x01037Cu
+#define TONE1_HAIR_PTRS 0x0103D2u
+#define TONE1_FREE      0x04FA42u
+#define TONE1_FREE_END  0x050000u
+#define TONE1_PTR_TEAMS 43
+static uint16_t rom_word(const uint8_t *image, size_t at) {
+    return (uint16_t)(image[at] | (image[at + 1] << 8));
+}
+
+/* The select screen gives each team two head portraits. DATA_82F95F (file
+ * 0x1795F) holds one byte per head, twice the index of a combo palette in
+ * the twelve palettes at $89:DD6A; only the first colour is skin, and the
+ * matching rule reads it at file 0x4DD6C + i*24. A record is a length word
+ * and eleven colours, so it is 24 bytes; the pointer table agrees
+ * ($DD6A to $DD82 is $18). The head tests plant the first colours at
+ * exactly those offsets. */
+#define HEADS_TABLE  0x01795Fu
+#define HEADS_COMBOS 0x04DD6Cu
+#define HEADS_STRIDE 24u
+#define HEADS_COUNT  12
+
 int main(void) {
     assert(issd_mod_init());
     /* The repo ships mods/ next to the binary; tests run from the repo root. */
@@ -457,6 +507,468 @@ int main(void) {
         issd_mod_apply_to_rom(rom, sizeof rom);
         assert(!(rom[rec + 9 * 2] == 0xEE && rom[rec + 9 * 2 + 1] == 0xEE) &&
                "kit_record must reach a team the table cannot");
+    }
+
+    /* --- skin tones ---------------------------------------------------
+     *
+     * A team's tone 0 is not a second table: it is baked into the kit
+     * record as colour 1 (hair) and colours 2-6 (a five-step skin ramp).
+     * A player's appearance nibble selects between it and the tone-1
+     * tables, so a pack's tone 0 has to land in the palette itself. */
+    {
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *sp = issd_mod_get_pack(0);
+        assert(sp);
+        sp->team_count = 1;
+        memset(&sp->teams[0], 0, sizeof sp->teams[0]);
+        sp->teams[0].team_id = 0;
+        sp->teams[0].kit_record = -1;
+        sp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+        sp->teams[0].hair_rgb[0] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 0, 27);
+        kit_point(rom, KITS_AWAY, 0, 53);
+        uint8_t away_strip[16], home_ptr[2], away_ptr[2];
+        memcpy(away_strip, rom + away + 7 * 2, sizeof away_strip);
+        memcpy(home_ptr, rom + KITS_HOME, sizeof home_ptr);
+        memcpy(away_ptr, rom + KITS_AWAY, sizeof away_ptr);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        /* Hair is one colour, #3A2A1A lit. The ramp is #EAC086 at 46, 68,
+         * 82, 89 and 100 percent, quantised to five bits a channel - the
+         * factors measured off the cartridge's own ramps. */
+        assert(kit_word(rom, home, 1) == 0x0CA7u);
+        assert(kit_word(rom, home, 2) == 0x1D4Du);
+        assert(kit_word(rom, home, 3) == 0x2DF3u);
+        assert(kit_word(rom, home, 4) == 0x3677u);
+        assert(kit_word(rom, home, 5) == 0x3A99u);
+        assert(kit_word(rom, home, 6) == 0x42FCu);
+
+        /* The change strip keeps its own record, so it needs the same
+         * skin and hair rather than being redirected at the home one. */
+        assert(kit_word(rom, away, 1) == 0x0CA7u);
+        assert(kit_word(rom, away, 2) == 0x1D4Du);
+        assert(kit_word(rom, away, 6) == 0x42FCu);
+
+        /* A pack that names no strip colour must not repaint the strip or
+         * move either pointer: only colours 1-6 changed. */
+        assert(memcmp(away_strip, rom + away + 7 * 2, sizeof away_strip) == 0 &&
+               "a skin-only pack must not repaint the change strip");
+        assert(memcmp(home_ptr, rom + KITS_HOME, sizeof home_ptr) == 0);
+        assert(memcmp(away_ptr, rom + KITS_AWAY, sizeof away_ptr) == 0 &&
+               "a skin-only pack must not redirect the change strip");
+
+        /* Black is a colour, not "not given": json_colour keeps bit 31 so
+         * #000000 must still rewrite the ramp with zeros. */
+        memset(rom, 0xEE, sizeof rom);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 0, 27);
+        kit_point(rom, KITS_AWAY, 0, 53);
+        sp->teams[0].skin_rgb[0] = 0xFF000000u;
+        sp->teams[0].hair_rgb[0] = 0;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        for (unsigned slot = 2; slot <= 6; slot++)
+            assert(kit_word(rom, home, slot) == 0 &&
+                   "a black skin is a ramp of zeros, not a skipped write");
+        assert(kit_word(rom, home, 1) == 0xEEEEu &&
+               "hair not given keeps the cartridge's own");
+
+        /* Teams share records - the cartridge's table says so - and
+         * recolouring one recolours everyone wearing it, so a skin write
+         * has to warn the way a strip write does. */
+        memset(rom, 0xEE, sizeof rom);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 0, 27);
+        kit_point(rom, KITS_HOME, 15, 27);
+        kit_point(rom, KITS_AWAY, 15, 53);
+        sp->teams[0].team_id = 15;
+        sp->teams[0].skin_rgb[0] = 0xFF6B4226u;
+        sp->teams[0].hair_rgb[0] = 0;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "a shared kit record must warn when skin is written into it");
+        assert(kit_word(rom, home, 2) != 0xEEEEu);
+
+        /* Naming a record only chooses a strip when a strip colour is
+         * given. On a skin-only entry the pointers must stay put and the
+         * skin goes into the record the table already names, because a
+         * record nobody points at cannot reach the pitch. */
+        memset(rom, 0xEE, sizeof rom);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_tail(rom, kit_at(20));
+        kit_point(rom, KITS_HOME, 0, 20);
+        kit_point(rom, KITS_AWAY, 0, 53);
+        uint8_t named[12], ptr_home[2], ptr_away[2];
+        memcpy(named, rom + home + 2, sizeof named);
+        memcpy(ptr_home, rom + KITS_HOME, sizeof ptr_home);
+        memcpy(ptr_away, rom + KITS_AWAY, sizeof ptr_away);
+        sp->teams[0].team_id = 0;
+        sp->teams[0].kit_record = 27;
+        sp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "an ignored kit_record must be reported");
+        assert(memcmp(ptr_home, rom + KITS_HOME, sizeof ptr_home) == 0 &&
+               memcmp(ptr_away, rom + KITS_AWAY, sizeof ptr_away) == 0 &&
+               "a skin-only pack must not move a kit pointer");
+        assert(kit_word(rom, kit_at(20), 2) == 0x1D4Du &&
+               "skin lands in the record the table names");
+        assert(memcmp(named, rom + home + 2, sizeof named) == 0 &&
+               "the named record is not painted behind the pointer's back");
+
+        /* The change record is chosen by its own table, so a change kit
+         * shared with another team is recoloured too. Say so, the way a
+         * shared home record is reported. */
+        memset(rom, 0xEE, sizeof rom);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 0, 27);
+        kit_point(rom, KITS_AWAY, 0, 53);
+        kit_point(rom, KITS_AWAY, 1, 53);
+        sp->teams[0].kit_record = -1;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "a shared change strip must warn when skin is written into it");
+        assert(kit_word(rom, away, 2) == 0x1D4Du &&
+               "the warning names a record that really is recoloured");
+
+        /* The stock pack names no skin_tones, so the whole feature is
+         * invisible to it: colours 1-6 keep exactly what the cartridge
+         * had. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        memset(rom, 0xEE, sizeof rom);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 0, 27);
+        kit_point(rom, KITS_AWAY, 0, 53);
+        uint8_t home_skin[12], away_skin[12], home_ptr_now[2], away_ptr_now[2];
+        memcpy(home_skin, rom + home + 2, sizeof home_skin);
+        memcpy(away_skin, rom + away + 2, sizeof away_skin);
+        memcpy(home_ptr_now, rom + KITS_HOME, sizeof home_ptr_now);
+        memcpy(away_ptr_now, rom + KITS_AWAY, sizeof away_ptr_now);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+        assert(memcmp(home_skin, rom + home + 2, sizeof home_skin) == 0 &&
+               "a pack without skin_tones must leave the kit's skin alone");
+        assert(memcmp(away_skin, rom + away + 2, sizeof away_skin) == 0);
+        assert(memcmp(home_ptr_now, rom + KITS_HOME, sizeof home_ptr_now) == 0 &&
+               memcmp(away_ptr_now, rom + KITS_AWAY, sizeof away_ptr_now) == 0 &&
+               "nor move a pointer");
+    }
+
+    /* --- tone 1 -------------------------------------------------------
+     *
+     * Tone 1 is separate from the kit record. Two per-team tables at
+     * $82:837C (skin) and $82:83D2 (hair) hold either zero or the bank
+     * $89 address of a length-prefixed record, and a player's appearance
+     * nibble picks between them and the kit's own colours. A pack that
+     * gives tone 1 gets fresh records in the free run at the end of bank
+     * $89, and only its own table entries move. */
+    {
+        const size_t skin_rec = TONE1_FREE;
+        const size_t hair_rec = TONE1_FREE + 12;
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *tp = issd_mod_get_pack(0);
+        assert(tp);
+        tp->team_count = 1;
+        memset(&tp->teams[0], 0, sizeof tp->teams[0]);
+        tp->teams[0].team_id = 1;
+        tp->teams[0].kit_record = -1;
+        tp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[0].hair_rgb[1] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        /* The table entry is a bank $89 word address, not a file offset. */
+        const uint16_t skin_addr = (uint16_t)(0x8000u + TONE1_FREE - 0x48000u);
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 1 * 2) == skin_addr);
+        assert(rom_word(rom, TONE1_HAIR_PTRS + 1 * 2) ==
+               (uint16_t)(skin_addr + 12));
+
+        /* Skin is $0009 then the same five-step ramp as tone 0; hair is
+         * $0001 then one colour. */
+        assert(rom_word(rom, skin_rec) == 0x0009u);
+        assert(rom_word(rom, skin_rec + 2) == 0x1D4Du);
+        assert(rom_word(rom, skin_rec + 4) == 0x2DF3u);
+        assert(rom_word(rom, skin_rec + 6) == 0x3677u);
+        assert(rom_word(rom, skin_rec + 8) == 0x3A99u);
+        assert(rom_word(rom, skin_rec + 10) == 0x42FCu);
+        assert(rom_word(rom, hair_rec) == 0x0001u);
+        assert(rom_word(rom, hair_rec + 2) == 0x0CA7u);
+
+        /* No other team's entry moved: the tables belong to every team,
+         * including the added ones, and a tone-1 pack only owns its own. */
+        for (int t = 0; t < TONE1_PTR_TEAMS; t++) {
+            if (t == 1) continue;
+            assert(rom_word(rom, TONE1_SKIN_PTRS + t * 2) == 0xEEEEu);
+            assert(rom_word(rom, TONE1_HAIR_PTRS + t * 2) == 0xEEEEu);
+        }
+    }
+
+    {
+        /* Two tone-1 teams share one free-space cursor. Records are packed
+         * in team order, never on top of each other: team 1's skin, then
+         * its hair, then team 5's skin, then its hair. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *tp = issd_mod_get_pack(0);
+        assert(tp);
+        tp->team_count = 2;
+        memset(tp->teams, 0, sizeof tp->teams);
+        tp->teams[0].team_id = 1;
+        tp->teams[0].kit_record = -1;
+        tp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[0].hair_rgb[1] = 0xFF3A2A1Au;
+        tp->teams[1].team_id = 5;
+        tp->teams[1].kit_record = -1;
+        tp->teams[1].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[1].hair_rgb[1] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        const uint16_t first = (uint16_t)(0x8000u + TONE1_FREE - 0x48000u);
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 1 * 2) == first);
+        assert(rom_word(rom, TONE1_HAIR_PTRS + 1 * 2) == (uint16_t)(first + 12));
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 5 * 2) == (uint16_t)(first + 16));
+        assert(rom_word(rom, TONE1_HAIR_PTRS + 5 * 2) == (uint16_t)(first + 28));
+        assert(rom_word(rom, TONE1_FREE + 2) == 0x1D4Du);
+        assert(rom_word(rom, TONE1_FREE + 16 + 2) == 0x1D4Du &&
+               "the second team's ramp is its own record");
+        assert(rom_word(rom, TONE1_FREE + 28 + 2) == 0x0CA7u);
+    }
+
+    {
+        /* The free run is a property of this revision of the cartridge.
+         * If anything already lives there, warn and leave the table alone
+         * rather than scribble over whatever the cartridge keeps there. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *tp = issd_mod_get_pack(0);
+        assert(tp);
+        tp->team_count = 1;
+        memset(&tp->teams[0], 0, sizeof tp->teams[0]);
+        tp->teams[0].team_id = 1;
+        tp->teams[0].kit_record = -1;
+        tp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[0].hair_rgb[1] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        rom[TONE1_FREE] = 0x00;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "occupied free space must be reported");
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 1 * 2) == 0xEEEEu &&
+               rom_word(rom, TONE1_HAIR_PTRS + 1 * 2) == 0xEEEEu &&
+               "an unusable free run leaves the tone-1 tables alone");
+        assert(rom[TONE1_FREE] == 0x00 && rom[TONE1_FREE + 1] == 0xFF &&
+               "nor is anything written into it");
+    }
+
+    {
+        /* The tables have 43 entries, one per select-screen token, so an
+         * added team is reached through its assigned slot like any stock
+         * team. */
+        const size_t GATE_A = 0x004F2Eu, GATE_B = 0x004F50u;
+        const size_t PTRS = 0x038138u;
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *tp = issd_mod_get_pack(0);
+        assert(tp);
+        tp->team_count = 1;
+        memset(&tp->teams[0], 0, sizeof tp->teams[0]);
+        tp->teams[0].new_team = true;
+        tp->teams[0].assigned_slot = -1;
+        tp->teams[0].kit_record = -1;
+        tp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[0].hair_rgb[1] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        rom[GATE_A - 1] = 0xE0; rom[GATE_A] = 0x48; rom[GATE_A + 1] = 0x00;
+        rom[GATE_B - 1] = 0xE0; rom[GATE_B] = 0x48; rom[GATE_B + 1] = 0x00;
+        rom[PTRS] = 0x8E; rom[PTRS + 1] = 0x81;
+        rom[0x02A567u - 1] = 0xA2; rom[0x02A567u] = 6;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(tp->teams[0].assigned_slot == 36);
+        const uint16_t first = (uint16_t)(0x8000u + TONE1_FREE - 0x48000u);
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 36 * 2) == first &&
+               "an added team's tone 1 goes through its assigned slot");
+        assert(rom_word(rom, TONE1_HAIR_PTRS + 36 * 2) ==
+               (uint16_t)(first + 12));
+        assert(rom_word(rom, TONE1_FREE + 2) == 0x1D4Du);
+        assert(rom_word(rom, TONE1_FREE + 12 + 2) == 0x0CA7u);
+    }
+
+    /* --- select-screen head portraits ---------------------------------
+     *
+     * The bytes at DATA_82F95F (file 0x1795F) are twice the combo index the
+     * select screen uses for each head. The matching rule, pinned with the
+     * cartridge facts: for each of the twelve palettes i read the first
+     * colour at file 0x4DD6C + i*24, expand BGR555 to RGB24 with v*255/31
+     * per channel (red low, then green, blue high), and take the palette
+     * with the least squared channel distance; a tie stays with the lower
+     * index. The words planted below are the cartridge's own at those
+     * offsets: #EAC086 is nearest combo 5 (Tan/Brown; combos 5, 6 and 8
+     * tie at 237 and the tie goes to 5) and #6B4226 nearest combo 3
+     * (Black/Black). */
+    {
+        static const uint16_t combos[HEADS_COUNT] = {
+            0x677Cu, 0x677Cu, 0x677Cu, 0x2DF9u, 0x367Cu, 0x4B1Cu,
+            0x4B1Cu, 0x367Cu, 0x4B1Cu, 0x367Cu, 0x367Cu, 0x677Cu
+        };
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *hp = issd_mod_get_pack(0);
+        assert(hp);
+        hp->team_count = 1;
+        memset(&hp->teams[0], 0, sizeof hp->teams[0]);
+        hp->teams[0].team_id = 1;
+        hp->teams[0].kit_record = -1;
+        hp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+        hp->teams[0].skin_rgb[1] = 0xFF6B4226u;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        for (int i = 0; i < HEADS_COUNT; i++) {
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE] =
+                (uint8_t)(combos[i] & 0xFF);
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE + 1] =
+                (uint8_t)(combos[i] >> 8);
+        }
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 1, 27);
+        kit_point(rom, KITS_AWAY, 1, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(rom[HEADS_TABLE + 1 * 2] == 5 * 2 &&
+               "tone 0's head follows the authored skin");
+        assert(rom[HEADS_TABLE + 1 * 2 + 1] == 3 * 2 &&
+               "tone 1's head follows the alternate skin");
+
+        /* Only the team's own two bytes move; the table is shared by every
+         * select-screen token, including the all-star sides. */
+        for (int t = 0; t < 42; t++) {
+            if (t == 1) continue;
+            assert(rom[HEADS_TABLE + (size_t)t * 2] == 0xEE &&
+                   rom[HEADS_TABLE + (size_t)t * 2 + 1] == 0xEE &&
+                   "another team's portraits stay where the cartridge put them");
+        }
+    }
+
+    {
+        /* A tone the pack does not give keeps the cartridge's portrait,
+         * and a team with no skin_tones at all changes nothing. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *hp = issd_mod_get_pack(0);
+        assert(hp);
+        hp->team_count = 3;
+        memset(hp->teams, 0, sizeof hp->teams);
+        hp->teams[0].team_id = 2;
+        hp->teams[0].kit_record = -1;
+        hp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+        hp->teams[1].team_id = 3;
+        hp->teams[1].kit_record = -1;
+        hp->teams[1].skin_rgb[1] = 0xFF6B4226u;
+        hp->teams[2].team_id = 4;
+        hp->teams[2].kit_record = -1;
+
+        static const uint16_t combos[HEADS_COUNT] = {
+            0x677Cu, 0x677Cu, 0x677Cu, 0x2DF9u, 0x367Cu, 0x4B1Cu,
+            0x4B1Cu, 0x367Cu, 0x4B1Cu, 0x367Cu, 0x367Cu, 0x677Cu
+        };
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        for (int i = 0; i < HEADS_COUNT; i++) {
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE] =
+                (uint8_t)(combos[i] & 0xFF);
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE + 1] =
+                (uint8_t)(combos[i] >> 8);
+        }
+        kit_tail(rom, kit_at(27));
+        kit_tail(rom, kit_at(53));
+        kit_point(rom, KITS_HOME, 2, 27);
+        kit_point(rom, KITS_AWAY, 2, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(rom[HEADS_TABLE + 2 * 2] == 5 * 2);
+        assert(rom[HEADS_TABLE + 2 * 2 + 1] == 0xEE &&
+               "a tone not given keeps the cartridge's portrait");
+        assert(rom[HEADS_TABLE + 3 * 2] == 0xEE &&
+               "a tone not given leaves the other head alone");
+        assert(rom[HEADS_TABLE + 3 * 2 + 1] == 3 * 2);
+        assert(rom[HEADS_TABLE + 4 * 2] == 0xEE &&
+               rom[HEADS_TABLE + 4 * 2 + 1] == 0xEE &&
+               "a pack with no skin_tones must not move either portrait");
+    }
+
+    {
+        /* Equal distances stay with the lower index rather than with
+         * whichever palette happens to be read last. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *hp = issd_mod_get_pack(0);
+        assert(hp);
+        hp->team_count = 1;
+        memset(&hp->teams[0], 0, sizeof hp->teams[0]);
+        hp->teams[0].team_id = 5;
+        hp->teams[0].kit_record = -1;
+        /* 0x4B1C expands to (230,197,148), exactly this skin. */
+        hp->teams[0].skin_rgb[0] = 0xFFE6C594u;
+
+        memset(rom, 0xEE, sizeof rom);
+        for (int i = 0; i < HEADS_COUNT; i++) {
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE] = 0x1C;
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE + 1] = 0x4B;
+        }
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(rom[HEADS_TABLE + 5 * 2] == 0 &&
+               "a tie rounds toward combo 0");
     }
 
     /* --- adding a team rather than replacing one ----------------------
