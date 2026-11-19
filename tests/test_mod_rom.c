@@ -58,6 +58,20 @@ static void kit_tail(uint8_t *rom, size_t rec) {
     rom[rec + 32] = 0x1F; rom[rec + 33] = 0x00;
 }
 
+/* Tone 1 is not part of the kit record: it lives behind two per-team tables
+ * of addresses, DATA_82837C (skin) and DATA_8283D2 (hair), whose entries are
+ * either zero or the bank $89 address of a length-prefixed record. New
+ * records go in the free run at the end of that bank, so the tone-1 tests
+ * fill it with $FF the way the cartridge does. */
+#define TONE1_SKIN_PTRS 0x01037Cu
+#define TONE1_HAIR_PTRS 0x0103D2u
+#define TONE1_FREE      0x04FA42u
+#define TONE1_FREE_END  0x050000u
+#define TONE1_PTR_TEAMS 43
+static uint16_t rom_word(const uint8_t *image, size_t at) {
+    return (uint16_t)(image[at] | (image[at + 1] << 8));
+}
+
 int main(void) {
     assert(issd_mod_init());
     /* The repo ships mods/ next to the binary; tests run from the repo root. */
@@ -645,6 +659,167 @@ int main(void) {
         assert(memcmp(home_ptr_now, rom + KITS_HOME, sizeof home_ptr_now) == 0 &&
                memcmp(away_ptr_now, rom + KITS_AWAY, sizeof away_ptr_now) == 0 &&
                "nor move a pointer");
+    }
+
+    /* --- tone 1 -------------------------------------------------------
+     *
+     * Tone 1 is separate from the kit record. Two per-team tables at
+     * $82:837C (skin) and $82:83D2 (hair) hold either zero or the bank
+     * $89 address of a length-prefixed record, and a player's appearance
+     * nibble picks between them and the kit's own colours. A pack that
+     * gives tone 1 gets fresh records in the free run at the end of bank
+     * $89, and only its own table entries move. */
+    {
+        const size_t skin_rec = TONE1_FREE;
+        const size_t hair_rec = TONE1_FREE + 12;
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *tp = issd_mod_get_pack(0);
+        assert(tp);
+        tp->team_count = 1;
+        memset(&tp->teams[0], 0, sizeof tp->teams[0]);
+        tp->teams[0].team_id = 1;
+        tp->teams[0].kit_record = -1;
+        tp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[0].hair_rgb[1] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        /* The table entry is a bank $89 word address, not a file offset. */
+        const uint16_t skin_addr = (uint16_t)(0x8000u + TONE1_FREE - 0x48000u);
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 1 * 2) == skin_addr);
+        assert(rom_word(rom, TONE1_HAIR_PTRS + 1 * 2) ==
+               (uint16_t)(skin_addr + 12));
+
+        /* Skin is $0009 then the same five-step ramp as tone 0; hair is
+         * $0001 then one colour. */
+        assert(rom_word(rom, skin_rec) == 0x0009u);
+        assert(rom_word(rom, skin_rec + 2) == 0x1D4Du);
+        assert(rom_word(rom, skin_rec + 4) == 0x2DF3u);
+        assert(rom_word(rom, skin_rec + 6) == 0x3677u);
+        assert(rom_word(rom, skin_rec + 8) == 0x3A99u);
+        assert(rom_word(rom, skin_rec + 10) == 0x42FCu);
+        assert(rom_word(rom, hair_rec) == 0x0001u);
+        assert(rom_word(rom, hair_rec + 2) == 0x0CA7u);
+
+        /* No other team's entry moved: the tables belong to every team,
+         * including the added ones, and a tone-1 pack only owns its own. */
+        for (int t = 0; t < TONE1_PTR_TEAMS; t++) {
+            if (t == 1) continue;
+            assert(rom_word(rom, TONE1_SKIN_PTRS + t * 2) == 0xEEEEu);
+            assert(rom_word(rom, TONE1_HAIR_PTRS + t * 2) == 0xEEEEu);
+        }
+    }
+
+    {
+        /* Two tone-1 teams share one free-space cursor. Records are packed
+         * in team order, never on top of each other: team 1's skin, then
+         * its hair, then team 5's skin, then its hair. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *tp = issd_mod_get_pack(0);
+        assert(tp);
+        tp->team_count = 2;
+        memset(tp->teams, 0, sizeof tp->teams);
+        tp->teams[0].team_id = 1;
+        tp->teams[0].kit_record = -1;
+        tp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[0].hair_rgb[1] = 0xFF3A2A1Au;
+        tp->teams[1].team_id = 5;
+        tp->teams[1].kit_record = -1;
+        tp->teams[1].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[1].hair_rgb[1] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        const uint16_t first = (uint16_t)(0x8000u + TONE1_FREE - 0x48000u);
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 1 * 2) == first);
+        assert(rom_word(rom, TONE1_HAIR_PTRS + 1 * 2) == (uint16_t)(first + 12));
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 5 * 2) == (uint16_t)(first + 16));
+        assert(rom_word(rom, TONE1_HAIR_PTRS + 5 * 2) == (uint16_t)(first + 28));
+        assert(rom_word(rom, TONE1_FREE + 2) == 0x1D4Du);
+        assert(rom_word(rom, TONE1_FREE + 16 + 2) == 0x1D4Du &&
+               "the second team's ramp is its own record");
+        assert(rom_word(rom, TONE1_FREE + 28 + 2) == 0x0CA7u);
+    }
+
+    {
+        /* The free run is a property of this revision of the cartridge.
+         * If anything already lives there, warn and leave the table alone
+         * rather than scribble over whatever the cartridge keeps there. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *tp = issd_mod_get_pack(0);
+        assert(tp);
+        tp->team_count = 1;
+        memset(&tp->teams[0], 0, sizeof tp->teams[0]);
+        tp->teams[0].team_id = 1;
+        tp->teams[0].kit_record = -1;
+        tp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[0].hair_rgb[1] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        rom[TONE1_FREE] = 0x00;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "occupied free space must be reported");
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 1 * 2) == 0xEEEEu &&
+               rom_word(rom, TONE1_HAIR_PTRS + 1 * 2) == 0xEEEEu &&
+               "an unusable free run leaves the tone-1 tables alone");
+        assert(rom[TONE1_FREE] == 0x00 && rom[TONE1_FREE + 1] == 0xFF &&
+               "nor is anything written into it");
+    }
+
+    {
+        /* The tables have 43 entries, one per select-screen token, so an
+         * added team is reached through its assigned slot like any stock
+         * team. */
+        const size_t GATE_A = 0x004F2Eu, GATE_B = 0x004F50u;
+        const size_t PTRS = 0x038138u;
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *tp = issd_mod_get_pack(0);
+        assert(tp);
+        tp->team_count = 1;
+        memset(&tp->teams[0], 0, sizeof tp->teams[0]);
+        tp->teams[0].new_team = true;
+        tp->teams[0].assigned_slot = -1;
+        tp->teams[0].kit_record = -1;
+        tp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+        tp->teams[0].hair_rgb[1] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        rom[GATE_A - 1] = 0xE0; rom[GATE_A] = 0x48; rom[GATE_A + 1] = 0x00;
+        rom[GATE_B - 1] = 0xE0; rom[GATE_B] = 0x48; rom[GATE_B + 1] = 0x00;
+        rom[PTRS] = 0x8E; rom[PTRS + 1] = 0x81;
+        rom[0x02A567u - 1] = 0xA2; rom[0x02A567u] = 6;
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(tp->teams[0].assigned_slot == 36);
+        const uint16_t first = (uint16_t)(0x8000u + TONE1_FREE - 0x48000u);
+        assert(rom_word(rom, TONE1_SKIN_PTRS + 36 * 2) == first &&
+               "an added team's tone 1 goes through its assigned slot");
+        assert(rom_word(rom, TONE1_HAIR_PTRS + 36 * 2) ==
+               (uint16_t)(first + 12));
+        assert(rom_word(rom, TONE1_FREE + 2) == 0x1D4Du);
+        assert(rom_word(rom, TONE1_FREE + 12 + 2) == 0x0CA7u);
     }
 
     /* --- adding a team rather than replacing one ----------------------

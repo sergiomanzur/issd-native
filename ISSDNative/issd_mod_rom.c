@@ -542,12 +542,16 @@ static void write_part(uint8_t *rom, size_t rec, unsigned slot, uint32_t rgb,
  * Measured off its own ramps, the steps sit at 46, 68, 82, 89 and 100
  * percent, running dark to light so the last is the colour a pack asked
  * for. Tone 1's free-space records use the same five steps. */
-static void write_skin_ramp(uint8_t *rom, size_t rec, uint32_t rgb) {
+static void write_skin_steps(uint8_t *rom, size_t at, uint32_t rgb) {
     static const unsigned kSteps[5] = { 46, 68, 82, 89, 100 };
     unsigned i;
     for (i = 0; i < 5; i++)
-        write_colour(rom, rec, ROM_KIT_SKIN + i,
-                     to_bgr555(rgb, kSteps[i], 100));
+        write_colour(rom, at, i, to_bgr555(rgb, kSteps[i], 100));
+}
+
+/* Inside a kit record the ramp starts at colour 2, after hair. */
+static void write_skin_ramp(uint8_t *rom, size_t rec, uint32_t rgb) {
+    write_skin_steps(rom, rec + (size_t)ROM_KIT_SKIN * 2u, rgb);
 }
 
 /* Repaint one team's strip. Returns true when anything changed. */
@@ -709,6 +713,111 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
     }
     printf(has_strip ? "[ModLoader] Team %u wears a new strip.\n"
                      : "[ModLoader] Team %u wears new skin and hair colours.\n",
+           team->team_id);
+    return true;
+}
+
+/* ------------------------------------------------- tone 1 skin/hair ---- */
+
+/* A team has two skins. Tone 0 is the one baked into its kit record; tone 1
+ * is reached through a pair of per-team tables, DATA_82837C for skin and
+ * DATA_8283D2 for hair. CODE_8BCFBB ($8B:CFBB) reads them when it builds
+ * each side's palettes: it takes the side's team token, loads the word from
+ * each table, and skips that entry when the word is zero. The close-up
+ * screen reads the same pair ($98:F869), and the appearance nibble that
+ * chooses between the two tones is handled at $83:C9.., so the tables, the
+ * portraits and the pitch all agree.
+ *
+ * An entry is not a pointer to a palette but the address of a
+ * length-prefixed record in bank $89: $0009 then five BGR555 words for
+ * skin, $0001 then one word for hair. The addresses live in that bank's own
+ * space, so file = $48000 + (address - $8000). This is also why tone 1 can
+ * be a per-team override at all: an empty entry costs the cartridge
+ * nothing, and both tables have 43 entries, one per select-screen token.
+ *
+ * New records go in the $FF filler after the last asset of the bank -
+ * DATA_89FA20, a sixteen-colour record ending at file $4FA42 - which runs
+ * to the end of the bank at $4FFFF. Reading the cartridge shows the whole
+ * run is filler and no pointer names it. A different revision of the image
+ * is warned about rather than written to. */
+#define ROM_TONE1_SKIN_PTRS   0x01037Cu
+#define ROM_TONE1_HAIR_PTRS   0x0103D2u
+#define ROM_TONE1_PTR_TEAMS         43
+#define ROM_TONE1_FREE_BASE   0x04FA42u
+#define ROM_TONE1_FREE_END    0x050000u
+#define ROM_TONE1_SKIN_BYTES        12u   /* $0009 and five words */
+#define ROM_TONE1_HAIR_BYTES         4u   /* $0001 and one word */
+#define ROM_TONE1_SKIN_LENGTH  0x0009u
+#define ROM_TONE1_HAIR_LENGTH  0x0001u
+
+/* Point one team's tone-1 entries at fresh records in the free run.
+ * `cursor` is shared by every team in one apply so records pack end to end
+ * instead of landing on each other. Returns true when anything changed. */
+static bool patch_tone1(uint8_t *rom, size_t rom_size, const char *pack_name,
+                        const IssdModTeam *team, int slot, size_t *cursor) {
+    const bool has_skin = team->skin_rgb[1] != 0;
+    const bool has_hair = team->hair_rgb[1] != 0;
+    if (!has_skin && !has_hair) return false;
+
+    if (slot < 0 || slot >= ROM_TONE1_PTR_TEAMS) {
+        char why[112];
+        snprintf(why, sizeof why, "%s: team %u has no tone-1 entry",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    const size_t needed = (has_skin ? ROM_TONE1_SKIN_BYTES : 0u) +
+                          (has_hair ? ROM_TONE1_HAIR_BYTES : 0u);
+    const size_t skin_ptr = ROM_TONE1_SKIN_PTRS + (size_t)slot * 2u;
+    const size_t hair_ptr = ROM_TONE1_HAIR_PTRS + (size_t)slot * 2u;
+    if (skin_ptr + 2u > rom_size || hair_ptr + 2u > rom_size) return false;
+    if (*cursor > ROM_TONE1_FREE_END ||
+        needed > ROM_TONE1_FREE_END - *cursor) {
+        char why[112];
+        snprintf(why, sizeof why,
+                 "%s: no room left for team %u's alternate skin",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+    if (*cursor + needed > rom_size) return false;
+
+    /* Never assume the run is free: another revision may keep something
+     * here, and the table must be left as it was rather than point at a
+     * record written over data. */
+    for (size_t i = 0; i < needed; i++) {
+        if (rom[*cursor + i] != 0xFF) {
+            char why[112];
+            snprintf(why, sizeof why,
+                     "%s: the space for team %u's alternate skin is not free",
+                     pack_name, team->team_id);
+            issd_mod_result_note_warning(why);
+            return false;
+        }
+    }
+
+    size_t at = *cursor;
+    if (has_skin) {
+        /* The length word occupies the record's first word, so the five
+         * steps follow it rather than sitting at a kit record's colour 2. */
+        const uint16_t addr = (uint16_t)(0x8000u + at - 0x48000u);
+        write_colour(rom, at, 0, ROM_TONE1_SKIN_LENGTH);
+        write_skin_steps(rom, at + 2u, team->skin_rgb[1]);
+        rom[skin_ptr]     = (uint8_t)(addr & 0xFF);
+        rom[skin_ptr + 1] = (uint8_t)(addr >> 8);
+        at += ROM_TONE1_SKIN_BYTES;
+    }
+    if (has_hair) {
+        const uint16_t addr = (uint16_t)(0x8000u + at - 0x48000u);
+        write_colour(rom, at, 0, ROM_TONE1_HAIR_LENGTH);
+        write_colour(rom, at, 1, to_bgr555(team->hair_rgb[1], 100, 100));
+        rom[hair_ptr]     = (uint8_t)(addr & 0xFF);
+        rom[hair_ptr + 1] = (uint8_t)(addr >> 8);
+        at += ROM_TONE1_HAIR_BYTES;
+    }
+    *cursor = at;
+    printf("[ModLoader] Team %u wears an alternate skin and hair.\n",
            team->team_id);
     return true;
 }
@@ -1001,7 +1110,11 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
     }
 
     int players_patched = 0, teams_patched = 0, formations_patched = 0;
-    int stadiums_patched = 0, kits_patched = 0;
+    int stadiums_patched = 0, kits_patched = 0, tone1_patched = 0;
+    /* Tone-1 records share the free run at the end of bank $89. The cursor
+     * starts at its base on every apply so re-applying the same stack is
+     * deterministic rather than walking further each time. */
+    size_t tone1_cursor = ROM_TONE1_FREE_BASE;
 
     /* Expansion rewrites code and moves tables, so it happens once, before
      * any pack writes a stadium. The largest ask across the stack wins:
@@ -1169,6 +1282,17 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
             if (patch_formation(rom, rom_size, pack->name, team, n))
                 formations_patched++;
             if (patch_kit(rom, rom_size, pack->name, team)) kits_patched++;
+            /* Tone 1 is not part of the kit record, so it is reached by
+             * the team's table slot - the stock id, or the slot an added
+             * team was just handed. */
+            {
+                const int tone1_slot = team->assigned_slot >= 0
+                                           ? team->assigned_slot
+                                           : (int)team->team_id;
+                if (patch_tone1(rom, rom_size, pack->name, team, tone1_slot,
+                                &tone1_cursor))
+                    tone1_patched++;
+            }
         }
 
         for (int si = 0; si < pack->stadium_count; si++)
@@ -1184,6 +1308,10 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
 
     if (kits_patched)
         printf("[ModLoader] Repainted %d strip(s).\n", kits_patched);
+
+    if (tone1_patched)
+        printf("[ModLoader] Wrote alternate skin and hair for %d team(s).\n",
+               tone1_patched);
 
     if (stadiums_patched)
         printf("[ModLoader] Rebuilt %d stadium(s).\n", stadiums_patched);
