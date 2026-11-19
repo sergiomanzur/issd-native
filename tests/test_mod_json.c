@@ -122,6 +122,50 @@ int main(int argc, char **argv) {
         assert(p->teams[0].player_count == ISSD_MAX_PLAYERS_PER_TEAM);
     }
 
+    /* --- skin tones ---------------------------------------------------
+     *
+     * A team names up to two skin/hair tones. The cartridge already keeps
+     * two per team - the one baked into its kit record, and the alternate
+     * a player's skin_tone nibble selects - so the pack data has the same
+     * shape: the colours are written as colours and stored with the high
+     * byte set, exactly as the kit colours above. */
+    p = load(dir, "tones.json",
+        "{\"name\":\"Tones\",\"teams\":[{\"team_id\":34,\"skin_tones\":["
+        "{\"skin\":\"#EAC086\",\"hair\":\"#3A2A1A\"},"
+        "{\"skin\":\"#6B4226\",\"hair\":\"#101010\"}]}]}");
+    assert(p && p->team_count == 1);
+    assert(p->teams[0].skin_rgb[0] == 0xFFEAC086u);
+    assert(p->teams[0].hair_rgb[0] == 0xFF3A2A1Au);
+    assert(p->teams[0].skin_rgb[1] == 0xFF6B4226u);
+    assert(p->teams[0].hair_rgb[1] == 0xFF101010u);
+
+    /* A team that says nothing keeps the cartridge's own tones; 0 is
+     * what every writer already tests for "not given". */
+    p = load(dir, "notones.json",
+        "{\"name\":\"NoTones\",\"teams\":[{\"team_id\":34}]}");
+    assert(p && p->team_count == 1);
+    assert(p->teams[0].skin_rgb[0] == 0 && p->teams[0].skin_rgb[1] == 0);
+    assert(p->teams[0].hair_rgb[0] == 0 && p->teams[0].hair_rgb[1] == 0);
+
+    /* Black is a colour a team can ask for, not an absent key. */
+    p = load(dir, "blacktone.json",
+        "{\"name\":\"BlackTone\",\"teams\":[{\"team_id\":34,"
+        "\"skin_tones\":[{\"skin\":\"#000000\"}]}]}");
+    assert(p && p->team_count == 1);
+    assert(p->teams[0].skin_rgb[0] == 0xFF000000u &&
+           "black must not read as unset");
+    assert(p->teams[0].hair_rgb[0] == 0 && "an omitted part is left alone");
+
+    /* A third tone is past the two the cartridge offers, and is read past
+     * the way a twenty-first player is: skipped, not an error. */
+    p = load(dir, "threetones.json",
+        "{\"name\":\"ThreeTones\",\"teams\":[{\"team_id\":34,\"skin_tones\":["
+        "{\"skin\":\"#111111\"},{\"skin\":\"#222222\"},"
+        "{\"skin\":\"#333333\"}]}]}");
+    assert(p && p->team_count == 1);
+    assert(p->teams[0].skin_rgb[1] == 0xFF222222u &&
+           "only the first two tones are kept");
+
     /* --- an empty teams array is honest, not a crash ------------------- */
     p = load(dir, "empty.json", "{ \"name\": \"Empty\", \"teams\": [] }");
     assert(p && p->team_count == 0);

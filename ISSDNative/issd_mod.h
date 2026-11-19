@@ -110,6 +110,16 @@ typedef struct {
     uint32_t socks_rgb;
     int      kit_record;      /* -1: use the measured table */
     bool     stripes;         /* true: enable vertical shirt stripes on pitch */
+    /* Skin and hair for the two tones the cartridge offers a team. Its kit
+     * record keeps one tone as colour 1 (hair) and colours 2-6 (a five-step
+     * skin ramp); the other is reached through the per-team pointer tables
+     * DATA_82837C (skin) and DATA_8283D2 (hair), which a player's skin_tone
+     * nibble selects. A pack gives the base colour of a part and the ramp
+     * is derived from it later; 0 leaves that part alone. Stored the way
+     * json_colour keeps the kit colours, with bit 31 set so black is not
+     * mistaken for "not given". */
+    uint32_t skin_rgb[2];
+    uint32_t hair_rgb[2];
     int      player_count;
     IssdModPlayer players[ISSD_MAX_PLAYERS_PER_TEAM];
 } IssdModTeam;
