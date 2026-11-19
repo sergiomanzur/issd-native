@@ -478,6 +478,8 @@ static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
 #define ROM_KIT_BANK            0x89u
 #define ROM_KIT_STRIDE            34u   /* seventeen colours */
 #define ROM_KIT_RECORDS           84
+#define ROM_KIT_HAIR               1    /* one colour */
+#define ROM_KIT_SKIN               2    /* five shades, dark to light */
 #define ROM_KIT_SHIRT              7    /* three shades, dark to light */
 #define ROM_KIT_SHORTS            10    /* three shades */
 #define ROM_KIT_SOCKS             13    /* two shades */
@@ -536,10 +538,24 @@ static void write_part(uint8_t *rom, size_t rec, unsigned slot, uint32_t rgb,
     }
 }
 
+/* The cartridge shades a skin by darkening one base colour in five steps.
+ * Measured off its own ramps, the steps sit at 46, 68, 82, 89 and 100
+ * percent, running dark to light so the last is the colour a pack asked
+ * for. Tone 1's free-space records use the same five steps. */
+static void write_skin_ramp(uint8_t *rom, size_t rec, uint32_t rgb) {
+    static const unsigned kSteps[5] = { 46, 68, 82, 89, 100 };
+    unsigned i;
+    for (i = 0; i < 5; i++)
+        write_colour(rom, rec, ROM_KIT_SKIN + i,
+                     to_bgr555(rgb, kSteps[i], 100));
+}
+
 /* Repaint one team's strip. Returns true when anything changed. */
 static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
                       const IssdModTeam *team) {
-    if (!team->shirt_rgb && !team->shorts_rgb && !team->socks_rgb) return false;
+    const bool has_strip = team->shirt_rgb || team->shorts_rgb || team->socks_rgb;
+    const bool has_tone0 = team->skin_rgb[0] || team->hair_rgb[0];
+    if (!has_strip && !has_tone0) return false;
 
     size_t rec = 0;
     if (team->kit_record >= 0) {
@@ -602,8 +618,19 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
     if (team->shorts_rgb) write_part(rom, rec, ROM_KIT_SHORTS, team->shorts_rgb, 3);
     if (team->socks_rgb)  write_part(rom, rec, ROM_KIT_SOCKS,  team->socks_rgb, 2);
 
-    /* Also update away/change kit so teams playing as P2/away wear the customized strip */
-    if (team->team_id < ROM_KIT_PTR_TEAMS) {
+    /* Tone 0 lives in the record itself: colour 1 is hair and colours 2-6
+     * the five-step skin ramp. Nothing else has to change - each player's
+     * appearance nibble already selects between this and the tone-1
+     * tables. */
+    if (team->hair_rgb[0])
+        write_colour(rom, rec, ROM_KIT_HAIR,
+                     to_bgr555(team->hair_rgb[0], 100, 100));
+    if (team->skin_rgb[0]) write_skin_ramp(rom, rec, team->skin_rgb[0]);
+
+    /* Only a strip changes which record the change kit wears. Skin and
+     * hair go into whichever record each table already names, because a
+     * pack may recolour a team without repainting its shirts. */
+    if (has_strip && team->team_id < ROM_KIT_PTR_TEAMS) {
         size_t home_ptr = ROM_KIT_PTRS_HOME + (size_t)team->team_id * 2u;
         size_t away_ptr = ROM_KIT_PTRS_AWAY + (size_t)team->team_id * 2u;
         if (home_ptr + 2 <= rom_size && away_ptr + 2 <= rom_size) {
@@ -612,10 +639,33 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
         }
     }
     size_t rec_away = kit_offset(rom, rom_size, team->team_id, true);
-    if (rec_away && rec_away + ROM_KIT_STRIDE <= rom_size) {
-        if (team->shirt_rgb)  write_part(rom, rec_away, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
-        if (team->shorts_rgb) write_part(rom, rec_away, ROM_KIT_SHORTS, team->shorts_rgb, 3);
-        if (team->socks_rgb)  write_part(rom, rec_away, ROM_KIT_SOCKS,  team->socks_rgb, 2);
+    if (rec_away && rec_away + ROM_KIT_STRIDE <= rom_size && rec_away != rec) {
+        /* A skin-only pack reaches the change record through its own table
+         * entry, which the strip path never has to trust. Check the
+         * signature the way the home record is checked before writing. */
+        const uint16_t atail_a =
+            (uint16_t)(rom[rec_away + 30] | (rom[rec_away + 31] << 8));
+        const uint16_t atail_b =
+            (uint16_t)(rom[rec_away + 32] | (rom[rec_away + 33] << 8));
+        if (!has_tone0 ||
+            (atail_a == ROM_KIT_TAIL_A && atail_b == ROM_KIT_TAIL_B)) {
+            if (has_strip) {
+                if (team->shirt_rgb)  write_part(rom, rec_away, ROM_KIT_SHIRT,  team->shirt_rgb, 3);
+                if (team->shorts_rgb) write_part(rom, rec_away, ROM_KIT_SHORTS, team->shorts_rgb, 3);
+                if (team->socks_rgb)  write_part(rom, rec_away, ROM_KIT_SOCKS,  team->socks_rgb, 2);
+            }
+            if (team->hair_rgb[0])
+                write_colour(rom, rec_away, ROM_KIT_HAIR,
+                             to_bgr555(team->hair_rgb[0], 100, 100));
+            if (team->skin_rgb[0])
+                write_skin_ramp(rom, rec_away, team->skin_rgb[0]);
+        } else {
+            char why[112];
+            snprintf(why, sizeof why,
+                     "%s: team %u's change strip is not where it was measured",
+                     pack_name, team->team_id);
+            issd_mod_result_note_warning(why);
+        }
     }
 
     if (team->stripes && team->team_id < ROM_TEAMS) {
@@ -626,7 +676,9 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
             printf("[ModLoader] Team %u '%s' wears vertical stripes.\n", team->team_id, team->name);
         }
     }
-    printf("[ModLoader] Team %u wears a new strip.\n", team->team_id);
+    printf(has_strip ? "[ModLoader] Team %u wears a new strip.\n"
+                     : "[ModLoader] Team %u wears new skin and hair colours.\n",
+           team->team_id);
     return true;
 }
 
