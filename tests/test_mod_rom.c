@@ -75,11 +75,13 @@ static uint16_t rom_word(const uint8_t *image, size_t at) {
 /* The select screen gives each team two head portraits. DATA_82F95F (file
  * 0x1795F) holds one byte per head, twice the index of a combo palette in
  * the twelve palettes at $89:DD6A; only the first colour is skin, and the
- * matching rule reads it at file 0x4DD6C + i*26. The head tests plant the
- * first colours at exactly those offsets. */
+ * matching rule reads it at file 0x4DD6C + i*24. A record is a length word
+ * and eleven colours, so it is 24 bytes; the pointer table agrees
+ * ($DD6A to $DD82 is $18). The head tests plant the first colours at
+ * exactly those offsets. */
 #define HEADS_TABLE  0x01795Fu
 #define HEADS_COMBOS 0x04DD6Cu
-#define HEADS_STRIDE 26u
+#define HEADS_STRIDE 24u
 #define HEADS_COUNT  12
 
 int main(void) {
@@ -837,16 +839,17 @@ int main(void) {
      * The bytes at DATA_82F95F (file 0x1795F) are twice the combo index the
      * select screen uses for each head. The matching rule, pinned with the
      * cartridge facts: for each of the twelve palettes i read the first
-     * colour at file 0x4DD6C + i*26, expand BGR555 to RGB24 with v*255/31
+     * colour at file 0x4DD6C + i*24, expand BGR555 to RGB24 with v*255/31
      * per channel (red low, then green, blue high), and take the palette
      * with the least squared channel distance; a tie stays with the lower
      * index. The words planted below are the cartridge's own at those
-     * offsets: #EAC086 is nearest combo 1 (White/Black) and #6B4226 nearest
-     * combo 4 (Brown/Brown). */
+     * offsets: #EAC086 is nearest combo 5 (Tan/Brown; combos 5, 6 and 8
+     * tie at 237 and the tie goes to 5) and #6B4226 nearest combo 3
+     * (Black/Black). */
     {
         static const uint16_t combos[HEADS_COUNT] = {
-            0x677Cu, 0x4EDAu, 0x4237u, 0x1CEBu, 0x0D2Cu, 0x3A3Au,
-            0x7E60u, 0x7E60u, 0x7E60u, 0x7E60u, 0x7E60u, 0x003Fu
+            0x677Cu, 0x677Cu, 0x677Cu, 0x2DF9u, 0x367Cu, 0x4B1Cu,
+            0x4B1Cu, 0x367Cu, 0x4B1Cu, 0x367Cu, 0x367Cu, 0x677Cu
         };
         const size_t home = kit_at(27), away = kit_at(53);
 
@@ -877,9 +880,9 @@ int main(void) {
         issd_mod_result_reset();
         issd_mod_apply_to_rom(rom, sizeof rom);
 
-        assert(rom[HEADS_TABLE + 1 * 2] == 1 * 2 &&
+        assert(rom[HEADS_TABLE + 1 * 2] == 5 * 2 &&
                "tone 0's head follows the authored skin");
-        assert(rom[HEADS_TABLE + 1 * 2 + 1] == 4 * 2 &&
+        assert(rom[HEADS_TABLE + 1 * 2 + 1] == 3 * 2 &&
                "tone 1's head follows the alternate skin");
 
         /* Only the team's own two bytes move; the table is shared by every
@@ -912,8 +915,8 @@ int main(void) {
         hp->teams[2].kit_record = -1;
 
         static const uint16_t combos[HEADS_COUNT] = {
-            0x677Cu, 0x4EDAu, 0x4237u, 0x1CEBu, 0x0D2Cu, 0x3A3Au,
-            0x7E60u, 0x7E60u, 0x7E60u, 0x7E60u, 0x7E60u, 0x003Fu
+            0x677Cu, 0x677Cu, 0x677Cu, 0x2DF9u, 0x367Cu, 0x4B1Cu,
+            0x4B1Cu, 0x367Cu, 0x4B1Cu, 0x367Cu, 0x367Cu, 0x677Cu
         };
         memset(rom, 0xEE, sizeof rom);
         memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
@@ -930,12 +933,12 @@ int main(void) {
         issd_mod_result_reset();
         issd_mod_apply_to_rom(rom, sizeof rom);
 
-        assert(rom[HEADS_TABLE + 2 * 2] == 1 * 2);
+        assert(rom[HEADS_TABLE + 2 * 2] == 5 * 2);
         assert(rom[HEADS_TABLE + 2 * 2 + 1] == 0xEE &&
                "a tone not given keeps the cartridge's portrait");
         assert(rom[HEADS_TABLE + 3 * 2] == 0xEE &&
                "a tone not given leaves the other head alone");
-        assert(rom[HEADS_TABLE + 3 * 2 + 1] == 4 * 2);
+        assert(rom[HEADS_TABLE + 3 * 2 + 1] == 3 * 2);
         assert(rom[HEADS_TABLE + 4 * 2] == 0xEE &&
                rom[HEADS_TABLE + 4 * 2 + 1] == 0xEE &&
                "a pack with no skin_tones must not move either portrait");

@@ -827,9 +827,11 @@ static bool patch_tone1(uint8_t *rom, size_t rom_size, const char *pack_name,
 /* The select screen shows two head portraits per team. DATA_82F95F (file
  * 0x1795F) holds two bytes per team, head 0 then head 1, and each byte is
  * twice the index of a combo palette in DATA_82F945. The twelve palettes
- * are length-prefixed and start at $89:DD6A (file 0x4DD6A). Only each
- * palette's first colour is skin, so combo i is identified by the word at
- * file 0x4DD6C + i*26.
+ * are length-prefixed and start at $89:DD6A (file 0x4DD6A). A record is
+ * its $15 length word and eleven colours, so the next one is 24 bytes on -
+ * the pointer table confirms it, $DD6A to $DD82 is $18. Only each palette's
+ * first colour is skin, so combo i is identified by the word at file
+ * 0x4DD6C + i*24.
  *
  * A modded tone picks the combo whose first colour is nearest to the
  * authored skin: expand the BGR555 word with v*255/31 per channel and take
@@ -840,7 +842,7 @@ static bool patch_tone1(uint8_t *rom, size_t rom_size, const char *pack_name,
 #define ROM_HEAD_INDEX        0x01795Fu
 #define ROM_HEAD_INDEX_TEAMS        42
 #define ROM_HEAD_COMBO_SKIN   0x04DD6Cu
-#define ROM_HEAD_COMBO_STRIDE       26
+#define ROM_HEAD_COMBO_STRIDE       24
 #define ROM_HEAD_COMBOS             12
 
 /* The combo whose first colour is closest to `rgb`, or -1 when the palette
