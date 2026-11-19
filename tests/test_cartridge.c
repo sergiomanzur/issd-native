@@ -13,9 +13,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include "issd_cartridge.h"
+#include "issd_mod.h"
 
 #define RETAIL_PATH "International Superstar Soccer Deluxe (USA).sfc"
 #define COPIER_HEADER 512u
+
+/* issd_mod.c reaches for SNES work RAM even when a test only parses packs. */
+uint8_t g_ram[0x20000];
 
 /* Reads the user's cartridge into a fresh buffer. The tests that need the real
  * bytes are the ones that prove the retail hash guard is live. */
@@ -365,11 +369,213 @@ static void test_sha256(void) {
     free(retail);
 }
 
-int main(void) {
+/* --- pack JSON: the cartridge key and the stack resolver ---------------- */
+
+/* Packs are JSON files, so the parser is exercised through a real file rather
+ * than by reaching into static code. The harness hands over a scratch folder
+ * in argv[1]; a pack's graphics and cartridge resolve against the folder its
+ * JSON sits in. */
+static char g_scratch[512];
+
+static bool write_text(const char *path, const char *text) {
+    FILE *f = fopen(path, "wb");
+    if (!f) return false;
+    fputs(text, f);
+    fclose(f);
+    return true;
+}
+
+static int load_pack_text(const char *name, const char *text) {
+    char path[600];
+    snprintf(path, sizeof path, "%s/%s", g_scratch, name);
+    assert(write_text(path, text));
+    return issd_mod_load_pack(path);
+}
+
+/* A pack that only swaps the image; the sha256 is the one a modder would
+ * write next to it. The name is distinct so a stack test can say which won. */
+static const char IMAGE_PACK[] =
+    "{\n"
+    "  \"name\": \"Image Pack\",\n"
+    "  \"author\": \"Tester\",\n"
+    "  \"teams\": [ { \"team_id\": 0, \"name\": \"Home\" } ],\n"
+    "  \"cartridge\": {\n"
+    "    \"image\": \"hack.sfc\",\n"
+    "    \"sha256\": \"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789\"\n"
+    "  }\n"
+    "}\n";
+
+static const char PATCH_PACK[] =
+    "{\n"
+    "  \"name\": \"Patch Pack\",\n"
+    "  \"teams\": [ { \"team_id\": 1, \"name\": \"Away\" } ],\n"
+    "  \"cartridge\": { \"patch\": \"hack.ips\" }\n"
+    "}\n";
+
+/* The pinned schema example carries all three members. A pack may not use
+ * both sources at once, so parsing keeps them and the resolver refuses. */
+static const char BOTH_PACK[] =
+    "{\n"
+    "  \"name\": \"Both Pack\",\n"
+    "  \"teams\": [ { \"team_id\": 2, \"name\": \"Both\" } ],\n"
+    "  \"cartridge\": {\n"
+    "    \"image\": \"hack.sfc\",\n"
+    "    \"patch\": \"hack.ips\",\n"
+    "    \"sha256\": \"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\"\n"
+    "  }\n"
+    "}\n";
+
+static const char PLAIN_PACK[] =
+    "{\n"
+    "  \"name\": \"Plain Pack\",\n"
+    "  \"teams\": [ { \"team_id\": 3, \"name\": \"Plain\" } ]\n"
+    "}\n";
+
+static const char EMPTY_IMAGE_PACK[] =
+    "{\n"
+    "  \"name\": \"Empty Pack\",\n"
+    "  \"teams\": [ { \"team_id\": 4, \"name\": \"Empty\" } ],\n"
+    "  \"cartridge\": { \"image\": \"\" }\n"
+    "}\n";
+
+/* A pack may carry nothing but a cartridge; that is a whole feature, not a
+ * pack that "changes nothing". */
+static const char CARTRIDGE_ONLY_PACK[] =
+    "{\n"
+    "  \"name\": \"Hack Only\",\n"
+    "  \"cartridge\": { \"image\": \"hack.sfc\" }\n"
+    "}\n";
+
+static bool resolve(char *name, size_t name_cap, char *file, size_t file_cap,
+                    bool *is_patch, char *sha, size_t sha_cap) {
+    return issd_mod_cartridge_resolve(name, name_cap, file, file_cap, is_patch,
+                                      sha, sha_cap);
+}
+
+static void test_cartridge_pack(void) {
+    char name[64], file[512], sha[73];
+    bool is_patch = true;
+    char want[600];
+
+    /* --- the cartridge object parses; nothing happens while it is off ---- */
+    assert(issd_mod_init());
+    const int image = load_pack_text("image.json", IMAGE_PACK);
+    assert(image >= 0);
+    const IssdModPack *p = issd_mod_get_pack(image);
+    assert(p && strcmp(p->name, "Image Pack") == 0);
+    assert(strcmp(p->cartridge_image, "hack.sfc") == 0);
+    assert(p->cartridge_patch[0] == 0);
+    assert(strcmp(p->cartridge_sha256,
+                  "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789") == 0);
+
+    name[0] = file[0] = sha[0] = 'X';
+    is_patch = true;
+    assert(!resolve(name, sizeof name, file, sizeof file, &is_patch,
+                    sha, sizeof sha));
+    assert(name[0] == 0 && file[0] == 0 && sha[0] == 0 &&
+           "a resolver miss names nothing");
+
+    /* Enabled, it is the cartridge the stack asks for, and the file is named
+     * against the pack's own folder so a pack stays one movable folder. */
+    issd_mod_set_pack_enabled(image, true);
+    assert(resolve(name, sizeof name, file, sizeof file, &is_patch,
+                   sha, sizeof sha));
+    assert(strcmp(name, "Image Pack") == 0);
+    snprintf(want, sizeof want, "%s/hack.sfc", g_scratch);
+    assert(strcmp(file, want) == 0);
+    assert(!is_patch);
+    assert(strcmp(sha,
+                  "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789") == 0);
+    assert(issd_mod_last_result()->errors == 0);
+
+    /* --- both sources: kept as written, refused by the resolver ---------- */
+    assert(issd_mod_init());
+    const int both = load_pack_text("both.json", BOTH_PACK);
+    assert(both >= 0);
+    p = issd_mod_get_pack(both);
+    assert(p && strcmp(p->cartridge_image, "hack.sfc") == 0);
+    assert(strcmp(p->cartridge_patch, "hack.ips") == 0);
+    assert(strcmp(p->cartridge_sha256,
+                  "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF") == 0);
+
+    issd_mod_set_pack_enabled(both, true);
+    assert(!resolve(name, sizeof name, file, sizeof file, &is_patch,
+                    sha, sizeof sha));
+    const IssdModResult *r = issd_mod_last_result();
+    assert(r->errors == 1 && "an unusable cartridge is an error, not a warning");
+    assert(strstr(r->detail, "both") != NULL);
+    assert(r->warnings == 0);
+
+    /* --- two enabled cartridge packs: the topmost wins, the other is named */
+    assert(issd_mod_init());
+    const int lower = load_pack_text("lower.json", IMAGE_PACK);
+    const int upper = load_pack_text("upper.json", PATCH_PACK);
+    assert(lower >= 0 && upper >= 0);
+    issd_mod_set_pack_enabled(lower, true);
+    issd_mod_set_pack_enabled(upper, true);
+
+    assert(resolve(name, sizeof name, file, sizeof file, &is_patch,
+                   sha, sizeof sha));
+    assert(strcmp(name, "Patch Pack") == 0);
+    snprintf(want, sizeof want, "%s/hack.ips", g_scratch);
+    assert(strcmp(file, want) == 0);
+    assert(is_patch);
+    assert(sha[0] == 0 && "a pack without a hash resolves with an empty one");
+    r = issd_mod_last_result();
+    assert(r->warnings == 1);
+    assert(strstr(r->detail, "shadow") != NULL &&
+           strstr(r->detail, "Image Pack") != NULL);
+
+    /* Enabling one again puts it on top; the shadow follows the stack. */
+    issd_mod_result_reset();
+    issd_mod_set_pack_enabled(lower, false);
+    issd_mod_set_pack_enabled(lower, true);
+    assert(resolve(name, sizeof name, file, sizeof file, &is_patch,
+                   sha, sizeof sha));
+    assert(strcmp(name, "Image Pack") == 0);
+    snprintf(want, sizeof want, "%s/hack.sfc", g_scratch);
+    assert(strcmp(file, want) == 0);
+    assert(!is_patch);
+    assert(issd_mod_last_result()->warnings == 1);
+
+    /* --- a cartridge-only pack is a pack, not an empty one --------------- */
+    assert(issd_mod_init());
+    const int only = load_pack_text("only.json", CARTRIDGE_ONLY_PACK);
+    assert(only >= 0);
+    r = issd_mod_last_result();
+    assert(r->errors == 0 && "a cartridge pack changes something");
+    issd_mod_set_pack_enabled(only, true);
+    assert(resolve(name, sizeof name, file, sizeof file, &is_patch,
+                   sha, sizeof sha));
+    assert(strcmp(name, "Hack Only") == 0);
+    snprintf(want, sizeof want, "%s/hack.sfc", g_scratch);
+    assert(strcmp(file, want) == 0);
+    assert(!is_patch);
+
+    /* --- no cartridge anywhere: the retail ROM plays, nothing is noted ---- */
+    assert(issd_mod_init());
+    const int plain = load_pack_text("plain.json", PLAIN_PACK);
+    const int empty = load_pack_text("empty.json", EMPTY_IMAGE_PACK);
+    assert(plain >= 0 && empty >= 0);
+    issd_mod_set_pack_enabled(plain, true);
+    issd_mod_set_pack_enabled(empty, true);
+    name[0] = file[0] = sha[0] = 'X';
+    assert(!resolve(name, sizeof name, file, sizeof file, &is_patch,
+                    sha, sizeof sha));
+    assert(name[0] == 0 && file[0] == 0 && sha[0] == 0);
+    r = issd_mod_last_result();
+    assert(r->errors == 0 && r->warnings == 0);
+}
+
+int main(int argc, char **argv) {
+    assert(argc > 1 && "the harness must pass a scratch folder");
+    snprintf(g_scratch, sizeof g_scratch, "%s", argv[1]);
+
     test_retail_stash();
     test_ips_apply();
     test_image_validation();
     test_sha256();
+    test_cartridge_pack();
     puts("cartridge tests passed");
     return 0;
 }

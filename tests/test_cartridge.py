@@ -19,10 +19,12 @@ def test_cartridge_module(tmp_path):
         [
             repo / "tests/test_cartridge.c",
             repo / "ISSDNative/issd_cartridge.c",
+            repo / "ISSDNative/issd_mod.c",
             repo / "deps/snesrecomp/runner/src/sha256.c",
         ],
         [repo / "ISSDNative", repo / "deps/snesrecomp/runner/src"],
     )
-    result = subprocess.run([str(exe)], cwd=repo, capture_output=True, text=True)
+    result = subprocess.run([str(exe), str(tmp_path)], cwd=repo,
+                            capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "cartridge tests passed" in result.stdout, result.stdout
