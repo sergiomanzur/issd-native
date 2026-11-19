@@ -237,6 +237,39 @@ static void test_ips_apply(void) {
                                        ISSD_RETAIL_SIZE - 1, why, sizeof why));
     assert(why[0] != 0);
 
+    /* A refused patch must not leave a half-patched buffer behind. The first
+     * record is valid, so a parser that writes as it walks would already have
+     * changed the sentinel by the time the short second record is seen. */
+    static uint8_t sentinel[ISSD_RETAIL_SIZE];
+    memset(sentinel, 0xCC, sizeof sentinel);
+    ips_begin(&p);
+    ips_record(&p, 0x1000, "OK", 2);
+    put_be24(&p, 0x2000);
+    put_be16(&p, 8);
+    put_bytes(&p, "abc", 3);
+    why[0] = 0;
+    assert(!issd_cartridge_apply_patch(p.bytes, p.len, sentinel,
+                                       sizeof sentinel, why, sizeof why));
+    for (size_t i = 0; i < sizeof sentinel; i++)
+        assert(sentinel[i] == 0xCC);
+
+    /* Patching into the retained base itself would corrupt the very image a
+     * refused patch is supposed to leave alone, so the alias is refused. */
+    ips_begin(&p);
+    ips_record(&p, 0x1000, "OK", 2);
+    ips_eof(&p);
+    why[0] = 0;
+    assert(!issd_cartridge_apply_patch(p.bytes, p.len, (uint8_t *)retail,
+                                       sizeof out, why, sizeof why));
+    assert(strstr(why, "overlaps") != NULL);
+    assert(issd_cartridge_retail(&base_size) == retail);
+    assert(base_size == ISSD_RETAIL_SIZE);
+    assert(issd_cartridge_sha256_matches(retail, base_size, ISSD_RETAIL_SHA256));
+    /* The stash is still usable for a separate output buffer. */
+    why[0] = 0;
+    assert(issd_cartridge_apply_patch(p.bytes, p.len, out, sizeof out,
+                                      why, sizeof why));
+
     /* Clearing the stash leaves no base to patch. */
     why[0] = 0;
     assert(!issd_cartridge_stash_retail(NULL, 0, why, sizeof why));

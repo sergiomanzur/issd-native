@@ -38,11 +38,14 @@ bool issd_cartridge_stash_retail(uint8_t *rom, size_t size,
 const uint8_t *issd_cartridge_retail(size_t *size);
 
 /* Applies an IPS patch to the stashed retail image and writes the result to
- * `rom_out`. The base must hash to ISSD_RETAIL_SHA256 (design ruling 3), the
+ * `rom_out`. The whole patch is validated before a single byte is written, so
+ * on refusal `rom_out` is untouched and the caller keeps playing the retail
+ * cartridge. The base must hash to ISSD_RETAIL_SHA256 (design ruling 3), the
  * output must be at least ISSD_RETAIL_SIZE bytes, and the patch may not write
  * at or past the end of the image. Expansion, truncation and malformed
- * records are refused with a reason. On false, `rom_out` is not a usable
- * image and the caller must keep playing the retail cartridge. */
+ * records are refused with a reason. `rom_out` must not overlap the retained
+ * retail image: an in-place apply is refused because a failed patch would
+ * otherwise corrupt the base. */
 bool issd_cartridge_apply_patch(const uint8_t *patch_data, size_t patch_size,
                                 uint8_t *rom_out, size_t rom_cap,
                                 char *why, size_t why_cap);

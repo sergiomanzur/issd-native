@@ -122,6 +122,83 @@ bool issd_cartridge_validate_image(const uint8_t *rom, size_t size,
     return true;
 }
 
+/* Walks the IPS records. With `rom_out` NULL this only checks the structure,
+ * so apply_patch can refuse before touching the caller's buffer; a second walk
+ * with `rom_out` set writes records the first walk already accepted. Keeping
+ * one walker means the arithmetic of validation and application cannot drift
+ * apart. */
+static bool walk_ips(const uint8_t *patch, size_t patch_size,
+                     uint8_t *rom_out, char *why, size_t why_cap) {
+    size_t at = IPS_MAGIC_SIZE;
+    bool eof = false;
+    while (at + 3u <= patch_size) {
+        if (memcmp(patch + at, "EOF", 3) == 0) {
+            at += 3u;
+            eof = true;
+            break;
+        }
+        if (at + 5u > patch_size)
+            return fail(why, why_cap, "IPS patch is truncated: a record "
+                                      "header stops early.");
+        size_t offset = read_be24(patch + at);
+        uint32_t length = read_be16(patch + at + 3u);
+        at += 5u;
+
+        if (offset >= (size_t)ISSD_RETAIL_SIZE)
+            return fail(why, why_cap,
+                        "IPS write at offset %zu is outside the 2,097,152-"
+                        "byte cartridge; expansion is not supported.", offset);
+
+        if (length == 0) {
+            /* RLE: two bytes of run length and one fill byte. */
+            if (at + 3u > patch_size)
+                return fail(why, why_cap,
+                            "IPS patch is truncated: an RLE run at offset "
+                            "%zu has no fill byte.", offset);
+            size_t run = read_be16(patch + at);
+            uint8_t fill = patch[at + 2u];
+            at += 3u;
+            if (offset + run > (size_t)ISSD_RETAIL_SIZE)
+                return fail(why, why_cap,
+                            "IPS run at offset %zu ends outside the "
+                            "2,097,152-byte cartridge; expansion is not "
+                            "supported.", offset);
+            if (rom_out) memset(rom_out + offset, fill, run);
+        } else {
+            if (at + length > patch_size)
+                return fail(why, why_cap,
+                            "IPS patch is truncated: the record at offset "
+                            "%zu claims %u bytes but the file ends early.",
+                            offset, (unsigned)length);
+            if (offset + length > (size_t)ISSD_RETAIL_SIZE)
+                return fail(why, why_cap,
+                            "IPS record at offset %zu ends outside the "
+                            "2,097,152-byte cartridge; expansion is not "
+                            "supported.", offset);
+            if (rom_out) memcpy(rom_out + offset, patch + at, length);
+            at += length;
+        }
+    }
+
+    if (!eof)
+        return fail(why, why_cap,
+                    "IPS patch has no EOF marker; a complete patch ends "
+                    "with EOF.");
+
+    size_t trailing = patch_size - at;
+    if (trailing == 3u) {
+        /* The IPS truncation extension would leave a shorter cartridge. */
+        return fail(why, why_cap,
+                    "IPS truncation to %u bytes refused; cartridge images "
+                    "must stay 2,097,152 bytes long.",
+                    (unsigned)read_be24(patch + at));
+    }
+    if (trailing != 0)
+        return fail(why, why_cap,
+                    "Unexpected trailing data after the IPS EOF marker.");
+    return true;
+}
+
 bool issd_cartridge_apply_patch(const uint8_t *patch_data, size_t patch_size,
                                 uint8_t *rom_out, size_t rom_cap,
                                 char *why, size_t why_cap) {
@@ -138,6 +215,20 @@ bool issd_cartridge_apply_patch(const uint8_t *patch_data, size_t patch_size,
         return fail(why, why_cap,
                     "The output buffer must hold 2,097,152 bytes of "
                     "cartridge image.");
+
+    /* Writing into or across the retained base would destroy the very image a
+     * refusal is meant to preserve. */
+    {
+        uintptr_t out_start = (uintptr_t)rom_out;
+        uintptr_t base_start = (uintptr_t)retail_base;
+        if (out_start < base_start + retail_size &&
+            base_start < out_start + rom_cap)
+            return fail(why, why_cap,
+                        "The output buffer overlaps the retained retail "
+                        "image; apply into a separate buffer so a refused "
+                        "patch cannot corrupt the base.");
+    }
+
     if (!patch_data)
         return fail(why, why_cap, "No IPS patch data.");
     if (patch_size < IPS_MAGIC_SIZE + 3u ||
@@ -145,76 +236,16 @@ bool issd_cartridge_apply_patch(const uint8_t *patch_data, size_t patch_size,
         return fail(why, why_cap,
                     "Not an IPS patch: the PATCH signature is missing.");
 
+    /* Every record is checked before a byte is written, so a refusal leaves
+     * `rom_out` exactly as the caller passed it. */
+    if (!walk_ips(patch_data, patch_size, NULL, why, why_cap)) return false;
+
     /* Start from the retail image so untouched regions keep retail bytes. */
     memmove(rom_out, retail_base, retail_size);
 
-    size_t at = IPS_MAGIC_SIZE;
-    bool eof = false;
-    while (at + 3u <= patch_size) {
-        if (memcmp(patch_data + at, "EOF", 3) == 0) {
-            at += 3u;
-            eof = true;
-            break;
-        }
-        if (at + 5u > patch_size)
-            return fail(why, why_cap, "IPS patch is truncated: a record "
-                                      "header stops early.");
-        size_t offset = read_be24(patch_data + at);
-        uint32_t length = read_be16(patch_data + at + 3u);
-        at += 5u;
-
-        if (offset >= (size_t)ISSD_RETAIL_SIZE)
-            return fail(why, why_cap,
-                        "IPS write at offset %zu is outside the 2,097,152-"
-                        "byte cartridge; expansion is not supported.", offset);
-
-        if (length == 0) {
-            /* RLE: two bytes of run length and one fill byte. */
-            if (at + 3u > patch_size)
-                return fail(why, why_cap,
-                            "IPS patch is truncated: an RLE run at offset "
-                            "%zu has no fill byte.", offset);
-            size_t run = read_be16(patch_data + at);
-            uint8_t fill = patch_data[at + 2u];
-            at += 3u;
-            if (offset + run > (size_t)ISSD_RETAIL_SIZE)
-                return fail(why, why_cap,
-                            "IPS run at offset %zu ends outside the "
-                            "2,097,152-byte cartridge; expansion is not "
-                            "supported.", offset);
-            memset(rom_out + offset, fill, run);
-        } else {
-            if (at + length > patch_size)
-                return fail(why, why_cap,
-                            "IPS patch is truncated: the record at offset "
-                            "%zu claims %u bytes but the file ends early.",
-                            offset, (unsigned)length);
-            if (offset + length > (size_t)ISSD_RETAIL_SIZE)
-                return fail(why, why_cap,
-                            "IPS record at offset %zu ends outside the "
-                            "2,097,152-byte cartridge; expansion is not "
-                            "supported.", offset);
-            memcpy(rom_out + offset, patch_data + at, length);
-            at += length;
-        }
-    }
-
-    if (!eof)
-        return fail(why, why_cap,
-                    "IPS patch has no EOF marker; a complete patch ends "
-                    "with EOF.");
-
-    size_t trailing = patch_size - at;
-    if (trailing == 3u) {
-        /* The IPS truncation extension would leave a shorter cartridge. */
-        return fail(why, why_cap,
-                    "IPS truncation to %u bytes refused; cartridge images "
-                    "must stay 2,097,152 bytes long.",
-                    (unsigned)read_be24(patch_data + at));
-    }
-    if (trailing != 0)
-        return fail(why, why_cap,
-                    "Unexpected trailing data after the IPS EOF marker.");
+    /* The same walk just passed, so this one cannot fail; its writes are the
+     * records the validation pass accepted. */
+    walk_ips(patch_data, patch_size, rom_out, why, why_cap);
 
     if (why && why_cap) why[0] = 0;
     return true;
