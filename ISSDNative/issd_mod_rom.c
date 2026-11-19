@@ -822,6 +822,91 @@ static bool patch_tone1(uint8_t *rom, size_t rom_size, const char *pack_name,
     return true;
 }
 
+/* -------------------------------------- select-screen head portraits ---- */
+
+/* The select screen shows two head portraits per team. DATA_82F95F (file
+ * 0x1795F) holds two bytes per team, head 0 then head 1, and each byte is
+ * twice the index of a combo palette in DATA_82F945. The twelve palettes
+ * are length-prefixed and start at $89:DD6A (file 0x4DD6A). Only each
+ * palette's first colour is skin, so combo i is identified by the word at
+ * file 0x4DD6C + i*26.
+ *
+ * A modded tone picks the combo whose first colour is nearest to the
+ * authored skin: expand the BGR555 word with v*255/31 per channel and take
+ * the least squared channel distance. The loop only replaces on a strictly
+ * closer word, so a tie stays with the lower combo index. The table itself
+ * is 84 bytes and ends where DATA_82F9B3 begins - one pair for every
+ * select-screen token, including the six slots an added team can take. */
+#define ROM_HEAD_INDEX        0x01795Fu
+#define ROM_HEAD_INDEX_TEAMS        42
+#define ROM_HEAD_COMBO_SKIN   0x04DD6Cu
+#define ROM_HEAD_COMBO_STRIDE       26
+#define ROM_HEAD_COMBOS             12
+
+/* The combo whose first colour is closest to `rgb`, or -1 when the palette
+ * table is not wholly inside the image. */
+static int head_combo(const uint8_t *rom, size_t rom_size, uint32_t rgb) {
+    const long want_r = (long)((rgb >> 16) & 0xFFu);
+    const long want_g = (long)((rgb >>  8) & 0xFFu);
+    const long want_b = (long)( rgb        & 0xFFu);
+    int best = 0;
+    long best_dist = -1;
+    int i;
+    for (i = 0; i < ROM_HEAD_COMBOS; i++) {
+        const size_t at = ROM_HEAD_COMBO_SKIN +
+                          (size_t)i * ROM_HEAD_COMBO_STRIDE;
+        uint16_t c;
+        long dr, dg, db, dist;
+        if (at + 2u > rom_size) return -1;
+        c = (uint16_t)(rom[at] | (rom[at + 1] << 8));
+        dr = (long)((c & 31u) * 255u / 31u) - want_r;
+        dg = (long)(((c >> 5) & 31u) * 255u / 31u) - want_g;
+        db = (long)(((c >> 10) & 31u) * 255u / 31u) - want_b;
+        dist = dr * dr + dg * dg + db * db;
+        if (best_dist < 0 || dist < best_dist) {
+            best_dist = dist;
+            best = i;
+        }
+    }
+    return best;
+}
+
+/* Point one team's two head bytes at the combos nearest its authored
+ * tones. A tone whose skin is not given keeps the cartridge's portrait.
+ * `slot` is the select-screen table index - the stock id, or the slot an
+ * added team was handed. Returns true when a byte changed. */
+static bool patch_heads(uint8_t *rom, size_t rom_size, const char *pack_name,
+                        const IssdModTeam *team, int slot) {
+    if (!team->skin_rgb[0] && !team->skin_rgb[1]) return false;
+
+    if (slot < 0 || slot >= ROM_HEAD_INDEX_TEAMS) {
+        char why[112];
+        snprintf(why, sizeof why,
+                 "%s: team %u has no select-screen head slot",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    const size_t at = ROM_HEAD_INDEX + (size_t)slot * 2u;
+    if (at + 2u > rom_size) return false;
+
+    bool wrote = false;
+    int tone;
+    for (tone = 0; tone < 2; tone++) {
+        int combo;
+        if (!team->skin_rgb[tone]) continue;
+        combo = head_combo(rom, rom_size, team->skin_rgb[tone]);
+        if (combo < 0) return wrote;
+        rom[at + (size_t)tone] = (uint8_t)(combo * 2);
+        wrote = true;
+    }
+    if (wrote)
+        printf("[ModLoader] Team %u's select-screen heads follow its skin "
+               "tones.\n", team->team_id);
+    return wrote;
+}
+
 /* Turn `count` of the seventh group's cells into teams with rosters of
  * their own. Returns how many were made real - 0 if this cartridge is not
  * the one the offsets were measured on, in which case nothing is written. */
@@ -1111,6 +1196,7 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
 
     int players_patched = 0, teams_patched = 0, formations_patched = 0;
     int stadiums_patched = 0, kits_patched = 0, tone1_patched = 0;
+    int heads_patched = 0;
     /* Tone-1 records share the free run at the end of bank $89. The cursor
      * starts at its base on every apply so re-applying the same stack is
      * deterministic rather than walking further each time. */
@@ -1282,16 +1368,18 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
             if (patch_formation(rom, rom_size, pack->name, team, n))
                 formations_patched++;
             if (patch_kit(rom, rom_size, pack->name, team)) kits_patched++;
-            /* Tone 1 is not part of the kit record, so it is reached by
-             * the team's table slot - the stock id, or the slot an added
-             * team was just handed. */
+            /* Tone 1 and the select-screen heads are not part of the kit
+             * record, so both are reached by the team's table slot - the
+             * stock id, or the slot an added team was just handed. */
             {
-                const int tone1_slot = team->assigned_slot >= 0
+                const int table_slot = team->assigned_slot >= 0
                                            ? team->assigned_slot
                                            : (int)team->team_id;
-                if (patch_tone1(rom, rom_size, pack->name, team, tone1_slot,
+                if (patch_tone1(rom, rom_size, pack->name, team, table_slot,
                                 &tone1_cursor))
                     tone1_patched++;
+                if (patch_heads(rom, rom_size, pack->name, team, table_slot))
+                    heads_patched++;
             }
         }
 
@@ -1312,6 +1400,10 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
     if (tone1_patched)
         printf("[ModLoader] Wrote alternate skin and hair for %d team(s).\n",
                tone1_patched);
+
+    if (heads_patched)
+        printf("[ModLoader] Select-screen heads follow the new skin for %d "
+               "team(s).\n", heads_patched);
 
     if (stadiums_patched)
         printf("[ModLoader] Rebuilt %d stadium(s).\n", stadiums_patched);

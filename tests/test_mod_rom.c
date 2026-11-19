@@ -72,6 +72,16 @@ static uint16_t rom_word(const uint8_t *image, size_t at) {
     return (uint16_t)(image[at] | (image[at + 1] << 8));
 }
 
+/* The select screen gives each team two head portraits. DATA_82F95F (file
+ * 0x1795F) holds one byte per head, twice the index of a combo palette in
+ * the twelve palettes at $89:DD6A; only the first colour is skin, and the
+ * matching rule reads it at file 0x4DD6C + i*26. The head tests plant the
+ * first colours at exactly those offsets. */
+#define HEADS_TABLE  0x01795Fu
+#define HEADS_COMBOS 0x04DD6Cu
+#define HEADS_STRIDE 26u
+#define HEADS_COUNT  12
+
 int main(void) {
     assert(issd_mod_init());
     /* The repo ships mods/ next to the binary; tests run from the repo root. */
@@ -820,6 +830,142 @@ int main(void) {
                (uint16_t)(first + 12));
         assert(rom_word(rom, TONE1_FREE + 2) == 0x1D4Du);
         assert(rom_word(rom, TONE1_FREE + 12 + 2) == 0x0CA7u);
+    }
+
+    /* --- select-screen head portraits ---------------------------------
+     *
+     * The bytes at DATA_82F95F (file 0x1795F) are twice the combo index the
+     * select screen uses for each head. The matching rule, pinned with the
+     * cartridge facts: for each of the twelve palettes i read the first
+     * colour at file 0x4DD6C + i*26, expand BGR555 to RGB24 with v*255/31
+     * per channel (red low, then green, blue high), and take the palette
+     * with the least squared channel distance; a tie stays with the lower
+     * index. The words planted below are the cartridge's own at those
+     * offsets: #EAC086 is nearest combo 1 (White/Black) and #6B4226 nearest
+     * combo 4 (Brown/Brown). */
+    {
+        static const uint16_t combos[HEADS_COUNT] = {
+            0x677Cu, 0x4EDAu, 0x4237u, 0x1CEBu, 0x0D2Cu, 0x3A3Au,
+            0x7E60u, 0x7E60u, 0x7E60u, 0x7E60u, 0x7E60u, 0x003Fu
+        };
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *hp = issd_mod_get_pack(0);
+        assert(hp);
+        hp->team_count = 1;
+        memset(&hp->teams[0], 0, sizeof hp->teams[0]);
+        hp->teams[0].team_id = 1;
+        hp->teams[0].kit_record = -1;
+        hp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+        hp->teams[0].skin_rgb[1] = 0xFF6B4226u;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        for (int i = 0; i < HEADS_COUNT; i++) {
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE] =
+                (uint8_t)(combos[i] & 0xFF);
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE + 1] =
+                (uint8_t)(combos[i] >> 8);
+        }
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 1, 27);
+        kit_point(rom, KITS_AWAY, 1, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(rom[HEADS_TABLE + 1 * 2] == 1 * 2 &&
+               "tone 0's head follows the authored skin");
+        assert(rom[HEADS_TABLE + 1 * 2 + 1] == 4 * 2 &&
+               "tone 1's head follows the alternate skin");
+
+        /* Only the team's own two bytes move; the table is shared by every
+         * select-screen token, including the all-star sides. */
+        for (int t = 0; t < 42; t++) {
+            if (t == 1) continue;
+            assert(rom[HEADS_TABLE + (size_t)t * 2] == 0xEE &&
+                   rom[HEADS_TABLE + (size_t)t * 2 + 1] == 0xEE &&
+                   "another team's portraits stay where the cartridge put them");
+        }
+    }
+
+    {
+        /* A tone the pack does not give keeps the cartridge's portrait,
+         * and a team with no skin_tones at all changes nothing. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *hp = issd_mod_get_pack(0);
+        assert(hp);
+        hp->team_count = 3;
+        memset(hp->teams, 0, sizeof hp->teams);
+        hp->teams[0].team_id = 2;
+        hp->teams[0].kit_record = -1;
+        hp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+        hp->teams[1].team_id = 3;
+        hp->teams[1].kit_record = -1;
+        hp->teams[1].skin_rgb[1] = 0xFF6B4226u;
+        hp->teams[2].team_id = 4;
+        hp->teams[2].kit_record = -1;
+
+        static const uint16_t combos[HEADS_COUNT] = {
+            0x677Cu, 0x4EDAu, 0x4237u, 0x1CEBu, 0x0D2Cu, 0x3A3Au,
+            0x7E60u, 0x7E60u, 0x7E60u, 0x7E60u, 0x7E60u, 0x003Fu
+        };
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        for (int i = 0; i < HEADS_COUNT; i++) {
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE] =
+                (uint8_t)(combos[i] & 0xFF);
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE + 1] =
+                (uint8_t)(combos[i] >> 8);
+        }
+        kit_tail(rom, kit_at(27));
+        kit_tail(rom, kit_at(53));
+        kit_point(rom, KITS_HOME, 2, 27);
+        kit_point(rom, KITS_AWAY, 2, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(rom[HEADS_TABLE + 2 * 2] == 1 * 2);
+        assert(rom[HEADS_TABLE + 2 * 2 + 1] == 0xEE &&
+               "a tone not given keeps the cartridge's portrait");
+        assert(rom[HEADS_TABLE + 3 * 2] == 0xEE &&
+               "a tone not given leaves the other head alone");
+        assert(rom[HEADS_TABLE + 3 * 2 + 1] == 4 * 2);
+        assert(rom[HEADS_TABLE + 4 * 2] == 0xEE &&
+               rom[HEADS_TABLE + 4 * 2 + 1] == 0xEE &&
+               "a pack with no skin_tones must not move either portrait");
+    }
+
+    {
+        /* Equal distances stay with the lower index rather than with
+         * whichever palette happens to be read last. */
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *hp = issd_mod_get_pack(0);
+        assert(hp);
+        hp->team_count = 1;
+        memset(&hp->teams[0], 0, sizeof hp->teams[0]);
+        hp->teams[0].team_id = 5;
+        hp->teams[0].kit_record = -1;
+        /* 0x4B1C expands to (230,197,148), exactly this skin. */
+        hp->teams[0].skin_rgb[0] = 0xFFE6C594u;
+
+        memset(rom, 0xEE, sizeof rom);
+        for (int i = 0; i < HEADS_COUNT; i++) {
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE] = 0x1C;
+            rom[HEADS_COMBOS + (size_t)i * HEADS_STRIDE + 1] = 0x4B;
+        }
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(rom[HEADS_TABLE + 5 * 2] == 0 &&
+               "a tie rounds toward combo 0");
     }
 
     /* --- adding a team rather than replacing one ----------------------
