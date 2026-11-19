@@ -44,9 +44,15 @@ def _team(**fields):
 
 def test_skin_tones_must_be_one_or_two_objects():
     for tones in ("#EAC086", {}, [], [{"skin": "#EAC086"}] * 3,
-                  ["#EAC086"]):
+                  ["#EAC086"], None):
         report = _report(_team(skin_tones=tones))
         assert report.errors, "skin_tones %r was accepted" % (tones,)
+
+    # JSON null reaches the loader's array parser, which refuses the whole
+    # pack, so the checker has to refuse it too.
+    report = _report(_team(skin_tones=None))
+    assert any("array" in e and "object" in e for e in report.errors), \
+        report.errors
 
 
 def test_skin_tone_parts_must_be_six_hex_digits():

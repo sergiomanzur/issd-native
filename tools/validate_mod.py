@@ -164,10 +164,11 @@ def check_player(report, where, player, slot):
         elif not 0 <= value <= 99:
             report.error(where, "%s is %s; the scale is 0 to 99" % (key, value))
 
-    # The appearance byte. Neither half does what its name says, and the
-    # names are kept only so packs already written still load: skin_tone
-    # picks the palette the sprite is drawn with - dark hair or fair - and
-    # hair_style is read by nothing. Each is half a byte.
+    # The appearance byte in two halves. The high nibble picks which of the
+    # team's two skin tones the player wears: 0 is the kit record's own skin
+    # and hair, 1 the team's alternate, and 2 and 3 the goalkeeper's and
+    # referee's palettes. The low nibble is the hair actor variant, 0 to 13.
+    # The names are kept so packs already written still load.
     for key in ("skin_tone", "hair_style"):
         if key in player:
             value = player[key]
@@ -305,10 +306,10 @@ def check_team(report, team, index, formations, seen_ids):
     # nibble is the index. A part left out keeps the cartridge's own.
     tones = team.get("skin_tones")
     one_tone = False
-    if tones is not None:
+    if "skin_tones" in team:
         if not isinstance(tones, list):
             report.error(where, "skin_tones must be an array of one or two "
-                                "tones")
+                                "tone objects")
         elif not 1 <= len(tones) <= 2:
             report.error(where, "skin_tones has %d entries; the cartridge "
                                 "offers two tones, one per skin_tone value"

@@ -534,10 +534,11 @@ not a guarantee that records 36-43 are free for every other pack.
 A team has two skins, and each player's `skin_tone` chooses between them. The
 first object is tone 0, the team's default; the second is tone 1, the
 alternate. Either part can be left out, and a part left out stays as it was.
-A team that gives no `skin_tones` keeps the cartridge's own pair. The
-validator treats `"skin_tones": null` as absent, as it does a kit colour, but
-the game's loader expects an array there and refuses the whole pack
-otherwise. Leave the key out entirely.
+A team that gives no `skin_tones` keeps the cartridge's own pair. The key is
+all or nothing: once it is present, both the validator and the game's loader
+require an array of one or two tone objects, and `"skin_tones": null` is
+refused like any other value that is not an array. Leave the key out entirely
+to keep what the cartridge has.
 
 Tone 0 is stored in the team's kit record, beside its strip: colour 1 is
 hair, and colours 2 to 6 are a five-step skin ramp. The ramp is derived from
@@ -546,7 +547,8 @@ light, so the colour in the pack is the lightest of the five - the way the
 cartridge shades its own skins. Skin colours without a strip colour are
 written into whichever record the team already wears; `kit_record` selects a
 record only when there is a strip to paint, and the loader says so when it is
-ignored.
+ignored. Tone 0 is written into both records the cartridge's tables name for
+the team, its home record and its change record.
 
 Tone 1 has no place in the kit record, so the loader writes it into free
 space at the end of bank `$89` (`$89:FA42`, file offset `$4FA42`) and points
@@ -925,7 +927,10 @@ Being straight about the ceiling saves everyone time.
 - **More than 20 players per squad.**
 - **More than two skin tones per team.** Each team has a default and an
   alternate, and a player picks one with `skin_tone`. Hair belongs to the
-  tone, so every player on the same tone shares it.
+  tone, so every player on the same tone shares it. The alternate goes in
+  the free run at `$89:FA42`, which holds about 84 teams' records (1470
+  bytes, 16 per team); stacked packs that allocate for many teams can
+  exhaust it, and a team that no longer fits is skipped with a warning.
 - **Player names longer than 8 characters**, and no accents or digits. A
   full stop is fine: the cartridge is full of them.
 - **New formation labels.** The screen can only print three numbers and the
