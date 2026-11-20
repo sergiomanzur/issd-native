@@ -230,6 +230,39 @@ def test_a_kept_current_tone_with_a_donor_partner_is_still_stock(palettes):
 
 
 @needs_rom
+def test_a_strip_redirect_never_omits_the_skin_part(palettes):
+    # A pack that gives a strip colour AND `kit_record` makes the loader write
+    # tone 0 into that record and point the team at it (patch_kit in
+    # issd_mod_rom.c). The team's own record is then not what the pitch draws,
+    # so an omitted skin part would inherit the target record's class. Team 27
+    # keeps its own dark ramp in every other case; here both tones must emit.
+    doc = {"team_id": 27, "name": "Dark team", "kit_record": 40,
+           "shirt": "#101060",
+           "players": [player(0, skin="dark", hair_color="brown")]}
+    res = looks.resolve(palettes, doc)
+    assert [t.emit_skin for t in res.tones] == [True, True]
+    assert_tone_survives_loader(palettes, 27, res)
+
+
+@needs_rom
+def test_a_strip_redirect_writes_a_skin_part_for_every_tone(
+        tmp_path, palettes):
+    doc = {"team_id": 27, "name": "Dark team", "kit_record": 40,
+           "shirt": "#101060",
+           "players": [player(0, skin="dark", hair_color="brown")]}
+    path = write_pack(tmp_path / "redirect.json", [doc])
+
+    result = run_fitter(path)
+    assert result.returncode == 0, result.stderr
+
+    fitted = json.loads(path.read_text(encoding="utf-8"))
+    tones = fitted["teams"][0]["skin_tones"]
+    assert all("skin" in tone for tone in tones), tones
+    intended = [t.skin for t in looks.resolve(palettes, doc).tones]
+    assert_emitted_tone_classes(palettes, 27, tones, intended)
+
+
+@needs_rom
 def test_staying_as_it_is_wins_every_tie(palettes):
     # No request, or a request the current palettes already satisfy, must not
     # move a palette: the search enumerates the current pair first and only a

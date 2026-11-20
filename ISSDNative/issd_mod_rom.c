@@ -620,9 +620,11 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
         rom[home_ptr + 1u] = rom[away_ptr + 1u] = (uint8_t)(addr >> 8);
     }
 
-    /* Teams share strips - several wear the same white - so repainting one
-     * repaints the others. The cartridge's own table says which, so say so
-     * rather than let a pack wonder why Wales changed colour. */
+    /* Sharing is induced, not shipped. The retail tables give every team its
+     * own record, but a pack's kit_record can point this team at a record
+     * another team already wears (or an earlier entry can redirect onto this
+     * one). Count the wearers after the redirect and say so, rather than let
+     * a pack wonder why Wales changed colour. */
     int sharers = 0;
     for (int t = 0; t < ROM_KIT_PTR_TEAMS; t++)
         if (kit_offset(rom, rom_size, t, false) == rec) sharers++;

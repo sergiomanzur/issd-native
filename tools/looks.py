@@ -60,6 +60,8 @@ SKIN_BASE = 2               # the middle shade: the classification pivot
 GK_COLOURS = 11
 
 LOOK_KEYS = ("skin", "hair_color", "hair_colour")
+# The team keys that make `kit_record` select a record, not just name one.
+STRIP_KEYS = ("shirt", "shorts", "socks")
 
 
 # ------------------------------------------------------------- colours -----
@@ -454,6 +456,21 @@ def _generic_options():
     return skins, hairs
 
 
+def _redirects_strip(team) -> bool:
+    """Whether a pack makes the loader paint tone 0 into a named record.
+
+    `patch_kit` in ISSDNative/issd_mod_rom.c uses `kit_record` only when the
+    entry also gives a strip colour: that is when tone-0 skin and hair are
+    written into the named record and the team's pointers are moved onto it.
+    """
+    if not isinstance(team, dict):
+        return False
+    record = team.get("kit_record")
+    if not isinstance(record, int) or isinstance(record, bool) or record < 0:
+        return False
+    return any(team.get(key) for key in STRIP_KEYS)
+
+
 def _search(asked, s0o, h0o, s1o, h1o):
     """4-way exhaustive best pair. Strict `>` plus the lists' order means the
     first candidate - the palettes the team already has - wins every tie."""
@@ -533,6 +550,13 @@ def resolve(palettes, team_requests) -> Resolution:
     else:
         emit0 = not a.current
         emit1 = not (c.current and a.current)
+
+    # A strip colour plus `kit_record` makes the loader write tone 0 into the
+    # named record and point the team at it. Omitting the skin part would then
+    # leave THAT record's stock ramp - possibly another team's, and possibly
+    # the other class - so emit the class-preserving colour for both tones.
+    if _redirects_strip(team_requests):
+        emit0 = emit1 = True
 
     res.tones = [
         Palette(0, a.cls, b.cls, a.words, b.word, b.paint, emit0),

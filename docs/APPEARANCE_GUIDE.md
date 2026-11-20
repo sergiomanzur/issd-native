@@ -25,14 +25,17 @@ pasted as it is.
    python tools/fit_looks.py --pack <pack.json>
    ```
 
-   The fitter looks for the retail cartridge in the working directory; if
-   yours is elsewhere, pass `--base <rom>`. It rewrites the pack in place
-   unless `--out <pack.json>` names a new file. A team has two palettes, so it
-   works out which two skin-and-hair combinations come closest to what the
-   squad asked for, writes the team's `skin_tones`, gives each labelled player
-   his `skin_tone` and keeps his `hair_style`, and removes the `skin` and
-   `hair_color` labels. It warns for each player it cannot represent exactly,
-   naming the closest palette used instead.
+   The fitter looks for the retail cartridge in the working directory and
+   accepts only the hash-checked image; if yours is elsewhere, pass `--base
+   <rom>`. It rewrites the pack in place unless `--out <pack.json>` names a new
+   file, and `--dry-run` reports what would change without writing. A team has
+   two palettes, so it works out which two skin-and-hair combinations come
+   closest to what the squad asked for, writes the team's `skin_tones`, gives
+   each labelled player his `skin_tone` and keeps his `hair_style`, and removes
+   the `skin` and `hair_color` labels. It warns for each player it cannot
+   represent exactly, naming the closest palette used instead. A goalkeeper is
+   pinned to tone 0 and warned about, because keeper kits copy the team's tone-0
+   skin and keeper hair is not settable.
 3. **Play.** Copy the fitted pack into `mods/` and enable it. A pack that
    still carries `skin` or `hair_color` loads - the loader skips keys it does
    not know - but the look does nothing until the fitter has converted it.

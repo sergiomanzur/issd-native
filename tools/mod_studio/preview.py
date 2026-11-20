@@ -296,6 +296,8 @@ MUTED_TEXT = (96, 102, 116)
 # beside such a shade says "(assumed)"; this is the sentence underneath.
 NO_CARTRIDGE_NOTE = ("No cartridge loaded: a colour marked (assumed) is the "
                      "editor's default, not this team's palette.")
+NO_RECORD_NOTE = ("This team has no cartridge record: a colour marked "
+                  "(assumed) is the editor's default, not this team's palette.")
 TWO_TONES_NOTE = ("The cartridge can draw two skin and hair combinations per "
                   "team; every player is on one of them.")
 
@@ -515,9 +517,15 @@ def tone_caption(entry: dict, part: str) -> str:
     return text
 
 
-def pair_note(report) -> str:
-    """The sentence under the pair picture."""
-    return NO_CARTRIDGE_NOTE if has_assumed(report) else TWO_TONES_NOTE
+def pair_note(report, palettes=None) -> str:
+    """The sentence under the pair picture.
+
+    "No cartridge" is only true when there is none. With a cartridge loaded,
+    an assumed colour means this particular team has no record to read.
+    """
+    if not has_assumed(report):
+        return TWO_TONES_NOTE
+    return NO_CARTRIDGE_NOTE if palettes is None else NO_RECORD_NOTE
 
 
 def _tone_colours(team, tone, palettes=None, report=None) -> list:
@@ -595,7 +603,8 @@ def palette_pair(team: dict, palettes=None, size=(366, 178)) -> Image.Image:
         d.rectangle([0, h - 42, w - 1, h - 1], fill=(250, 226, 200))
         _wrapped(d, warning, (8, h - 36), w - 16, (160, 80, 0))
     else:
-        _wrapped(d, pair_note(report), (8, h - 32), w - 16, MUTED_TEXT, 2)
+        _wrapped(d, pair_note(report, palettes), (8, h - 32), w - 16,
+                 MUTED_TEXT, 2)
     d.rectangle([0, 0, w - 1, h - 1], outline=(200, 204, 212))
     return im
 

@@ -53,8 +53,8 @@ SQUAD_SLOTS = 20
 # Measured on the retail image, all 86 home and away pointers name distinct
 # records, so no team's strip is another's. A static "this team shares its
 # strip" list was therefore wrong: the runtime counts real pointer sharing
-# when it applies a strip, and a pack's tone-1 records are written fresh, so
-# there is no pack-time sharing for this checker to predict.
+# when it applies a strip, and only then knows which teams a pack has pointed
+# at one record.
 KIT_RECORDS = 84
 
 # What the host-drawn team plate fits.

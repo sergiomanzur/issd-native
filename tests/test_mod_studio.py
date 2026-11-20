@@ -402,6 +402,27 @@ def test_only_a_loaded_cartridge_earns_the_cartridge_caption():
     assert "assumed" not in preview.pair_note(report).lower()
 
 
+@needs_rom
+def test_a_loaded_cartridge_that_lacks_the_team_says_no_record():
+    """The note must not blame the cartridge when a cartridge is loaded.
+
+    A team the image has no readable kit for still gets assumed colours, but
+    the sentence underneath has to say that about the team, not claim there is
+    no cartridge."""
+    import looks
+
+    palettes = looks.Palettes(cartridge.load_rom(ROM))
+    team = {"team_id": 99, "name": "Not on the image", "players": [],
+            "skin_tones": [{"hair": "#3A2A1A"}, {}]}
+    report = preview.tone_report(team, palettes)
+    assert preview.has_assumed(report)
+    note = preview.pair_note(report, palettes).lower()
+    assert "no cartridge record" in note
+    assert "no cartridge loaded" not in note
+    # Without a cartridge the older, true sentence is still the one used.
+    assert "no cartridge loaded" in preview.pair_note(report, None).lower()
+
+
 def test_a_pair_captions_the_players_who_get_a_closest_match():
     """A squad with three hair colours cannot be served exactly. The studio
     uses the solver's own analysis, so the closest-match line appears here."""

@@ -593,11 +593,63 @@ fitter, which turns them into the team's `skin_tones` and the player's
 `skin_tone`. Run `python tools/fit_looks.py --pack <pack.json>` after
 labelling: it finds the retail cartridge, picks the two palettes closest to
 what the squad asked for, rewrites the pack into `skin_tones` and
-`skin_tone`, and warns for each player it cannot show exactly.
+`skin_tone`, and warns for each player it cannot show exactly. Add
+`--base <rom>` when the cartridge is not in the working directory, and
+`--out <pack.json>` to write a new file instead of rewriting the pack in
+place.
 [APPEARANCE_GUIDE.md](APPEARANCE_GUIDE.md) has the vocabulary (two skin tones,
 five hair colours, and fourteen `hair_style` values - the standard head and
 thirteen overlays) and a ready-to-paste prompt for labelling photos with an
 LLM.
+
+### Label, fit, play
+
+1. **Label.** Give each player `skin` (`light` or `dark`), `hair_color`
+   (`black`, `brown`, `blond`, `red` or `grey`) and `hair_style`. The guide's
+   LLM prompt answers with exactly those keys.
+2. **Fit.** Run
+
+   ```sh
+   python tools/fit_looks.py --pack mods/my_pack.json
+   ```
+
+   The fitter finds the retail cartridge in the working directory and
+   hash-checks it; pass `--base <rom>` when it lives elsewhere. It rewrites
+   the pack in place, so add `--out mods/my_pack_fitted.json` for a
+   non-destructive rewrite. Teams without look keys are left byte-for-byte
+   untouched, and `--dry-run` reports what would change without writing.
+3. **Play.** Drop the fitted pack in `mods/` and enable it. A pack that still
+   carries `skin` or `hair_color` loads - the loader skips keys it does not
+   know - but the look does nothing until the fitter has converted it.
+
+A team has two palettes, so the fitter can serve two skin-and-hair
+combinations. It searches for the pair that serves the most requests, then
+warns for each player it cannot show exactly, naming the closest palette used.
+That warning is the honest ceiling of the format: three hair colours in one
+squad cannot all be drawn, and the right response is to accept the closest
+match or relabel, not to run the fitter again hoping for a different answer.
+
+Three players - light and blond, dark and black, light and black - in a team
+whose own tone 0 is dark and brown:
+
+```json
+  { "team_id": 27, "name": "Example FC",
+    "skin_tones": [
+      { "hair": "#201000" },
+      { "skin": "#FAA98C", "hair": "#201000" }
+    ],
+    "players": [
+      { "shirt_number": 1, "name": "A", "skin_tone": 1, "hair_style": 4 },
+      { "shirt_number": 2, "name": "B", "skin_tone": 0, "hair_style": 0 },
+      { "shirt_number": 3, "name": "C", "skin_tone": 1, "hair_style": 8 }
+    ] }
+```
+
+The pair it kept is dark/black and light/black, so the light-and-blond player
+is served the closest light palette and named in a warning. Tone 0 keeps the
+cartridge's own skin ramp, so its `skin` is omitted and only its `hair` is
+written; a tone that changes its skin gets a `skin` value as well. The hex
+values come from the cartridge's donor records; the shape is what stays fixed.
 
 ### The name plate
 

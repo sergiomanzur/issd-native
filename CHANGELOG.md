@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Add a named per-player look vocabulary (`skin`, `hair_color`, `hair_style`)
+  and an offline fitter, `tools/fit_looks.py`, backed by `tools/looks.py`: it
+  turns those labels into a team's `skin_tones` and each player's `skin_tone`
+  against the verified retail cartridge, and names the closest palette for any
+  player the two tones cannot show exactly.
+- Make keeper kits follow the team's tone-0 skin, so the keeper's record stays
+  in the same class as the outfield squad instead of borrowing another team's.
+- Add `docs/APPEARANCE_GUIDE.md` with the look vocabulary and a ready-to-paste
+  prompt for labelling player photos with an LLM, and document the
+  label/fit/play workflow in the modding guide.
+- Preview both skin tones and per-player look cards in Mod Studio.
+- Correct the strip-sharing claims in the validator, the editor and the runtime
+  comments: the retail image ships no shared strips, and sharing only arises
+  when a pack points several teams at one `kit_record`.
+
 ## 0.7.0-beta.1 — 2026-11-19
 
 - Add cartridge packs: a mod can substitute the whole 2 MB cartridge with a
