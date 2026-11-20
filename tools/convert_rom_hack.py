@@ -621,9 +621,12 @@ def build_report(*, name, input_label, ips_name, base_path, base, image,
 
     out.append("## Limits")
     out.append("")
-    out.append("- Quick and manual saves are not image-scoped (only campaign "
-               "saves are). After switching cartridge packs, load only saves "
-               "made under the same cartridge.")
+    out.append("- Saves are scoped to the cartridge image. A current-build save "
+               "(campaign, quick or manual) made without this hack refuses to "
+               "load under it, and the reverse is equally refused.")
+    out.append("- A legacy raw save from an older build carries no image "
+               "identity; it loads only after the explicit legacy "
+               "confirmation, so check which cartridge you were playing.")
     out.append("- The retail password bridge sees a different image hash and "
                "disables itself; that is non-fatal.")
     out.append("- A pack carries the patch, not the cartridge: the user's own "

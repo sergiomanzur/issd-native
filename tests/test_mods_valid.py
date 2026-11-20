@@ -177,6 +177,14 @@ def test_cartridge_layers_with_teams_and_stadiums(tmp_path):
                                                        report.warnings)
 
 
+def test_empty_teams_beside_a_cartridge_is_not_an_empty_pack(tmp_path):
+    """The cartridge key is content: an empty team list does not make it a
+    pack that "changes nothing", so strict mode must not warn about it."""
+    report = _cartridge_report(tmp_path, {"image": "hack.sfc"}, teams=[])
+    assert not report.errors and not report.warnings, (report.errors,
+                                                       report.warnings)
+
+
 def test_cartridge_file_must_stay_inside_the_pack(tmp_path):
     report = _cartridge_report(tmp_path, {"image": "../outside.sfc"})
     assert any("cartridge" in e for e in report.errors), report.errors

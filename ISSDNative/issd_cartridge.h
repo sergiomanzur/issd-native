@@ -21,6 +21,10 @@ extern "C" {
  * verified this size and hash since before cartridge packs existed; moving
  * them here keeps one definition for the launcher and the patch path. */
 #define ISSD_RETAIL_SIZE 2097152
+/* A copier header is metadata, not cartridge data. The launcher has always
+ * accepted 2,097,664 bytes as 2 MB plus this prefix; main strips the same
+ * prefix when it hands a loader buffer to the runner. */
+#define ISSD_COPIER_HEADER_SIZE 512u
 #define ISSD_RETAIL_SHA256 \
     "d2fe66c1ce66c65ce14e478c94be2e616f9e2cad374b5783a6a64d3c1a99cfa9"
 
@@ -75,6 +79,13 @@ const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
                                           const char *sha256, size_t *size_out,
                                           bool *changed_out,
                                           char *why, size_t why_cap);
+
+/* Drops the pack image currently in play and forgets which pack supplied it.
+ * Called when the engine goes back to the loader buffer main owns (boot or
+ * restart with no cartridge pack active), because that buffer is not the
+ * module's: leaving the pack image marked as live would let a later selection
+ * return it unchanged while the engine plays something else. */
+void issd_cartridge_clear_active(void);
 
 /* Applies an IPS patch to the stashed retail image and writes the result to
  * `rom_out`. The whole patch is validated before a single byte is written, so

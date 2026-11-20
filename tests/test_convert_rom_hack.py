@@ -59,9 +59,10 @@ def _hack(tmp_path, changes, name="hack.sfc", header=b""):
     return path
 
 
-def _convert(tmp_path, rom=None, ips=None, name="Test Hack", extra=(), **kw):
+def _convert(tmp_path, rom=None, ips=None, name="Test Hack", extra=(),
+             out_root=None, out_name="test_hack", **kw):
     """Run the CLI against a scratch mods root. Returns (json path, folder)."""
-    stem = tmp_path / "mods" / "test_hack"
+    stem = (out_root or tmp_path) / "mods" / out_name
     argv = ["--name", name, "--out", str(stem), *extra]
     if rom is not None:
         argv += ["--rom", str(rom)]
@@ -186,11 +187,18 @@ def test_a_headered_hack_is_normalized_before_the_diff(base, tmp_path):
     headered = _hack(tmp_path, changes, name="headered.sfc",
                      header=b"\x00" * HEADER)
 
-    plain_json, plain_dir = _convert(tmp_path, rom=plain)
-    head_json, head_dir = _convert(tmp_path, rom=headered)
+    # Distinct output roots, same folder name under each: the pack JSON names
+    # its folder, so this is what makes the two outputs comparable at all.
+    plain_json, plain_dir = _convert(tmp_path, rom=plain,
+                                     out_root=tmp_path / "plain")
+    head_json, head_dir = _convert(tmp_path, rom=headered,
+                                   out_root=tmp_path / "headered")
 
-    assert json.loads(plain_json.read_text())["cartridge"]["sha256"] == \
-        json.loads(head_json.read_text())["cartridge"]["sha256"]
+    plain_pack = json.loads(plain_json.read_text())
+    head_pack = json.loads(head_json.read_text())
+    assert plain_pack == head_pack, "a copier header must not change the pack"
+    assert plain_pack["cartridge"]["sha256"] == \
+        hashlib.sha256(plain.read_bytes()).hexdigest()
     assert (plain_dir / "test_hack.ips").read_bytes() == \
         (head_dir / "test_hack.ips").read_bytes()
     assert "copier header" in (head_dir / "REPORT.md").read_text().lower()

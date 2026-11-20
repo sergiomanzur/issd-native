@@ -183,6 +183,17 @@ static void test_ips_apply(void) {
                                        why, sizeof why));
     assert(strstr(why, "PATCH") != NULL);
 
+    /* A file that starts with PATCH but is too short to hold an EOF marker is
+     * not a signature problem; say what is actually wrong. */
+    {
+        const uint8_t stub[] = { 'P', 'A', 'T', 'C', 'H', 'x' };
+        why[0] = 0;
+        assert(!issd_cartridge_apply_patch(stub, sizeof stub, out, sizeof out,
+                                           why, sizeof why));
+        assert(strstr(why, "EOF") != NULL);
+        assert(strstr(why, "signature") == NULL);
+    }
+
     /* A record at the image boundary would expand the cartridge. */
     ips_begin(&p);
     ips_record(&p, ISSD_RETAIL_SIZE, "X", 1);
@@ -499,15 +510,17 @@ static const char CARTRIDGE_ONLY_PACK[] =
     "}\n";
 
 static bool resolve(char *name, size_t name_cap, char *file, size_t file_cap,
-                    bool *is_patch, char *sha, size_t sha_cap) {
+                    bool *is_patch, char *sha, size_t sha_cap,
+                    IssdModCartridgeStatus *status) {
     return issd_mod_cartridge_resolve(name, name_cap, file, file_cap, is_patch,
-                                      sha, sha_cap);
+                                      sha, sha_cap, status);
 }
 
 static void test_cartridge_pack(void) {
     char name[64], file[512], sha[73];
     bool is_patch = true;
     char want[600];
+    IssdModCartridgeStatus status;
 
     /* --- the cartridge object parses; nothing happens while it is off ---- */
     assert(issd_mod_init());
@@ -523,7 +536,9 @@ static void test_cartridge_pack(void) {
     name[0] = file[0] = sha[0] = 'X';
     is_patch = true;
     assert(!resolve(name, sizeof name, file, sizeof file, &is_patch,
-                    sha, sizeof sha));
+                    sha, sizeof sha, &status));
+    assert(status.state == ISSD_MOD_CARTRIDGE_NONE);
+    assert(status.reason[0] == 0 && status.note_count == 0);
     assert(name[0] == 0 && file[0] == 0 && sha[0] == 0 &&
            "a resolver miss names nothing");
 
@@ -531,7 +546,9 @@ static void test_cartridge_pack(void) {
      * against the pack's own folder so a pack stays one movable folder. */
     issd_mod_set_pack_enabled(image, true);
     assert(resolve(name, sizeof name, file, sizeof file, &is_patch,
-                   sha, sizeof sha));
+                   sha, sizeof sha, &status));
+    assert(status.state == ISSD_MOD_CARTRIDGE_WINNER);
+    assert(status.reason[0] == 0 && status.note_count == 0);
     assert(strcmp(name, "Image Pack") == 0);
     snprintf(want, sizeof want, "%s/hack.sfc", g_scratch);
     assert(strcmp(file, want) == 0);
@@ -552,7 +569,10 @@ static void test_cartridge_pack(void) {
 
     issd_mod_set_pack_enabled(both, true);
     assert(!resolve(name, sizeof name, file, sizeof file, &is_patch,
-                    sha, sizeof sha));
+                    sha, sizeof sha, &status));
+    assert(status.state == ISSD_MOD_CARTRIDGE_REFUSED);
+    assert(strstr(status.reason, "both") != NULL &&
+           "the resolver states its own refusal reason");
     const IssdModResult *r = issd_mod_last_result();
     assert(r->errors == 1 && "an unusable cartridge is an error, not a warning");
     assert(strstr(r->detail, "both") != NULL);
@@ -567,12 +587,16 @@ static void test_cartridge_pack(void) {
     issd_mod_set_pack_enabled(upper, true);
 
     assert(resolve(name, sizeof name, file, sizeof file, &is_patch,
-                   sha, sizeof sha));
+                   sha, sizeof sha, &status));
+    assert(status.state == ISSD_MOD_CARTRIDGE_WINNER);
     assert(strcmp(name, "Patch Pack") == 0);
     snprintf(want, sizeof want, "%s/hack.ips", g_scratch);
     assert(strcmp(file, want) == 0);
     assert(is_patch);
     assert(sha[0] == 0 && "a pack without a hash resolves with an empty one");
+    assert(status.note_count == 1 && "the shadow is part of the status");
+    assert(strstr(status.notes[0], "shadow") != NULL &&
+           strstr(status.notes[0], "Image Pack") != NULL);
     r = issd_mod_last_result();
     assert(r->warnings == 1);
     assert(strstr(r->detail, "shadow") != NULL &&
@@ -583,7 +607,8 @@ static void test_cartridge_pack(void) {
     issd_mod_set_pack_enabled(lower, false);
     issd_mod_set_pack_enabled(lower, true);
     assert(resolve(name, sizeof name, file, sizeof file, &is_patch,
-                   sha, sizeof sha));
+                   sha, sizeof sha, &status));
+    assert(status.state == ISSD_MOD_CARTRIDGE_WINNER);
     assert(strcmp(name, "Image Pack") == 0);
     snprintf(want, sizeof want, "%s/hack.sfc", g_scratch);
     assert(strcmp(file, want) == 0);
@@ -598,7 +623,8 @@ static void test_cartridge_pack(void) {
     assert(r->errors == 0 && "a cartridge pack changes something");
     issd_mod_set_pack_enabled(only, true);
     assert(resolve(name, sizeof name, file, sizeof file, &is_patch,
-                   sha, sizeof sha));
+                   sha, sizeof sha, &status));
+    assert(status.state == ISSD_MOD_CARTRIDGE_WINNER);
     assert(strcmp(name, "Hack Only") == 0);
     snprintf(want, sizeof want, "%s/hack.sfc", g_scratch);
     assert(strcmp(file, want) == 0);
@@ -613,11 +639,31 @@ static void test_cartridge_pack(void) {
     issd_mod_set_pack_enabled(empty, true);
     name[0] = file[0] = sha[0] = 'X';
     assert(!resolve(name, sizeof name, file, sizeof file, &is_patch,
-                    sha, sizeof sha));
+                    sha, sizeof sha, &status));
+    assert(status.state == ISSD_MOD_CARTRIDGE_NONE);
     assert(name[0] == 0 && file[0] == 0 && sha[0] == 0);
     r = issd_mod_last_result();
     assert(r->errors == 0 && r->warnings == 0);
+
+    /* --- a scan-load error elsewhere is not a cartridge refusal ---------- */
+    /* Boot used to read the global error counter as "the cartridge pack was
+     * refused", so one malformed unrelated pack made a clean vanilla boot
+     * print a refusal. The resolver's own state is what the caller must use. */
+    assert(issd_mod_init());
+    const int broken = load_pack_text("broken.json", "{ this is not json");
+    assert(broken < 0);
+    const int clean = load_pack_text("clean.json", PLAIN_PACK);
+    assert(clean >= 0);
+    issd_mod_set_pack_enabled(clean, true);
+    assert(issd_mod_last_result()->errors == 1 &&
+           "the malformed pack is still reported by the global counters");
+    assert(!resolve(name, sizeof name, file, sizeof file, &is_patch,
+                    sha, sizeof sha, &status));
+    assert(status.state == ISSD_MOD_CARTRIDGE_NONE &&
+           "no cartridge pack asked for anything, whatever else failed");
+    assert(status.reason[0] == 0 && status.note_count == 0);
 }
+
 
 /* --- added rosters over a hacked cartridge ------------------------------- */
 
@@ -726,7 +772,10 @@ static void hex_digest(const void *data, size_t size, char out[65]) {
 /* Fix round 2 regression: select_base must never hand out the stash itself.
  * The engine is given a work copy; pack writes land there, a later select
  * refreshes it, and both the stash and every IPS apply stay pristine. This is
- * the boot-with-no-pack path and the restart-to-retail path. */
+ * the module's explicit retail selection: the fallback a refused cartridge
+ * pack lands on, and what a caller asks for when it wants the work copy. A
+ * boot or restart with no cartridge pack in play plays main's loader buffer
+ * instead, and never reaches here. */
 static void test_retail_work_copy(void) {
     size_t retail_size = 0;
     uint8_t *retail = load_retail(&retail_size);
@@ -832,8 +881,9 @@ static void test_select_base(void) {
     size_t size = 0;
     bool changed = true;
 
-    /* No pack: the engine is handed a work copy of the retained retail image
-     * and nothing changed. */
+    /* Asking for retail hands out a work copy of the retained image and
+     * nothing changed. Main itself keeps its loader buffer when no cartridge
+     * pack is active; this is the explicit retail selection. */
     why[0] = 'X';
     const uint8_t *base = issd_cartridge_select_base(
         NULL, false, "", &size, &changed, why, sizeof why);
@@ -888,6 +938,15 @@ static void test_select_base(void) {
                                       why, sizeof why);
     assert(base != NULL && base != work && changed && why[0] == 0);
     assert(memcmp(base + 0x1000, image + 0x1000, 1) == 0);
+
+    /* A restart with no cartridge pack hands the engine back main's loader
+     * buffer and drops the module's pack image. Re-enabling the same pack must
+     * rebuild it rather than return a buffer that is no longer in play. */
+    issd_cartridge_clear_active();
+    base = issd_cartridge_select_base(path, false, digest, &size, &changed,
+                                      why, sizeof why);
+    assert(base != NULL && changed && why[0] == 0);
+    assert(memcmp(base, image, sizeof image) == 0);
 
     /* A patch applies to the retained retail image, not to the pack that was
      * in play before it. */

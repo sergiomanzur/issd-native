@@ -996,10 +996,12 @@ console says which pack and why, and the mods page carries the warning.
 ### In the stack
 
 When more than one cartridge pack is enabled, the one enabled last plays: packs
-are applied in list order and the topmost usable cartridge wins. The console
-log names the active pack at boot; a shadowed pack's cartridge is simply not
-used. Its teams and stadiums still apply like any other regular pack. Like
-roster packs, switching a cartridge pack takes effect on **SAVE & RESTART**.
+are applied in list order and the topmost enabled cartridge pack wins; if it
+cannot be used, the retail cartridge plays. Lower cartridge packs are not
+tried, which is what being on top means. The console log names the active pack
+at boot; a shadowed pack's cartridge is simply not used. Its teams and
+stadiums still apply like any other regular pack. Like roster packs, switching
+a cartridge pack takes effect on **SAVE & RESTART**.
 
 Regular packs still apply on top of the substituted cartridge, but only some
 of their writes are guarded against a changed image. The kit palette tails, the
@@ -1040,16 +1042,23 @@ also reports cartridge-header changes explicitly. The classification is
 best-effort by file offset; a report that says most of a hack is "not
 guaranteed" is telling you the truth about an engine rewrite.
 
-### Saves are not cartridge-scoped
+### Saves are scoped to the cartridge image
 
-Only campaign saves namespace themselves by the effective image's hash.
-Quick saves and the eight numbered manual slots do **not**. After switching
-cartridge packs, load only saves made under the same cartridge: a retail
-quicksave restored under a hack carries incompatible state, and the reverse is
-equally wrong. The retail password bridge disables itself on a hash mismatch,
-which is expected and non-fatal.
+Every save the current build writes - campaign, quick and the eight numbered
+manual slots - is an envelope that carries the effective cartridge identity,
+and loading compares it. A save made under a different cartridge refuses to
+load with "Save is incompatible with applied gameplay data": a retail
+quicksave does not restore under a hack, and the reverse is equally refused.
+Switch cartridges and saves made under the old image are out of reach, by
+design.
 
-Until slot payloads stamp the image identity, that rule is yours to keep.
+The exception is a legacy raw save from an older build (the old `ISSD`/`RTLS`
+format). It carries no image identity at all, so the game asks for the
+explicit legacy confirmation before loading it instead of pretending it is
+compatible.
+
+The retail password bridge disables itself on a hash mismatch, which is
+expected and non-fatal.
 
 ---
 

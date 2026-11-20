@@ -564,7 +564,7 @@ def validate_data(pack, report, pack_dir, path='<draft>'):
     if not isinstance(teams, list):
         report.error(path, '"teams" must be an array')
         return
-    if not teams and not stadiums:
+    if not teams and not stadiums and "cartridge" not in pack:
         report.warn(path, '"teams" is empty, so the pack changes nothing')
 
     formations = known_formations()

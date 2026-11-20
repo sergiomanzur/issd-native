@@ -222,14 +222,49 @@ bool        issd_mod_team_photo_path(int team_id, char *out, size_t cap);
  * against the pack's own directory. False when no enabled pack has one. */
 bool        issd_mod_team_flag_path(int team_id, char *out, size_t cap);
 
-/* The cartridge the enabled stack asks for, or false when none does. Packs
- * are walked in apply order and the topmost usable cartridge wins; every
- * cartridge pack it shadows is counted as a warning, because the player
- * enabled something that will not be played.
+/* What the enabled stack asks of the cartridge resolver. Boot and the
+ * in-process restart need to tell three cases apart, and the global
+ * IssdModResult counters cannot: those also carry unrelated pack and scan
+ * errors, so `errors != 0` never meant "the cartridge pack was refused".
+ *
+ * - NONE:     no enabled pack names a cartridge at all.
+ * - REFUSED:  a cartridge pack was named but cannot be used; `reason` says
+ *             why, and the retail cartridge plays.
+ * - WINNER:   one pack's cartridge is selected; the outputs name it.
+ *
+ * Shadowed cartridge packs are warnings, not refusals. They are reported in
+ * `notes` (and in IssdModResult, so the menu counts them) because the note
+ * lives in counters `issd_mod_reapply` resets: a caller that re-applies the
+ * stack must restate `notes` afterwards or the player never sees them. */
+#define ISSD_MOD_CARTRIDGE_NOTE_MAX  ISSD_MAX_MOD_PACKS
+#define ISSD_MOD_CARTRIDGE_NOTE_SIZE 160
+typedef enum {
+    ISSD_MOD_CARTRIDGE_NONE = 0,
+    ISSD_MOD_CARTRIDGE_REFUSED,
+    ISSD_MOD_CARTRIDGE_WINNER
+} IssdModCartridgeState;
+
+typedef struct {
+    IssdModCartridgeState state;
+    char reason[192];   /* why nothing can be played; REFUSED only */
+    char notes[ISSD_MOD_CARTRIDGE_NOTE_MAX][ISSD_MOD_CARTRIDGE_NOTE_SIZE];
+    int  note_count;    /* shadowed/other warnings, in stack order */
+} IssdModCartridgeStatus;
+
+/* The cartridge the enabled stack asks for. `status` is always written (it
+ * may be NULL for callers that only want the outputs) and is the authority on
+ * whether a pack was refused; do not infer that from the result counters.
+ * Returns true exactly when `status->state` is WINNER. Packs are walked in
+ * apply order and the topmost enabled cartridge pack wins; if it cannot be
+ * used the retail cartridge plays and the packs below it are NOT tried, which
+ * is what being on top means. Every cartridge pack it shadows is recorded in
+ * `status->notes` and counted as a warning, because the player enabled
+ * something that will not be played.
  *
  * A pack naming both an image and a patch cannot be used: one of the two
- * would silently lose, so it is counted as an error and skipped by the
- * resolver. A pack naming neither is not a cartridge pack at all.
+ * would silently lose, so it is counted as an error, recorded as the
+ * REFUSED reason when no usable winner remains, and skipped by the resolver.
+ * A pack naming neither is not a cartridge pack at all.
  *
  * `pack_name_out` receives the winning pack's display name, `file_out` the
  * image or patch joined to the pack's own directory (the same rule the team
@@ -239,7 +274,8 @@ bool        issd_mod_team_flag_path(int team_id, char *out, size_t cap);
 bool        issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
                                        char *file_out, size_t file_cap,
                                        bool *is_patch, char *sha256_out,
-                                       size_t sha_cap);
+                                       size_t sha_cap,
+                                       IssdModCartridgeStatus *status);
 
 /* The select screen's grid is not in team order: its first cell is
  * England. These read the cartridge's own cell table, so anything drawn

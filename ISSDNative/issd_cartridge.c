@@ -20,7 +20,7 @@
 #include <string.h>
 
 /* One copier header, in the shape the launcher has always accepted. */
-#define COPIER_HEADER_SIZE 512u
+#define COPIER_HEADER_SIZE ISSD_COPIER_HEADER_SIZE
 
 /* SNES cartridge header fields inside a LoROM image. The internal header sits
  * at file 0x7FC0; the mapping byte is the last byte of the 21-byte title. */
@@ -259,10 +259,16 @@ bool issd_cartridge_apply_patch(const uint8_t *patch_data, size_t patch_size,
 
     if (!patch_data)
         return fail(why, why_cap, "No IPS patch data.");
-    if (patch_size < IPS_MAGIC_SIZE + 3u ||
-        memcmp(patch_data, IPS_MAGIC, IPS_MAGIC_SIZE) != 0)
+    if (patch_size < IPS_MAGIC_SIZE)
         return fail(why, why_cap,
                     "Not an IPS patch: the PATCH signature is missing.");
+    if (memcmp(patch_data, IPS_MAGIC, IPS_MAGIC_SIZE) != 0)
+        return fail(why, why_cap,
+                    "Not an IPS patch: the PATCH signature is missing.");
+    if (patch_size < IPS_MAGIC_SIZE + 3u)
+        return fail(why, why_cap,
+                    "IPS patch is only %zu bytes; a complete patch needs an "
+                    "EOF marker after the header.", patch_size);
 
     /* Every record is checked before a byte is written, so a refusal leaves
      * `rom_out` exactly as the caller passed it. */
@@ -403,6 +409,15 @@ static uint8_t *retail_work_refresh(void) {
     return retail_work;
 }
 
+void issd_cartridge_clear_active(void) {
+    free(active_image);
+    active_image = NULL;
+    active_path[0] = 0;
+    active_sha[0] = 0;
+    active_is_patch = false;
+    base_in_play_is_work = false;
+}
+
 const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
                                           const char *sha256, size_t *size_out,
                                           bool *changed_out,
@@ -417,11 +432,7 @@ const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
     if (!file || !*file) {
         const bool was_playing_hack = active_image != NULL;
         const bool work_was_live = base_in_play_is_work;
-        free(active_image);
-        active_image = NULL;
-        active_path[0] = 0;
-        active_sha[0] = 0;
-        active_is_patch = false;
+        issd_cartridge_clear_active();
         uint8_t *work = retail_work_refresh();
         if (!work) {
             fail(why, why_cap, "No retail cartridge is stashed.");
@@ -451,11 +462,7 @@ const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
          * never the stash. */
         const bool was_playing_hack = active_image != NULL;
         const bool work_was_live = base_in_play_is_work;
-        free(active_image);
-        active_image = NULL;
-        active_path[0] = 0;
-        active_sha[0] = 0;
-        active_is_patch = false;
+        issd_cartridge_clear_active();
         uint8_t *work = retail_work_refresh();
         if (size_out) *size_out = work ? ISSD_RETAIL_SIZE : 0;
         if (changed_out) *changed_out = was_playing_hack || work_was_live;

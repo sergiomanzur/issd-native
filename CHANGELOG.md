@@ -4,11 +4,15 @@
 
 - Add cartridge packs: a mod can substitute the whole 2 MB cartridge with a
   full image or an IPS patch applied to the user's verified retail ROM, while
-  regular packs still layer on top under their existing guards. Boot, NMI and
-  deny-listed routines run interpreted; the rest is precompiled, so
-  data-preserving hacks work and engine rewrites do not. Documented in the
-  modding guide, including the rule that quick and manual saves are not
-  cartridge-scoped.
+  regular packs still layer on top (some writes are revision-guarded, the rest
+  overwrite at retail offsets). With a cartridge pack active the engine runs
+  the normalized, headerless image, so saves made without it refuse to load
+  under it; with no cartridge pack the engine keeps the ROM buffer exactly as
+  loaded. Boot, NMI and deny-listed routines run interpreted; the rest is
+  precompiled, so data-preserving hacks work and engine rewrites do not.
+  Documented in the modding guide, including the rule that current-build saves
+  are scoped to the cartridge image and only legacy raw saves load after the
+  compatibility confirmation.
 - Add `tools/convert_rom_hack.py`, which turns a hack image or IPS into a
   cartridge pack and writes a compatibility `REPORT.md` classifying every
   changed region as honored data, interpreted code or not guaranteed.

@@ -693,13 +693,22 @@ bool issd_mod_team_flag_path(int team_id, char *out, size_t cap) {
 /* Resolution is naming, not loading: the boot path decides whether the file
  * opens, whether it is the right shape and whether its hash matches, and the
  * player must keep playing the retail cartridge when any of that fails. */
+static void add_cartridge_note(IssdModCartridgeStatus *status, const char *why) {
+    if (!status || status->note_count >= ISSD_MOD_CARTRIDGE_NOTE_MAX) return;
+    snprintf(status->notes[status->note_count],
+             ISSD_MOD_CARTRIDGE_NOTE_SIZE, "%s", why);
+    status->note_count++;
+}
+
 bool issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
                                 char *file_out, size_t file_cap,
                                 bool *is_patch_out, char *sha256_out,
-                                size_t sha_cap) {
+                                size_t sha_cap,
+                                IssdModCartridgeStatus *status) {
     if (pack_name_out && name_cap) pack_name_out[0] = 0;
     if (file_out && file_cap) file_out[0] = 0;
     if (sha256_out && sha_cap) sha256_out[0] = 0;
+    if (status) memset(status, 0, sizeof *status);
 
     /* The stack is walked from its top down: the pack enabled last wins, as
      * it does for every other field. The bottom-up accessor only counts
@@ -714,6 +723,7 @@ bool issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
     }
 
     const IssdModPack *winner = NULL;
+    bool refused = false;
     for (int slot = count - 1; slot >= 0; slot--) {
         const IssdModPack *pack = &g_mod_packs[order[slot]];
         const bool has_image = pack->cartridge_image[0] != 0;
@@ -726,6 +736,9 @@ bool issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
             snprintf(why, sizeof why, "%s: cartridge names both image and patch",
                      label);
             issd_mod_result_note_error(why);
+            if (status && !status->reason[0])
+                snprintf(status->reason, sizeof status->reason, "%s", why);
+            refused = true;
             continue;
         }
         if (winner) {
@@ -733,11 +746,18 @@ bool issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
             snprintf(why, sizeof why, "%s: cartridge shadowed by %s",
                      label, winner->name[0] ? winner->name : "the pack above");
             issd_mod_result_note_warning(why);
+            add_cartridge_note(status, why);
             continue;
         }
         winner = pack;
     }
-    if (!winner) return false;
+    if (!winner) {
+        if (status) {
+            status->state = refused ? ISSD_MOD_CARTRIDGE_REFUSED
+                                    : ISSD_MOD_CARTRIDGE_NONE;
+        }
+        return false;
+    }
 
     const bool is_patch = winner->cartridge_patch[0] != 0;
     const char *file = is_patch ? winner->cartridge_patch : winner->cartridge_image;
@@ -748,6 +768,7 @@ bool issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
     if (is_patch_out) *is_patch_out = is_patch;
     if (sha256_out && sha_cap)
         snprintf(sha256_out, sha_cap, "%s", winner->cartridge_sha256);
+    if (status) status->state = ISSD_MOD_CARTRIDGE_WINNER;
     return true;
 }
 
