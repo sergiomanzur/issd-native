@@ -10,6 +10,7 @@ an editor quietly eats somebody's work.
 import json
 import os
 import sys
+import tkinter as tk
 
 import pytest
 
@@ -278,20 +279,244 @@ def test_an_imported_team_passes_the_validator(tmp_path):
     assert again["teams"][2]["players"][0]["name"] == "R.Banks"
 
 
+# ------------------------------------------------------- skin and hair ----
+# The loader's own ramp rule: ISSDNative/issd_mod_rom.c:write_skin_steps
+# stores five shades at these percentages of the authored colour. Mirrored
+# here so a preview is judged by what the game will draw, not by itself.
+LOADER_STEPS = (46, 68, 82, 89, 100)
+
+
+def _loader_words(rgb, steps=LOADER_STEPS):
+    words = []
+    for step in steps:
+        word = 0
+        for channel, value in enumerate(rgb):
+            value = min(255, value * step // 100)
+            word |= (value * 31 // 255) << (5 * channel)
+        words.append(word)
+    return words
+
+
+def _loader_ramp(rgb):
+    return [((w & 31) * 255 // 31, ((w >> 5) & 31) * 255 // 31,
+             ((w >> 10) & 31) * 255 // 31) for w in _loader_words(rgb)]
+
+
+def _loader_colour(rgb):
+    return _loader_ramp(rgb)[-1]
+
+
+FRANCE = {"team_id": 9, "name": "France",
+          "skin_tones": [{"skin": "#EAC086", "hair": "#3A2A1A"},
+                         {"skin": "#6B4226", "hair": "#101010"}],
+          "players": [{"name": "A", "skin_tone": 0},
+                      {"name": "B", "skin_tone": 1}]}
+
+
+def test_a_palette_pair_is_the_loaders_own_ramp():
+    """The two tones are drawn through write_skin_steps, so the colours in
+    the picture are the five the game will store - not the authored hex."""
+    im = preview.palette_pair(FRANCE)
+    seen = {colour for _n, colour in im.getcolors(maxcolors=1 << 20)}
+    for entry in FRANCE["skin_tones"]:
+        rgb = model.parse_colour(entry["skin"])
+        for expected in _loader_ramp(rgb):
+            assert expected in seen, expected
+        assert _loader_colour(model.parse_colour(entry["hair"])) in seen
+
+    report = preview.tone_report(FRANCE)
+    assert [t["skin"] for t in report] == ["#EAC086", "#6B4226"]
+    assert [t["hair"] for t in report] == ["#3A2A1A", "#101010"]
+    assert [t["count"] for t in report] == [1, 1]
+    assert not any(t["warning"] for t in report)
+    # The pack wrote these colours, so they are neither the cartridge's nor
+    # the editor's invention.
+    assert [t["skin_source"] for t in report] == ["authored", "authored"]
+    assert [t["hair_source"] for t in report] == ["authored", "authored"]
+    assert [preview.tone_caption(t, "skin") for t in report] == \
+        ["#EAC086", "#6B4226"]
+
+
+@needs_rom
+def test_a_tone_without_a_skin_part_shows_the_cartridge_ramp():
+    """The fitter omits the skin from a tone that keeps the team's stock
+    palette; the preview then has to show the cartridge's own five words."""
+    import looks
+
+    palettes = looks.Palettes(cartridge.load_rom(ROM))
+    team = {"team_id": 9, "name": "France",
+            "skin_tones": [{"hair": "#3A2A1A"}, {"hair": "#101010"}],
+            "players": []}
+    report = preview.tone_report(team, palettes)
+    assert report[0]["skin"] is None
+    assert report[0]["ramp"] == [looks.to_rgb(w)
+                                 for w in palettes.current_skin(9, 0)]
+    assert report[1]["ramp"] == [looks.to_rgb(w)
+                                 for w in palettes.current_skin(9, 1)]
+
+    seen = {colour for _n, colour
+            in preview.palette_pair(team, palettes).getcolors(maxcolors=1 << 20)}
+    for colour in report[0]["ramp"]:
+        assert colour in seen
+
+
+def test_a_tone_without_a_cartridge_says_its_colours_are_assumed():
+    """The fitter omits `skin` from a tone that keeps the team's stock palette.
+    With no cartridge there is no ramp to read, so the preview invents a
+    default - and must say so rather than call it the cartridge's."""
+    team = {"team_id": 9, "name": "France", "players": [],
+            "skin_tones": [{"hair": "#3A2A1A"}, {"hair": "#101010"}]}
+    report = preview.tone_report(team, None)
+    assert [t["skin_source"] for t in report] == ["default", "default"]
+    assert [t["hair_source"] for t in report] == ["authored", "authored"]
+    for entry in report:
+        skin = preview.tone_caption(entry, "skin")
+        assert "assumed" in skin
+        assert "(cartridge)" not in skin
+    # The authored hair is still the pack's own colour, so it is neither
+    # assumed nor the cartridge's.
+    assert [preview.tone_caption(t, "hair") for t in report] == \
+        ["#3A2A1A", "#101010"]
+    assert preview.has_assumed(report)
+    note = preview.pair_note(report)
+    assert "no cartridge" in note.lower()
+    assert "assumed" in note.lower()
+
+
+@needs_rom
+def test_only_a_loaded_cartridge_earns_the_cartridge_caption():
+    """The same team, with a Palettes in hand, really is showing the
+    cartridge's ramp - so that is when the caption may say so."""
+    import looks
+
+    palettes = looks.Palettes(cartridge.load_rom(ROM))
+    team = {"team_id": 9, "name": "France", "players": [],
+            "skin_tones": [{"hair": "#3A2A1A"}, {}]}
+    report = preview.tone_report(team, palettes)
+    assert [t["skin_source"] for t in report] == ["cartridge", "cartridge"]
+    assert [t["hair_source"] for t in report] == ["authored", "cartridge"]
+    for entry in report:
+        assert "(cartridge)" in preview.tone_caption(entry, "skin")
+    assert preview.tone_caption(report[0], "hair") == "#3A2A1A"
+    assert not preview.has_assumed(report)
+    assert "assumed" not in preview.pair_note(report).lower()
+
+
+def test_a_pair_captions_the_players_who_get_a_closest_match():
+    """A squad with three hair colours cannot be served exactly. The studio
+    uses the solver's own analysis, so the closest-match line appears here."""
+    team = dict(FRANCE, players=[
+        {"name": "A", "position": "MF", "skin": "dark", "hair_color": "black"},
+        {"name": "B", "position": "MF", "skin": "dark", "hair_color": "brown"},
+        {"name": "C", "position": "MF", "skin": "dark", "hair_color": "red"},
+    ])
+    report = preview.tone_report(team)
+    warning = next(t["warning"] for t in report if t["warning"])
+    assert "closest" in warning.lower()
+    assert "C" in warning                        # the player who cannot be shown
+    assert sum(t["count"] for t in report) == 3
+    assert preview.palette_pair(team).size[0] > 0
+
+
+@needs_rom
+def test_a_look_card_draws_the_decoded_hair_graphic():
+    """hair_style 0 is the standard sprite head; 1-13 overlay one of the
+    thirteen graphics at $81:ED6D. Both are drawn from the cartridge."""
+    import looks
+
+    palettes = looks.Palettes(cartridge.load_rom(ROM))
+    plain = preview.look_card({"hair_style": 0, "skin_tone": 0}, FRANCE,
+                              palettes)
+    short = preview.look_card({"hair_style": 5, "skin_tone": 1}, FRANCE,
+                              palettes)
+    long = preview.look_card({"hair_style": 13, "skin_tone": 1}, FRANCE,
+                             palettes)
+    assert plain.size == short.size == long.size
+    assert len({plain.tobytes(), short.tobytes(), long.tobytes()}) == 3
+    assert plain.tobytes() != long.tobytes()
+
+    hair = _loader_colour(model.parse_colour(FRANCE["skin_tones"][1]["hair"]))
+    assert hair in {c for _n, c in short.getcolors(maxcolors=1 << 20)}
+
+
+@needs_rom
+def test_a_look_card_without_a_cartridge_is_a_placeholder():
+    import looks
+
+    palettes = looks.Palettes(cartridge.load_rom(ROM))
+    without = preview.look_card({"hair_style": 13}, FRANCE, None)
+    real = preview.look_card({"hair_style": 13}, FRANCE, palettes)
+    assert without.size == real.size
+    assert without.tobytes() != real.tobytes()
+    # 14 and 15 read past the table's thirteen entries: "no graphic", not an
+    # invented head.
+    missing = preview.look_card({"hair_style": 14}, FRANCE, palettes)
+    assert missing.tobytes() != real.tobytes()
+
+
+def test_a_hair_overlay_is_read_through_the_cartridge_table():
+    """The decode is the contributed patch's, measured against these offsets:
+    $81:ED6D holds thirteen 24-bit pointers, four bytes apart, and the shown
+    frame is the fourth 32-byte tile."""
+    rom = bytearray(0x200000)
+    rom[preview.HAIR_TABLE + 4:preview.HAIR_TABLE + 7] = bytes(
+        [0x00, 0x80, 0x9F])
+    tile = bytearray(32)
+    tile[0] = 0x80                                   # one pixel, colour 1
+    at = preview._lorom(0x9F8000) + preview.HAIR_FRAME * 32
+    rom[at:at + 32] = tile
+    grid = preview.hair_graphic(bytes(rom), 2)       # style 2 is the second entry
+    assert grid[0][0] == 1 and sum(map(sum, grid)) == 1
+    assert preview.hair_graphic(bytes(rom), 0) is None
+    assert preview.hair_graphic(bytes(rom), 14) is None
+
+
+def test_a_tile_decodes_plane_by_plane():
+    tile = bytearray(32)
+    for y in range(8):
+        tile[y * 2] = 0xF0            # plane 0 on the left four pixels
+        tile[y * 2 + 1] = 0x0F        # plane 1 on the right four
+    assert preview.decode_tiles(bytes(tile), 4, 1)[0] == \
+        [1, 1, 1, 1, 2, 2, 2, 2]
+
+
+def test_a_skin_tones_pack_is_written_byte_identically(tmp_path):
+    """The model layer still round-trips the key it does not edit: saving a
+    pack twice from the same data produces the same bytes, skin_tones and
+    all."""
+    pack = model.load(os.path.join(REPO, "mods", "world_cup_2026.json"))
+    first = tmp_path / "first.json"
+    second = tmp_path / "second.json"
+    model.save(pack, str(first))
+    model.save(model.load(str(first)), str(second))
+    assert first.read_bytes() == second.read_bytes()
+    again = model.load(str(second))
+    france = next(t for t in again["teams"] if t.get("name") == "France")
+    assert france["skin_tones"] == pack["teams"][
+        [t.get("name") for t in pack["teams"]].index("France")]["skin_tones"]
+
+
+def _studio_or_skip():
+    """A Studio, or a skip when this machine's Tcl cannot start.
+
+    A second Tk root in one process on Windows occasionally cannot read Tcl's
+    own init.tcl. That is a display problem, not a pane problem, so it skips
+    the same way a missing display does. Only Tcl's own failure is caught: a
+    broken `Studio.__init__` or pane builder must fail the test, not skip it.
+    """
+    try:
+        from mod_studio.app import Studio
+        return Studio()
+    except tk.TclError as exc:                    # pragma: no cover
+        pytest.skip("no usable display: %s" % exc)
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY") and sys.platform != "win32",
                     reason="needs a display")
 def test_every_editor_pane_builds():
     """Walk the tree over a real pack and build each pane. A pane that throws
     only shows up when somebody clicks it, so click them all here."""
-    try:
-        import tkinter
-        tkinter.Tk().destroy()
-    except Exception as exc:                      # pragma: no cover
-        pytest.skip("no usable display: %s" % exc)
-
-    from mod_studio.app import Studio
-
-    studio = Studio()
+    studio = _studio_or_skip()
     try:
         studio.pack_data = model.load(
             os.path.join(REPO, "mods", "chivas_guadalajara.json"))
@@ -302,6 +527,50 @@ def test_every_editor_pane_builds():
             studio.tree.selection_set(iid)
             studio.show_selected()
             studio.update_idletasks()
+
+        # A team with authored skin tones gets its "Skin tones" section, and
+        # one of its players gets the per-player look card beside the
+        # appearance spinboxes. Neither pane asks for the cartridge.
+        world = model.load(os.path.join(REPO, "mods", "world_cup_2026.json"))
+        france = next(t for t in world["teams"] if t.get("name") == "France")
+        studio.pack_data["teams"].append(france)
+        team_index = len(studio.pack_data["teams"]) - 1
+        studio.refresh_tree(select_iid="team:%d" % team_index)
+        assert studio.skin_section is not None
+        studio.show_selected()
+        assert studio.skin_section is not None
+        studio.tree.selection_set("player:%d:1" % team_index)
+        studio.show_selected()
+        studio.update_idletasks()
+        assert studio.look_card_label is not None
+    finally:
+        studio.destroy()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY") and sys.platform != "win32",
+                    reason="needs a display")
+@needs_rom
+def test_a_pane_reads_a_remembered_cartridge_without_a_dialog(monkeypatch):
+    """The skin preview wants the cartridge's palettes before the user has
+    imported anything. A remembered dump is read headlessly - a pane never
+    opens a file dialog - and with nothing to read it falls back honestly."""
+    from mod_studio import app as app_module
+
+    def no_dialog(*_args, **_kwargs):
+        pytest.fail("building a pane opened a file dialog")
+
+    monkeypatch.setattr(app_module.filedialog, "askopenfilename", no_dialog)
+    studio = _studio_or_skip()
+    try:
+        studio._remember_rom = lambda _path: None
+        studio.rom = None
+        studio.rom_path = ROM
+        assert studio._palettes() is not None
+        assert studio.rom is not None
+
+        studio.rom = None
+        studio.rom_path = None
+        assert studio._palettes() is None
     finally:
         studio.destroy()
 
@@ -400,15 +669,9 @@ def test_a_dump_shows_the_grass_first():
 def test_the_tile_pane_puts_art_into_a_pack(tmp_path):
     """Open a dump, pick a tile, put it in a pack - the whole path a person
     takes, without the file dialogs."""
-    try:
-        import tkinter
-        tkinter.Tk().destroy()
-    except Exception as exc:                      # pragma: no cover
-        pytest.skip("no usable display: %s" % exc)
+    studio = _studio_or_skip()
+    from mod_studio.app import TileDialog
 
-    from mod_studio.app import Studio, TileDialog
-
-    studio = Studio()
     try:
         pane = TileDialog(studio)
         pane.withdraw()

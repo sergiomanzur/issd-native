@@ -24,6 +24,11 @@ from .stadium import StadiumDraft, StadiumWorkspace
 from .game_launch import GameRunner, LaunchRequest, stage
 from .export import export_pack
 
+try:                                    # imported as tools.mod_studio.app
+    from .. import looks
+except ImportError:                     # run from inside tools/
+    import looks
+
 APP_NAME = "ISSD Mod Studio"
 SETTINGS = os.path.join(os.path.expanduser("~"),
                         ".issd_mod_studio.json")
@@ -80,6 +85,9 @@ class Studio(tk.Tk):
         self._suspend = False
         self.rom_path = self._remembered_rom()
         self.rom: bytes | None = None
+        self._looks_palettes = None
+        self.skin_section = None
+        self.look_card_label = None
 
         self._build_style()
         self._build_menu()
@@ -258,6 +266,8 @@ class Studio(tk.Tk):
     # ------------------------------------------------------------ editors --
     def _clear_editor(self):
         self.stadium_workspace = None
+        self.skin_section = None
+        self.look_card_label = None
         for child in self.editor.winfo_children():
             child.destroy()
         self._images.clear()
@@ -599,7 +609,76 @@ class Studio(tk.Tk):
 
         ttk.Separator(f, orient="horizontal").grid(row=10, column=0, columnspan=4,
                                                    sticky="ew", pady=12)
-        self._photo_row(f, 11, team)
+        self.skin_section = self._skin_section(f, 11, team)
+
+        ttk.Separator(f, orient="horizontal").grid(row=12, column=0, columnspan=4,
+                                                   sticky="ew", pady=12)
+        self._photo_row(f, 13, team)
+
+    def _palettes(self):
+        """The cartridge's palette tables, or None when none can be had.
+
+        `Palettes` reads the whole image, so it is cached against the bytes
+        it was built from. A pane must never open a file dialog to draw
+        itself: a remembered cartridge is loaded headlessly (`ask=False`), and
+        with none the previews fall back to the pack's own colours and say the
+        rest are assumptions.
+        """
+        rom = self.rom
+        if rom is None:
+            rom = self.cartridge_bytes(ask=False, quiet=True)
+        if rom is None:
+            return None
+        if self._looks_palettes is None or self._looks_palettes.rom is not rom:
+            self._looks_palettes = looks.Palettes(rom)
+        return self._looks_palettes
+
+    def _skin_section(self, parent, row, team):
+        """The team's two tones, as the loader will draw them.
+
+        The picture comes from `preview.palette_pair`, which mirrors
+        `write_skin_steps`; the counts and the closest-match line come from
+        the same solver the fitter uses. Anything that changes `skin_tones`
+        rebuilds this pane through `refresh_tree`, the editor's usual route
+        (the formation and strip previews work the same way).
+        """
+        box = ttk.Frame(parent, style="Panel.TFrame")
+        box.grid(row=row, column=0, columnspan=4, sticky="w")
+        ttk.Label(box, text="Skin tones", style="Head.TLabel").grid(
+            row=0, column=0, columnspan=2, sticky="w")
+        ttk.Label(box, text="A team has two palettes, so at most two skin and "
+                            "hair combinations reach the pitch. The shades are "
+                            "the five the loader rebuilds from each authored "
+                            "colour. A tone with no skin colour keeps the "
+                            "cartridge's own ramp when one is loaded; with no "
+                            "cartridge the preview assumes one and labels it "
+                            "(assumed).",
+                  style="Muted.TLabel", wraplength=560, justify="left").grid(
+            row=1, column=0, columnspan=2, sticky="w", pady=(2, 8))
+        image = ttk.Label(box, style="Panel.TLabel")
+        image.grid(row=2, column=0, sticky="nw")
+        values = ttk.Label(box, text="", style="Muted.TLabel",
+                           wraplength=330, justify="left")
+        values.grid(row=2, column=1, sticky="nw", padx=(14, 0))
+
+        def redraw():
+            palettes = self._palettes()
+            photo = ImageTk.PhotoImage(preview.palette_pair(team, palettes))
+            self._images.append(photo)
+            image.configure(image=photo)
+            report = preview.tone_report(team, palettes)
+            lines = []
+            for entry in report:
+                lines.append("Tone %d:  skin %s, hair %s"
+                             % (entry["tone"],
+                                preview.tone_caption(entry, "skin"),
+                                preview.tone_caption(entry, "hair")))
+            if preview.has_assumed(report):
+                lines.append(preview.NO_CARTRIDGE_NOTE)
+            values.configure(text="\n".join(lines))
+
+        redraw()
+        return box
 
     def _team_slot_note(self, team, label):
         tid = team.get("team_id")
@@ -749,6 +828,10 @@ class Studio(tk.Tk):
         look_note = ttk.Label(look, style="Muted.TLabel", wraplength=230,
                               justify="left")
         look_note.grid(row=5, column=2, sticky="w", padx=(16, 0))
+        self.look_card_label = ttk.Label(look, style="Panel.TLabel")
+        self.look_card_label.grid(row=2, column=4, rowspan=4, sticky="nw",
+                                  padx=(16, 0))
+        card_label = self.look_card_label
 
         def redraw_head():
             value = int(player.get("skin_tone", 0) or 0) & 3
@@ -759,11 +842,18 @@ class Studio(tk.Tk):
             what, why = preview.APPEARANCE.get(value, ("?", ""))
             look_note.configure(text="%s - %s" % (what, why))
 
+            # The real head for this style, in this tone's own palette. No
+            # cartridge means the card says so rather than drawing a face.
+            card = preview.look_card(player, team, self._palettes())
+            photo = ImageTk.PhotoImage(card)
+            self._images.append(photo)
+            card_label.configure(image=photo)
         self._bind_int(look, 2, "Skin tone", player, "skin_tone", 0, 1,
                        note="0 or 1: the team's two tones",
                        on_change=redraw_head)
         self._bind_int(look, 3, "Hair style", player, "hair_style", 0, 13,
-                       note="hair actor variant, 0-13")
+                       note="hair actor variant, 0-13",
+                       on_change=redraw_head)
         redraw_head()
 
         ttk.Separator(f, orient="horizontal").grid(row=7, column=0, columnspan=4,
@@ -933,8 +1023,12 @@ class Studio(tk.Tk):
         except Exception:
             pass
 
-    def cartridge_bytes(self, ask=True):
-        """The cartridge, asked for once and kept."""
+    def cartridge_bytes(self, ask=True, quiet=False):
+        """The cartridge, asked for once and kept.
+
+        `quiet` is for a pane drawing itself: it still tries a remembered
+        dump, but a bad one must not raise a modal error box mid-redraw.
+        """
         if self.rom is not None:
             return self.rom
         path = self.rom_path
@@ -952,7 +1046,8 @@ class Studio(tk.Tk):
         try:
             self.rom = cartridge.load_rom(path)
         except Exception as exc:
-            messagebox.showerror(APP_NAME, "%s" % exc, parent=self)
+            if not quiet:
+                messagebox.showerror(APP_NAME, "%s" % exc, parent=self)
             self.rom_path = None
             return None
         self.rom_path = path
