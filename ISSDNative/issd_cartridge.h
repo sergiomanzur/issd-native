@@ -37,6 +37,28 @@ bool issd_cartridge_stash_retail(uint8_t *rom, size_t size,
  * `size` may be NULL. */
 const uint8_t *issd_cartridge_retail(size_t *size);
 
+/* The base image the enabled stack asks for, decided once at boot and again
+ * after every in-process restart. `file` is issd_mod_cartridge_resolve's full
+ * path, or NULL/empty when no cartridge pack is active; `is_patch` and
+ * `sha256` are its other outputs (an empty hash is not checked).
+ *
+ * Returns a borrowed pointer to the image to play and, in `size_out`, its
+ * size: the retained retail image when no pack is active, otherwise a buffer
+ * this module owns and keeps alive until the base changes again. `changed_out`
+ * is true when the returned base is not the one this call last returned, which
+ * is the caller's signal to rebase the live image and the pristine copy.
+ *
+ * An image that cannot be opened, is not exactly 2 MB and LoROM/ROM-only, or
+ * does not match the pack's hash is refused with prose in `why`; the retail
+ * cartridge is returned instead so a broken pack never leaves a half-built
+ * image in play. Asking for the same file, mode and hash as the current base
+ * returns that same buffer and reports no change, so a restart that toggled
+ * another pack does not re-read two megabytes. */
+const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
+                                          const char *sha256, size_t *size_out,
+                                          bool *changed_out,
+                                          char *why, size_t why_cap);
+
 /* Applies an IPS patch to the stashed retail image and writes the result to
  * `rom_out`. The whole patch is validated before a single byte is written, so
  * on refusal `rom_out` is untouched and the caller keeps playing the retail

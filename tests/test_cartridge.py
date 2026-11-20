@@ -20,6 +20,8 @@ def test_cartridge_module(tmp_path):
             repo / "tests/test_cartridge.c",
             repo / "ISSDNative/issd_cartridge.c",
             repo / "ISSDNative/issd_mod.c",
+            repo / "ISSDNative/issd_mod_rom.c",
+            repo / "ISSDNative/issd_formation.c",
             repo / "deps/snesrecomp/runner/src/sha256.c",
         ],
         [repo / "ISSDNative", repo / "deps/snesrecomp/runner/src"],

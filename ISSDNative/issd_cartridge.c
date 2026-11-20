@@ -16,6 +16,7 @@
 #include "sha256.h"
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* One copier header, in the shape the launcher has always accepted. */
@@ -249,4 +250,172 @@ bool issd_cartridge_apply_patch(const uint8_t *patch_data, size_t patch_size,
 
     if (why && why_cap) why[0] = 0;
     return true;
+}
+
+/* --- the base image in play --------------------------------------------- */
+
+/* The pack currently supplying the base, and the buffer it produced. The
+ * buffer is owned here; retail_base above stays borrowed from the caller.
+ * `active_path`/`active_sha` are compared string-for-string, which is enough
+ * to tell a restart that toggled another pack from one that changed which
+ * cartridge is played. */
+#define ACTIVE_PATH_SIZE 512u
+#define ACTIVE_SHA_SIZE  73u
+static uint8_t *active_image;
+static char     active_path[ACTIVE_PATH_SIZE];
+static char     active_sha[ACTIVE_SHA_SIZE];
+static bool     active_is_patch;
+
+/* Reads a whole file into a fresh buffer. `expect` of zero accepts any size. */
+static bool read_cartridge_file(const char *path, size_t expect,
+                                uint8_t **out, size_t *size,
+                                char *why, size_t why_cap) {
+    FILE *f = fopen(path, "rb");
+    if (!f) return fail(why, why_cap, "Cannot open '%s'.", path);
+    if (fseek(f, 0, SEEK_END) != 0) {
+        fclose(f);
+        return fail(why, why_cap, "Cannot measure '%s'.", path);
+    }
+    const long length = ftell(f);
+    if (fseek(f, 0, SEEK_SET) != 0 || length <= 0) {
+        fclose(f);
+        return fail(why, why_cap, "'%s' is empty or unreadable.", path);
+    }
+    if (expect && (size_t)length != expect) {
+        fclose(f);
+        return fail(why, why_cap,
+                    "'%s' is %ld bytes; exactly %zu bytes (headerless) is "
+                    "required.", path, length, expect);
+    }
+    uint8_t *buffer = (uint8_t *)malloc((size_t)length);
+    if (!buffer) {
+        fclose(f);
+        return fail(why, why_cap, "No memory to load '%s'.", path);
+    }
+    const bool complete = fread(buffer, 1, (size_t)length, f) == (size_t)length;
+    fclose(f);
+    if (!complete) {
+        free(buffer);
+        return fail(why, why_cap, "Could not read all of '%s'.", path);
+    }
+    *out = buffer;
+    *size = (size_t)length;
+    return true;
+}
+
+/* The pack's optional hash, checked when it carries one. */
+static bool check_expected_hash(const uint8_t *image, size_t size,
+                                const char *sha256, char *why, size_t why_cap) {
+    if (!sha256 || !sha256[0]) return true;
+    if (issd_cartridge_sha256_matches(image, size, sha256)) return true;
+    return fail(why, why_cap,
+                "The image does not match the pack's sha256.");
+}
+
+/* Builds the 2 MB image a pack names: a full image is read as it stands, an
+ * IPS patch is applied to the retained retail image. Everything is validated
+ * before the caller sees it, so a refusal leaves nothing behind. */
+static bool prepare_cartridge(const char *file, bool is_patch,
+                              const char *sha256, uint8_t **image_out,
+                              size_t *size_out, char *why, size_t why_cap) {
+    *image_out = NULL;
+    *size_out = 0;
+
+    if (is_patch) {
+        /* The patch file is only metadata; the image comes from the retained
+         * retail cartridge, which apply_patch verifies by hash. */
+        uint8_t *patch = NULL;
+        size_t patch_size = 0;
+        if (!read_cartridge_file(file, 0, &patch, &patch_size, why, why_cap))
+            return false;
+        uint8_t *out = (uint8_t *)malloc(ISSD_RETAIL_SIZE);
+        if (!out) {
+            free(patch);
+            return fail(why, why_cap, "No memory for the patched cartridge.");
+        }
+        const bool applied = issd_cartridge_apply_patch(
+            patch, patch_size, out, ISSD_RETAIL_SIZE, why, why_cap);
+        free(patch);
+        if (!applied) {
+            free(out);
+            return false;
+        }
+        if (!issd_cartridge_validate_image(out, ISSD_RETAIL_SIZE, why, why_cap) ||
+            !check_expected_hash(out, ISSD_RETAIL_SIZE, sha256, why, why_cap)) {
+            free(out);
+            return false;
+        }
+        *image_out = out;
+        *size_out = ISSD_RETAIL_SIZE;
+        return true;
+    }
+
+    uint8_t *out = NULL;
+    size_t out_size = 0;
+    if (!read_cartridge_file(file, ISSD_RETAIL_SIZE, &out, &out_size,
+                             why, why_cap))
+        return false;
+    if (!issd_cartridge_validate_image(out, out_size, why, why_cap) ||
+        !check_expected_hash(out, out_size, sha256, why, why_cap)) {
+        free(out);
+        return false;
+    }
+    *image_out = out;
+    *size_out = out_size;
+    return true;
+}
+
+const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
+                                          const char *sha256, size_t *size_out,
+                                          bool *changed_out,
+                                          char *why, size_t why_cap) {
+    if (size_out) *size_out = 0;
+    if (changed_out) *changed_out = false;
+    if (why && why_cap) why[0] = 0;
+
+    /* No pack active: the retained retail cartridge is the base again. */
+    if (!file || !*file) {
+        if (changed_out) *changed_out = active_image != NULL;
+        free(active_image);
+        active_image = NULL;
+        active_path[0] = 0;
+        active_sha[0] = 0;
+        active_is_patch = false;
+        if (size_out) *size_out = retail_size;
+        return retail_base;
+    }
+
+    /* Same cartridge as the one already in play: keep the buffer, say so. */
+    if (active_image && active_is_patch == is_patch &&
+        strcmp(active_path, file) == 0 &&
+        strcmp(active_sha, sha256 ? sha256 : "") == 0) {
+        if (size_out) *size_out = ISSD_RETAIL_SIZE;
+        return active_image;
+    }
+
+    uint8_t *image = NULL;
+    size_t image_size = 0;
+    if (!prepare_cartridge(file, is_patch, sha256, &image, &image_size,
+                           why, why_cap)) {
+        /* Fail closed: a pack that cannot be built must not keep a previous
+         * (or half-built) image in play. An active image implies the retail
+         * stash exists, because select_base is only reached through it. */
+        if (changed_out) *changed_out = active_image != NULL;
+        free(active_image);
+        active_image = NULL;
+        active_path[0] = 0;
+        active_sha[0] = 0;
+        active_is_patch = false;
+        if (size_out) *size_out = retail_size;
+        return retail_base;
+    }
+
+    free(active_image);
+    active_image = image;
+    snprintf(active_path, sizeof active_path, "%s", file);
+    snprintf(active_sha, sizeof active_sha, "%s", sha256 ? sha256 : "");
+    active_is_patch = is_patch;
+    if (changed_out) *changed_out = true;
+    if (size_out) *size_out = image_size;
+    return active_image;
 }

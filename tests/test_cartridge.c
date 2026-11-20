@@ -14,9 +14,14 @@
 #include <string.h>
 #include "issd_cartridge.h"
 #include "issd_mod.h"
+#include "sha256.h"
 
 #define RETAIL_PATH "International Superstar Soccer Deluxe (USA).sfc"
 #define COPIER_HEADER 512u
+
+/* The cartridge's own first squad, which an added team's roster is copied
+ * from. Matches ROM_NAME_BASE in issd_mod_rom.c. */
+#define ROM_NAME_BASE 229774u
 
 /* issd_mod.c reaches for SNES work RAM even when a test only parses packs. */
 uint8_t g_ram[0x20000];
@@ -567,6 +572,208 @@ static void test_cartridge_pack(void) {
     assert(r->errors == 0 && r->warnings == 0);
 }
 
+/* --- added rosters over a hacked cartridge ------------------------------- */
+
+/* Adding a team writes a squad into the free run at the tail of bank $87
+ * ($87:FC40). A cartridge pack may be a hack that keeps its own data there,
+ * so the write must refuse and warn instead of clobbering it (design ruling
+ * 5). The run is blank in the retail cartridge - $FF everywhere - and some
+ * images zero-fill free space, so both fills count as free. */
+static void test_added_roster_free_space(void) {
+    const size_t GATE_A = 0x004F2Eu, GATE_B = 0x004F50u;
+    const size_t PTRS = 0x038138u;
+    const size_t ROSTERS = 0x03FC40u;
+    const size_t RUN = (size_t)ISSD_MAX_ADDED_TEAMS * 160u;
+
+    assert(issd_mod_init());
+    const int pi = load_pack_text("added.json", PLAIN_PACK);
+    assert(pi >= 0);
+    issd_mod_set_pack_enabled(pi, true);
+    IssdModPack *pack = issd_mod_get_pack(pi);
+    assert(pack);
+    pack->team_count = 1;
+    memset(&pack->teams[0], 0, sizeof pack->teams[0]);
+    pack->teams[0].new_team = true;
+    pack->teams[0].assigned_slot = -1;
+    pack->teams[0].kit_record = -1;
+    snprintf(pack->teams[0].name, sizeof pack->teams[0].name, "Hack Town");
+
+    static uint8_t image[ISSD_RETAIL_SIZE];
+    memset(image, 0xEE, sizeof image);
+    /* The bytes the measured revision carries: the squad loader's gate and
+     * the roster pointer table's first entry. */
+    image[GATE_A - 1] = 0xE0; image[GATE_A] = 0x48; image[GATE_A + 1] = 0x00;
+    image[GATE_B - 1] = 0xE0; image[GATE_B] = 0x48; image[GATE_B + 1] = 0x00;
+    image[PTRS] = 0x8E; image[PTRS + 1] = 0x81;
+    /* A recognisable source squad, so the copied roster is checkable. */
+    image[ROM_NAME_BASE + 5] = 0x77;
+
+    /* --- a hack occupies the run: refuse, warn, change nothing ----------- */
+    memset(image + ROSTERS, 0x01, RUN);          /* not a blank fill */
+    issd_mod_result_reset();
+    issd_mod_apply_to_rom(image, sizeof image);
+
+    assert(issd_mod_last_result()->warnings > 0 &&
+           "an occupied run must be reported");
+    assert(pack->teams[0].assigned_slot < 0 &&
+           "no slot is handed out when its roster cannot be written");
+    assert(image[GATE_A] == 0x48 && image[GATE_A + 1] == 0x00 &&
+           "the gate is not raised without rosters behind it");
+    assert((uint16_t)(image[PTRS + 36 * 2] | (image[PTRS + 36 * 2 + 1] << 8))
+           == 0xEEEEu && "nor is the pointer table re-pointed");
+    for (size_t i = 0; i < RUN; i++)
+        assert(image[ROSTERS + i] == 0x01 &&
+               "the hack's own bytes are left exactly as they were");
+
+    /* --- zero-filled free space is still free ---------------------------- */
+    memset(image + ROSTERS, 0x00, RUN);
+    issd_mod_result_reset();
+    issd_mod_apply_to_rom(image, sizeof image);
+    assert(pack->teams[0].assigned_slot == 36);
+    assert((uint16_t)(image[GATE_A] | (image[GATE_A + 1] << 8)) == 37 * 2);
+    assert(image[ROSTERS + 5] == 0x77 &&
+           "the added squad is a copy of the cartridge's own squad 0");
+    assert((uint16_t)(image[PTRS + 36 * 2] | (image[PTRS + 36 * 2 + 1] << 8))
+           == (uint16_t)(0x8000u + (ROSTERS - 0x38000u)));
+
+    /* --- and so is the cartridge's $FF fill ------------------------------ */
+    /* A fresh image: the stack is re-applied from the pristine copy at
+     * runtime, so the gate is back to its retail operand here. */
+    image[GATE_A] = 0x48; image[GATE_A + 1] = 0x00;
+    image[GATE_B] = 0x48; image[GATE_B + 1] = 0x00;
+    memset(image + ROSTERS, 0xFF, RUN);
+    issd_mod_result_reset();
+    issd_mod_apply_to_rom(image, sizeof image);
+    assert(pack->teams[0].assigned_slot == 36);
+    assert(image[ROSTERS + 5] == 0x77);
+}
+
+/* --- the effective base, rebuilt at boot and after a restart -------------- */
+
+static bool write_bytes(const char *path, const void *data, size_t size) {
+    FILE *f = fopen(path, "wb");
+    if (!f) return false;
+    const bool ok = fwrite(data, 1, size, f) == size;
+    fclose(f);
+    return ok;
+}
+
+static void hex_digest(const void *data, size_t size, char out[65]) {
+    uint8_t digest[32];
+    sha256_compute((const uint8_t *)data, size, digest);
+    for (int i = 0; i < 32; i++)
+        snprintf(out + i * 2, 3, "%02x", digest[i]);
+}
+
+/* A restart changes the enabled stack without reloading the ROM file, so the
+ * base has to be rebuilt from the retained retail image - and only when the
+ * winner actually changed. This is the function both the boot path and the
+ * in-process restart call. */
+static void test_select_base(void) {
+    size_t retail_size = 0;
+    uint8_t *retail = load_retail(&retail_size);
+    assert(retail != NULL && retail_size == ISSD_RETAIL_SIZE);
+    assert(issd_cartridge_stash_retail(retail, retail_size, NULL, 0));
+
+    static uint8_t image[ISSD_RETAIL_SIZE];
+    memset(image, 0x11, sizeof image);
+    image[0x7FD5] = 0x30;      /* LoROM */
+    image[0x7FD6] = 0x00;      /* ROM only */
+    image[0x1000] = 0x77;
+
+    char path[600], why[256];
+    snprintf(path, sizeof path, "%s/hack.sfc", g_scratch);
+    assert(write_bytes(path, image, sizeof image));
+
+    size_t size = 0;
+    bool changed = true;
+
+    /* No pack: the retained retail image is the base and nothing changed. */
+    why[0] = 'X';
+    const uint8_t *base = issd_cartridge_select_base(
+        NULL, false, "", &size, &changed, why, sizeof why);
+    assert(base == retail && size == ISSD_RETAIL_SIZE);
+    assert(!changed && "the retail image already in play is not a change");
+    assert(why[0] == 0);
+
+    /* An image pack becomes the base. */
+    base = issd_cartridge_select_base(path, false, "", &size, &changed,
+                                      why, sizeof why);
+    assert(base != NULL && base != retail && size == ISSD_RETAIL_SIZE);
+    assert(changed && why[0] == 0);
+    assert(memcmp(base, image, sizeof image) == 0);
+
+    /* Asking for the same file again keeps the very same buffer: a restart
+     * that changed nothing must not re-read two megabytes. */
+    const uint8_t *again = issd_cartridge_select_base(path, false, "", &size,
+                                                      &changed, why,
+                                                      sizeof why);
+    assert(again == base && !changed);
+
+    /* The optional hash is checked when the pack carries one, and a mismatch
+     * puts the retail cartridge back rather than playing an unknown image. */
+    char zero_hash[65];
+    memset(zero_hash, '0', 64);
+    zero_hash[64] = 0;
+    again = issd_cartridge_select_base(path, false, zero_hash, &size, &changed,
+                                       why, sizeof why);
+    assert(again == retail && changed && size == ISSD_RETAIL_SIZE);
+    assert(why[0] != 0 && strstr(why, "sha256") != NULL);
+
+    /* An image the engine cannot run is refused before the hash matters. */
+    static uint8_t hirom[ISSD_RETAIL_SIZE];
+    memcpy(hirom, image, sizeof hirom);
+    hirom[0x7FD5] = 0x31;
+    char hirom_path[600];
+    snprintf(hirom_path, sizeof hirom_path, "%s/hirom.sfc", g_scratch);
+    assert(write_bytes(hirom_path, hirom, sizeof hirom));
+    again = issd_cartridge_select_base(hirom_path, false, "", &size, &changed,
+                                       why, sizeof why);
+    assert(again == retail && !changed && size == ISSD_RETAIL_SIZE);
+    assert(why[0] != 0 && strstr(why, "HiROM") != NULL);
+
+    /* The matching hash is accepted. */
+    char digest[65];
+    hex_digest(image, sizeof image, digest);
+    base = issd_cartridge_select_base(path, false, digest, &size, &changed,
+                                      why, sizeof why);
+    assert(base != NULL && base != retail && changed && why[0] == 0);
+    assert(memcmp(base + 0x1000, image + 0x1000, 1) == 0);
+
+    /* A patch applies to the retained retail image, not to the pack that was
+     * in play before it. */
+    Patch p;
+    ips_begin(&p);
+    ips_record(&p, 0x2000, "PATCHED", 7);
+    ips_eof(&p);
+    char ips[600];
+    snprintf(ips, sizeof ips, "%s/hack.ips", g_scratch);
+    assert(write_bytes(ips, p.bytes, p.len));
+    const uint8_t *patched = issd_cartridge_select_base(ips, true, "", &size,
+                                                        &changed, why,
+                                                        sizeof why);
+    assert(patched != NULL && patched != retail && changed && why[0] == 0);
+    assert(size == ISSD_RETAIL_SIZE);
+    assert(memcmp(patched + 0x2000, "PATCHED", 7) == 0);
+    assert(memcmp(patched + 0x1000, retail + 0x1000, 4) == 0 &&
+           "an IPS patch starts from retail, never from the previous hack");
+
+    /* Switching the pack off returns to the retail image. */
+    const uint8_t *back = issd_cartridge_select_base(NULL, false, "", &size,
+                                                     &changed, why, sizeof why);
+    assert(back == retail && changed && size == ISSD_RETAIL_SIZE);
+
+    /* A file that is not there is refused with a reason and retail stays. */
+    snprintf(path, sizeof path, "%s/missing.sfc", g_scratch);
+    why[0] = 0;
+    back = issd_cartridge_select_base(path, false, "", &size, &changed, why,
+                                      sizeof why);
+    assert(back == retail && !changed);
+    assert(why[0] != 0);
+
+    free(retail);
+}
+
 int main(int argc, char **argv) {
     assert(argc > 1 && "the harness must pass a scratch folder");
     snprintf(g_scratch, sizeof g_scratch, "%s", argv[1]);
@@ -576,6 +783,8 @@ int main(int argc, char **argv) {
     test_image_validation();
     test_sha256();
     test_cartridge_pack();
+    test_added_roster_free_space();
+    test_select_base();
     puts("cartridge tests passed");
     return 0;
 }
