@@ -9,12 +9,13 @@ A mod is a file you drop into `mods/`. Nothing is compiled, nothing is
 patched on disk, and the cartridge you supply is never modified: packs are
 applied to a copy of it in memory each time the game starts.
 
-There are two kinds:
+There are three kinds:
 
 | Kind | What it is | What it changes |
 |---|---|---|
 | **Roster pack** | one `.json` file (and any images beside it) | player names, stats, appearance, formations, tactics, kit colours, the select screen's name plate and squad photograph, stadiums |
 | **Tile pack** | a folder of `.bmp` files | the background graphics, at higher resolution |
+| **Cartridge pack** | one `.json` file plus a patch or image beside it | the whole cartridge, for playing a complete ROM hack |
 
 ```text
 ISSDNative/
@@ -27,6 +28,8 @@ ISSDNative/
     title_screen_hd/                <- a tile pack
       0a3f19c4b7e25d80.bmp
       ...
+    world_cup_2026/                 <- a cartridge pack's patch
+      world_cup_2026.ips
 ```
 
 ---
@@ -912,10 +915,161 @@ The console window carries the detail; the menu carries the summary.
 
 ---
 
+## 10a. Cartridge packs
+
+A cartridge pack replaces the whole cartridge image instead of editing tables
+inside it. It is how a complete ROM hack - new squads, kits, title screens,
+graphics, menu artwork - can be played as a mod while you still supply your own
+retail cartridge. The substituted image exists only in memory for that session;
+the file on disk is never modified.
+
+There are two ways to carry the replacement, and a pack names exactly one:
+
+- an **image**, a complete headerless 2 MB `.sfc` beside the pack; or
+- a **patch**, an `.ips` applied at load time to your own retail cartridge.
+  The patch holds only the differences, so this is the shape to share: it
+  contains no ROM content and works with any dump that passes the launcher's
+  existing verification.
+
+```json
+{
+  "name": "World Cup 2026",
+  "author": "the hack's author",
+  "version": "1.0.0",
+  "cartridge": {
+    "patch": "world_cup_2026/world_cup_2026.ips",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+  }
+}
+```
+
+`image` and `patch` both resolve beside the pack file, the same rule the team
+and stadium graphics use. Naming both is an error - one would silently lose -
+so the resolver ignores that pack's cartridge declaration and keeps walking the
+stack: a lower enabled cartridge pack supplies the image, and the retail
+cartridge plays only when no other cartridge pack is enabled. The pack itself
+still loads, and its teams and stadiums still apply on top. A `cartridge` block
+that names neither changes no cartridge and the validator rejects it. `sha256`
+is optional: when present, it is the expected hash of the substituted image,
+and a mismatch keeps the retail cartridge rather than playing something the
+author did not intend.
+
+### Making one with the converter
+
+`tools/convert_rom_hack.py` builds the pack, the patch and a compatibility
+report from a hack image or an existing IPS:
+
+```sh
+python tools/convert_rom_hack.py --rom "World Cup 2026.sfc" \
+  --name "World Cup 2026" --author "its author"
+
+python tools/convert_rom_hack.py --ips world_cup_2026.ips \
+  --name "World Cup 2026"
+```
+
+`--base` names the retail cartridge to diff against (and, in `--ips` mode, to
+apply the patch to). Without it, the tool looks for
+`International Superstar Soccer Deluxe (USA).sfc` in the current directory and
+verifies its hash; a missing or wrong file is a clear error, never a guess.
+`--rom` re-emits an IPS from the difference, so a full hack image becomes a
+small patch; a 512-byte copier header on the input is dropped first. The output
+is `mods/<slug>.json`, `mods/<slug>/<slug>.ips` and
+`mods/<slug>/REPORT.md`. The JSON passes `tools/validate_mod.py` as written.
+
+### What the loader enforces
+
+A full-image pack must be exactly 2,097,152 bytes and headerless; a
+copier-headered `.sfc` is refused, so drop the 512-byte prefix first. (The
+converter does that for a hack input.) The retail cartridge you supply may be
+either shape: 2,097,664 bytes is normalized as a 512-byte copier header on top
+of the image, and anything that is neither size is refused. The mapping byte at
+file `0x7FD5` must say LoROM (bit 0 clear) and the cartridge type at `0x7FD6`
+must be `0x00` (ROM-only, no coprocessor). Expansion is not supported: a patch
+that writes at or past 2 MB, or ends before the full image, is refused.
+
+A patch is applied to a retained, immutable copy of your retail cartridge, and
+only after that base hashes to the retail SHA-256. The check runs on every path,
+not just the launcher. A pack's optional `sha256` is checked on the resulting
+image. Any refusal is non-fatal and keeps the retail cartridge in play: the
+console says which pack and why, and the mods page carries the warning.
+
+### In the stack
+
+When more than one cartridge pack is enabled, the one enabled last plays: packs
+are applied in list order and the topmost enabled cartridge pack wins; if it
+cannot be used, the retail cartridge plays. Lower cartridge packs are not
+tried, which is what being on top means. The console log names the active pack
+at boot; a shadowed pack's cartridge is simply not used. Its teams and
+stadiums still apply like any other regular pack. Like roster packs, switching
+a cartridge pack takes effect on **SAVE & RESTART**.
+
+Regular packs still apply on top of the substituted cartridge, but only some
+of their writes are guarded against a changed image. The kit palette tails, the
+stadium expansion sites, the added-team gate and its `$87:FC40` roster run, the
+bonus-team group count and the tone-1 free run are checked against the bytes
+the retail cartridge has there; when a check fails, that write is refused with
+a warning and the hack is left alone.
+
+Everything else is written at its retail offset without a revision check.
+Roster names and attributes, formations, stadium names and pitch dimensions,
+the select-screen head index and the stripes flag all overwrite whatever the
+cartridge pack put at those addresses. A roster pack layered over a hack will
+therefore replace the hack's squads and shapes there, byte for byte. That is
+what the stack means: the regular pack is applied later, and its author has to
+know which bytes it will claim.
+
+### The honest limits
+
+The engine is a hybrid. Boot code, NMI and the routines deny-listed in
+`recomp/aot_boot_deny.txt` run **interpreted from the cartridge bytes**, so a
+hack's changes there take effect. Everything else runs precompiled C, with the
+code and its immediates already baked in. Two consequences follow:
+
+- **Changed code outside those paths is ignored.** A rebuilt routine that the
+  recompiler captured as C is not read from the cartridge any more.
+- **Relocated data is still read from its original addresses.** Moving a table
+  and retargeting a pointer does not move where the compiled engine looks.
+
+So **data-preserving hacks work**: same layout, new roster bytes, kits,
+palettes, names, graphics, title screens. **Engine rewrites do not**, and the
+converter cannot make them. This is the ceiling, not a bug to work around.
+
+The converter's `REPORT.md` is the honesty contract. Before you install
+anything, it lists every changed region and classifies it as **known data**
+(honored by the runtime), **interpreted** (live: boot, NMI and deny-listed PCs),
+or **not guaranteed** (precompiled or unknown, including relocated data). It
+also reports cartridge-header changes explicitly. The classification is
+best-effort by file offset; a report that says most of a hack is "not
+guaranteed" is telling you the truth about an engine rewrite.
+
+### Saves are scoped to the cartridge image
+
+Every save the current build writes - campaign, quick and the eight numbered
+manual slots - is an envelope that carries the effective cartridge identity,
+and loading compares it. A save made under a different cartridge refuses to
+load with "Save is incompatible with applied gameplay data": a retail
+quicksave does not restore under a hack, and the reverse is equally refused.
+Switch cartridges and saves made under the old image are out of reach, by
+design.
+
+The exception is a legacy raw save from an older build (the old `ISSD`/`RTLS`
+format). It carries no image identity at all, so the game asks for the
+explicit legacy confirmation before loading it instead of pretending it is
+compatible.
+
+The retail password bridge disables itself on a hash mismatch, which is
+expected and non-fatal.
+
+---
+
 ## 11. What cannot be modded
 
 Being straight about the ceiling saves everyone time.
 
+- **Changing the engine's own code.** Only boot, NMI and deny-listed routines
+  run from cartridge bytes; the rest is precompiled, so a cartridge pack can
+  change data but not rewrite a compiled routine or relocate a table the
+  compiled code addresses. Section 10a explains why.
 - **More than six added teams.** The seventh group has six cells and that
   is what there is. Past 42 the grid itself would have to grow.
 - **Keeping an all-star side *and* adding a team in its cell.** A cell is
@@ -953,7 +1107,8 @@ version of ISSD Native you built it against.
 
 Please do not distribute a cartridge image with it. Packs are applied to a
 copy of whatever ROM the player supplies, which is the whole reason they
-are kept separate.
+are kept separate. A cartridge pack shares its JSON and IPS patch, never the
+hack's image.
 
 Two conventions that make packs stack well:
 

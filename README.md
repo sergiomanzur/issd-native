@@ -4,7 +4,7 @@ A native recompilation and modernization of **International Superstar Soccer Del
 
 The goal is to preserve the original gameplay while adding modern controls, presentation options, saves, and editable mod packs. This is a **beta project working toward 1.0**; recompilation coverage does not establish complete gameplay or hardware fidelity.
 
-The current release is **[v0.6.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.6.0-beta.1)**, a GitHub prerelease for Windows, Linux, Steam Deck (AppImage) and Android. It adds an original retro broadcast launcher, a penalty timing-input correction in the bug-fix bundle, optional short goal kicks and final-attack protection, roster-based team summaries and expanded match durations. It retains the existing widescreen, tactical camera, touch/controller, replay, campaign and Mod Studio features. See [CHANGELOG.md](CHANGELOG.md) and [release notes](docs/releases/v0.6.0-beta.1.md).
+The current release is **[v0.7.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.7.0-beta.1)**, a GitHub prerelease for Windows, Linux, Steam Deck (AppImage) and Android. It adds cartridge packs: a mod pack can now carry a complete ROM hack - a full image or an IPS patch applied to your own verified retail ROM - with a converter tool that reports what will carry over before you install anything. It retains the broadcast launcher, match options, skin tones, widescreen, tactical camera, touch/controller, replay, campaign and Mod Studio features. See [CHANGELOG.md](CHANGELOG.md) and [release notes](docs/releases/v0.7.0-beta.1.md).
 
 Ball Outline has been removed, including legacy saved enables.
 
@@ -16,8 +16,8 @@ Project metadata for [recomp.board](https://recomp.fyi) and other tools lives in
 
 An original retro broadcast launcher, optional short goal kicks and final-attack
 protection, roster-based team summaries, expanded match durations and a penalty
-input correction are available in source. See [Matchday options](docs/MATCHDAY_OPTIONS.md)
-and [Steam Deck AppImage builds](docs/APPIMAGE.md). These additions ship in v0.6.0-beta.1.
+input correction shipped in v0.6.0-beta.1. See [Matchday options](docs/MATCHDAY_OPTIONS.md)
+and [Steam Deck AppImage builds](docs/APPIMAGE.md).
 
 ## Latest source improvements
 
@@ -164,6 +164,8 @@ replaces its legacy aliases too:
 The `mods/` directory includes Liga MX/Expansión, World Cup 2026-themed, Chivas, legends, and formation example packs. These are editable replacement packs within the original game's data constraints.
 
 Open the overlay's **Mods** page to select packs. Roster packs patch an in-memory copy of the ROM; the original dump is unchanged. Enabled packs form an ordered stack, with later packs taking precedence and overlaps reported. Save and restart to apply roster changes; background tile packs can be toggled live.
+
+Complete ROM hacks can be played as [cartridge packs](docs/MODDING.md#10a-cartridge-packs): a pack supplies an IPS patch against your own verified retail dump (or a full 2 MB image), and the converter's compatibility report states what carries over and what the precompiled engine ignores. Regular packs still layer on top.
 
 Run the visual editor from source with Python 3.10+ and Pillow:
 

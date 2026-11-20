@@ -159,6 +159,19 @@ typedef struct {
      * of them change the same team the higher number wins. Enabling a
      * pack puts it last, which is what 'this one on top' means. */
     int         apply_order;
+    /* A cartridge pack replaces the whole image. It names either
+     * `cartridge_image` (a complete 2 MB image beside the pack) or
+     * `cartridge_patch` (an IPS patch applied to the user's own verified
+     * retail ROM), never both - two sources would leave no honest answer
+     * which one to use. `cartridge_sha256` is optional and is the expected
+     * hash of the substituted image. Empty means absent.
+     *
+     * Parsing only records the names; issd_mod_cartridge_resolve decides
+     * which pack the enabled stack actually plays and nothing here reads a
+     * byte of the file. */
+    char        cartridge_image[64];
+    char        cartridge_patch[64];
+    char        cartridge_sha256[73];  /* 64 hex digits and their terminator */
     int         team_count;
     IssdModTeam teams[ISSD_MAX_TEAMS_PER_PACK];
     int         stadium_count;      /* entries in `stadiums` below */
@@ -208,6 +221,61 @@ bool        issd_mod_team_photo_path(int team_id, char *out, size_t cap);
 /* The full path of the custom flag graphic a pack gives a team, resolved
  * against the pack's own directory. False when no enabled pack has one. */
 bool        issd_mod_team_flag_path(int team_id, char *out, size_t cap);
+
+/* What the enabled stack asks of the cartridge resolver. Boot and the
+ * in-process restart need to tell three cases apart, and the global
+ * IssdModResult counters cannot: those also carry unrelated pack and scan
+ * errors, so `errors != 0` never meant "the cartridge pack was refused".
+ *
+ * - NONE:     no enabled pack names a cartridge at all.
+ * - REFUSED:  a cartridge pack was named but cannot be used; `reason` says
+ *             why, and the retail cartridge plays.
+ * - WINNER:   one pack's cartridge is selected; the outputs name it.
+ *
+ * Shadowed cartridge packs are warnings, not refusals. They are reported in
+ * `notes` (and in IssdModResult, so the menu counts them) because the note
+ * lives in counters `issd_mod_reapply` resets: a caller that re-applies the
+ * stack must restate `notes` afterwards or the player never sees them. */
+#define ISSD_MOD_CARTRIDGE_NOTE_MAX  ISSD_MAX_MOD_PACKS
+#define ISSD_MOD_CARTRIDGE_NOTE_SIZE 160
+typedef enum {
+    ISSD_MOD_CARTRIDGE_NONE = 0,
+    ISSD_MOD_CARTRIDGE_REFUSED,
+    ISSD_MOD_CARTRIDGE_WINNER
+} IssdModCartridgeState;
+
+typedef struct {
+    IssdModCartridgeState state;
+    char reason[192];   /* why nothing can be played; REFUSED only */
+    char notes[ISSD_MOD_CARTRIDGE_NOTE_MAX][ISSD_MOD_CARTRIDGE_NOTE_SIZE];
+    int  note_count;    /* shadowed/other warnings, in stack order */
+} IssdModCartridgeStatus;
+
+/* The cartridge the enabled stack asks for. `status` is always written (it
+ * may be NULL for callers that only want the outputs) and is the authority on
+ * whether a pack was refused; do not infer that from the result counters.
+ * Returns true exactly when `status->state` is WINNER. Packs are walked in
+ * apply order and the topmost enabled cartridge pack wins; if it cannot be
+ * used the retail cartridge plays and the packs below it are NOT tried, which
+ * is what being on top means. Every cartridge pack it shadows is recorded in
+ * `status->notes` and counted as a warning, because the player enabled
+ * something that will not be played.
+ *
+ * A pack naming both an image and a patch cannot be used: one of the two
+ * would silently lose, so it is counted as an error, recorded as the
+ * REFUSED reason when no usable winner remains, and skipped by the resolver.
+ * A pack naming neither is not a cartridge pack at all.
+ *
+ * `pack_name_out` receives the winning pack's display name, `file_out` the
+ * image or patch joined to the pack's own directory (the same rule the team
+ * graphics use), `is_patch` whether that file is an IPS patch, and
+ * `sha256_out` its expected hash as written, or an empty string. Nothing is
+ * opened or read here; the caller loads the file. Any output may be NULL. */
+bool        issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
+                                       char *file_out, size_t file_cap,
+                                       bool *is_patch, char *sha256_out,
+                                       size_t sha_cap,
+                                       IssdModCartridgeStatus *status);
 
 /* The select screen's grid is not in team order: its first cell is
  * England. These read the cartridge's own cell table, so anything drawn

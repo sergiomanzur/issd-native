@@ -93,3 +93,98 @@ def test_two_complete_tones_used_by_players_are_clean():
                  {"shirt_number": 17, "name": "Saliba", "skin_tone": 1}]))
     assert not report.errors and not report.warnings, (report.errors,
                                                        report.warnings)
+
+
+# A cartridge pack swaps the whole image instead of overlaying data. The
+# loader is stricter still - size, mapping and cart type - but those are
+# structural properties of the file, not of the pack, and the checker's job
+# here is the pack: one source, the right extension, a sha256 if offered.
+def _cartridge_report(tmp_path, cartridge, **extra):
+    for name in ("hack.sfc", "hack.ips", "hack.smc"):
+        (tmp_path / name).write_bytes(b"fixture")
+    pack = {"name": "Cartridge hack", "cartridge": cartridge}
+    pack.update(extra)
+    report = validate_mod.Report()
+    validate_mod.validate_data(pack, report, tmp_path)
+    return report
+
+
+def test_cartridge_must_be_an_object(tmp_path):
+    for cartridge in ("hack.sfc", [], 3, None):
+        report = _cartridge_report(tmp_path, cartridge)
+        assert any("cartridge" in e and "object" in e for e in report.errors), \
+            (cartridge, report.errors)
+
+
+def test_cartridge_needs_exactly_one_of_image_and_patch(tmp_path):
+    for cartridge in ({}, {"image": "hack.sfc", "patch": "hack.ips"}):
+        report = _cartridge_report(tmp_path, cartridge)
+        assert any("exactly one" in e for e in report.errors), \
+            (cartridge, report.errors)
+
+
+def test_cartridge_image_must_be_a_headerless_sfc(tmp_path):
+    report = _cartridge_report(tmp_path, {"image": "hack.smc"})
+    assert any("smc" in e and "headerless" in e for e in report.errors), \
+        report.errors
+
+    report = _cartridge_report(tmp_path, {"image": "hack.zip"})
+    assert any(".sfc" in e for e in report.errors), report.errors
+
+
+def test_cartridge_image_must_exist_beside_the_pack(tmp_path):
+    report = _cartridge_report(tmp_path, {"image": "missing.sfc"})
+    assert any("missing.sfc" in e and "beside" in e for e in report.errors), \
+        report.errors
+
+
+def test_cartridge_patch_must_be_ips_and_exist(tmp_path):
+    report = _cartridge_report(tmp_path, {"patch": "hack.bps"})
+    assert any(".ips" in e for e in report.errors), report.errors
+
+    report = _cartridge_report(tmp_path, {"patch": "missing.ips"})
+    assert any("missing.ips" in e and "beside" in e for e in report.errors), \
+        report.errors
+
+    report = _cartridge_report(tmp_path, {"patch": "hack.ips"})
+    assert not report.errors, report.errors
+
+
+def test_cartridge_sha256_is_sixty_four_lowercase_hex(tmp_path):
+    for sha in ("A" * 64, "a" * 63, "g" * 64, "a" * 65, 1, True):
+        report = _cartridge_report(tmp_path,
+                                   {"image": "hack.sfc", "sha256": sha})
+        assert any("sha256" in e and "64" in e for e in report.errors), \
+            (sha, report.errors)
+
+    report = _cartridge_report(tmp_path,
+                               {"image": "hack.sfc", "sha256": "ab" * 32})
+    assert not report.errors, report.errors
+
+
+def test_cartridge_only_pack_passes(tmp_path):
+    report = _cartridge_report(tmp_path, {"image": "hack.sfc"})
+    assert not report.errors and not report.warnings, (report.errors,
+                                                       report.warnings)
+
+
+def test_cartridge_layers_with_teams_and_stadiums(tmp_path):
+    report = _cartridge_report(
+        tmp_path, {"patch": "hack.ips"},
+        teams=[{"team_id": 9, "name": "France", "players": []}],
+        stadiums=[{"stadium_id": 0, "name": "Wembley"}])
+    assert not report.errors and not report.warnings, (report.errors,
+                                                       report.warnings)
+
+
+def test_empty_teams_beside_a_cartridge_is_not_an_empty_pack(tmp_path):
+    """The cartridge key is content: an empty team list does not make it a
+    pack that "changes nothing", so strict mode must not warn about it."""
+    report = _cartridge_report(tmp_path, {"image": "hack.sfc"}, teams=[])
+    assert not report.errors and not report.warnings, (report.errors,
+                                                       report.warnings)
+
+
+def test_cartridge_file_must_stay_inside_the_pack(tmp_path):
+    report = _cartridge_report(tmp_path, {"image": "../outside.sfc"})
+    assert any("cartridge" in e for e in report.errors), report.errors

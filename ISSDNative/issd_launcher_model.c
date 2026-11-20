@@ -2,20 +2,21 @@
  * Mabec-games/iss-deluxed, commit 54344cb (GPL-3.0). Original UI lives in
  * issd_launcher.c; no fork artwork, online code or branding is included. */
 #include "issd_launcher_model.h"
+#include "issd_cartridge.h"
 #include "sha256.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 bool issd_launcher_rom_ok(const char*path,char*why,size_t cap){
-    static const char expected[]="d2fe66c1ce66c65ce14e478c94be2e616f9e2cad374b5783a6a64d3c1a99cfa9";
+    static const char expected[]=ISSD_RETAIL_SHA256;
     const char*error="Select your original ISS Deluxe USA cartridge.";
     FILE*f=path&&path[0]?fopen(path,"rb"):NULL;
     if(f){
-        if(fseek(f,0,SEEK_END)==0){long bytes=ftell(f);long header=bytes==2097664?512:0;
-            if(bytes-header==2097152){
-                uint8_t*image=malloc(2097152);uint8_t digest[32];char hex[65];
-                if(image&&fseek(f,header,SEEK_SET)==0&&fread(image,1,2097152,f)==2097152){
-                    sha256_compute(image,2097152,digest);
+        if(fseek(f,0,SEEK_END)==0){long bytes=ftell(f);long header=bytes==(ISSD_RETAIL_SIZE+512)?512:0;
+            if(bytes-header==ISSD_RETAIL_SIZE){
+                uint8_t*image=malloc(ISSD_RETAIL_SIZE);uint8_t digest[32];char hex[65];
+                if(image&&fseek(f,header,SEEK_SET)==0&&fread(image,1,ISSD_RETAIL_SIZE,f)==ISSD_RETAIL_SIZE){
+                    sha256_compute(image,ISSD_RETAIL_SIZE,digest);
                     for(int i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);
                     free(image);fclose(f);
                     if(!strcmp(hex,expected)){if(why&&cap)why[0]=0;return true;}

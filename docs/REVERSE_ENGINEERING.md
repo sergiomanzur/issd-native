@@ -22,6 +22,25 @@ This document tracks reverse-engineering findings, tooling, memory structures, a
   - Direct Page / Stack: $0000 -  (Mirrored at $7E:0000 - )
   - Extended WRAM: $7E:2000 - 
 
+## AOT, the interpreter, and cartridge code
+
+The runtime is a hybrid, and this is the fact that decides what a cartridge
+patch can and cannot reach. Boot (`$80:8000`), NMI (`$80:80E0`) and the PCs
+listed in `recomp/aot_boot_deny.txt` run **interpreted**, with the cartridge
+bytes authoritative. Everything else runs the recompiled C: its code, its
+immediates and the addresses it reads were generated from the retail image and
+are now part of the binary.
+
+So a changed byte in a compiled routine is read by nobody. That is the lesson
+recorded in `issd_mod_rom.c:52-55`: the seventh-group compare is "an immediate,
+so in the generated C it is a baked-in constant that no cartridge patch can
+reach" until the routine is listed in the deny file and tiered down to the
+interpreter. It also means relocated data is still read from its original
+addresses - moving a table and retargeting a pointer does not move what the
+generated C indexes. Cartridge packs (`docs/MODDING.md`) inherit exactly this
+boundary: data-preserving hacks are honored, engine rewrites are not, and the
+converter's compatibility report names the difference per changed region.
+
 ## Symbol Classification System
 Symbols in ROUTINE_MAP.md and RAM_MAP.md are tagged with confidence levels:
 - [CONFIRMED]: Verified via disassembly, ROM trace, or reference emulator.

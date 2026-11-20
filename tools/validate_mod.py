@@ -27,9 +27,9 @@ import sys
 from pathlib import Path
 
 try:
-    from .stadium_profile import validate_pack_data
+    from .stadium_profile import resolve_asset, validate_pack_data
 except ImportError:
-    from stadium_profile import validate_pack_data
+    from stadium_profile import resolve_asset, validate_pack_data
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -466,6 +466,59 @@ def check_stadium_count(report, path, pack, stadiums):
                               " plate will be an unused cartridge graphic" % sid)
 
 
+def check_cartridge_file(report, key, name, pack_dir):
+    """One of the two substitutions: a headerless image or an IPS patch."""
+    suffix = ".sfc" if key == "image" else ".ips"
+    if not isinstance(name, str) or not name:
+        report.error("cartridge", "%s must be the name of a %s beside the pack"
+                     % (key, suffix))
+        return
+    if not name.lower().endswith(suffix):
+        if key == "image" and name.lower().endswith(".smc"):
+            report.error("cartridge", "image %r has a copier header; only a "
+                                      "headerless .sfc is accepted, so drop "
+                                      "the 512-byte header" % (name,))
+        elif key == "image":
+            report.error("cartridge", "image must be a headerless .sfc; %r is "
+                                      "not" % (name,))
+        else:
+            report.error("cartridge", "patch must be an .ips; %r is not"
+                         % (name,))
+        return
+    try:
+        resolve_asset(pack_dir, name)
+    except ValueError as exc:
+        if str(exc) == "Asset file does not exist":
+            report.error("cartridge", "%s %r is not beside the pack"
+                         % (key, name))
+        else:
+            report.error("cartridge", "%s %r: %s" % (key, name, exc))
+
+
+def check_cartridge(report, pack, pack_dir):
+    """A cartridge pack swaps the image; regular packs may layer on top."""
+    if "cartridge" not in pack:
+        return
+    cartridge = pack["cartridge"]
+    if not isinstance(cartridge, dict):
+        report.error("cartridge", "must be an object, not %r" % (cartridge,))
+        return
+
+    given = [key for key in ("image", "patch")
+             if cartridge.get(key) is not None]
+    if len(given) != 1:
+        report.error("cartridge", "needs exactly one of image or patch, not %s"
+                     % ("both" if given else "neither"))
+    for key in given:
+        check_cartridge_file(report, key, cartridge[key], pack_dir)
+
+    sha = cartridge.get("sha256")
+    if sha is not None:
+        if not isinstance(sha, str) or not re.fullmatch(r"[0-9a-f]{64}", sha):
+            report.error("cartridge", "sha256 must be 64 lowercase hex "
+                                      "characters, not %r" % (sha,))
+
+
 def validate(path, report):
     try:
         with open(path, encoding="utf-8") as f:
@@ -489,6 +542,8 @@ def validate_data(pack, report, pack_dir, path='<draft>'):
         report.error(path, 'no "name"; it is how the menu lists the pack and how '
                            "the saved selection finds it again")
 
+    check_cartridge(report, pack, pack_dir)
+
     stadiums = pack.get("stadiums")
     if isinstance(stadiums, list):
         seen_st = set()
@@ -502,14 +557,14 @@ def validate_data(pack, report, pack_dir, path='<draft>'):
 
     teams = pack.get("teams")
     if teams is None:
-        if not stadiums:
-            report.error(path, 'no "teams" or "stadiums", so the pack changes'
-                               ' nothing')
+        if not stadiums and "cartridge" not in pack:
+            report.error(path, 'no "teams", "stadiums" or "cartridge", so the '
+                               'pack changes nothing')
         return
     if not isinstance(teams, list):
         report.error(path, '"teams" must be an array')
         return
-    if not teams and not stadiums:
+    if not teams and not stadiums and "cartridge" not in pack:
         report.warn(path, '"teams" is empty, so the pack changes nothing')
 
     formations = known_formations()

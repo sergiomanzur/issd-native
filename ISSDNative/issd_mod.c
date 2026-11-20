@@ -350,6 +350,17 @@ static bool stadium_element(JsonReader *r, void *ctx) {
     return true;
 }
 
+/* The "cartridge" object names the files, nothing more. Whether the two
+ * sources are consistent is decided when the stack is resolved, so a pack
+ * still loads (and can be inspected) when it names both. */
+static bool cartridge_member(JsonReader *r, const char *key, void *ctx) {
+    IssdModPack *pack = (IssdModPack *)ctx;
+    if (strcmp(key, "image") == 0)  return JSON_STR_FIELD(r, pack->cartridge_image);
+    if (strcmp(key, "patch") == 0)  return JSON_STR_FIELD(r, pack->cartridge_patch);
+    if (strcmp(key, "sha256") == 0) return JSON_STR_FIELD(r, pack->cartridge_sha256);
+    return json_skip_value(r);
+}
+
 static bool pack_member(JsonReader *r, const char *key, void *ctx) {
     IssdModPack *pack = (IssdModPack *)ctx;
     if (strcmp(key, "name") == 0)        return JSON_STR_FIELD(r, pack->name);
@@ -358,6 +369,8 @@ static bool pack_member(JsonReader *r, const char *key, void *ctx) {
     if (strcmp(key, "description") == 0) return JSON_STR_FIELD(r, pack->description);
     if (strcmp(key, "teams") == 0)       return json_array(r, team_element, pack);
     if (strcmp(key, "stadiums") == 0)    return json_array(r, stadium_element, pack);
+    if (strcmp(key, "cartridge") == 0)
+        return json_object(r, cartridge_member, pack);
     if (strcmp(key, "unlock_bonus_teams") == 0) {
         json_skip_ws(r);
         if (*r->p == 't' || *r->p == 'f') {
@@ -454,13 +467,16 @@ int issd_mod_load_pack(const char *json_filepath) {
     }
     pack->team_count = kept;
 
-    if (pack->team_count == 0 && pack->stadium_count == 0) {
+    /* A pack that carries only a replacement cartridge changes plenty; the
+     * "nothing" check is about packs that name no work at all. */
+    if (pack->team_count == 0 && pack->stadium_count == 0 &&
+        !pack->cartridge_image[0] && !pack->cartridge_patch[0]) {
         char why[96];
         snprintf(why, sizeof why, "%s changes nothing",
                  pack->name[0] ? pack->name : base_name(json_filepath));
         issd_mod_result_note_error(why);
-        fprintf(stderr, "[ModLoader] %s - is the \"teams\" or \"stadiums\""
-                        " array there?\n", why);
+        fprintf(stderr, "[ModLoader] %s - is the \"teams\", \"stadiums\" or"
+                        " \"cartridge\" key there?\n", why);
     }
     printf("[ModLoader] Loaded pack '%s' (%d teams, %d stadiums) from '%s'\n",
            pack->name[0] ? pack->name : "Unnamed Mod", pack->team_count,
@@ -620,6 +636,21 @@ void issd_mod_enable_from_list(const char *list) {
 
 static IssdModResult g_result_public;
 
+/* Joins a file a pack names to the folder its JSON sits in, so a pack is one
+ * folder a player can move around. No existence check: this only names the
+ * file, and the caller decides whether it can be opened. */
+static void pack_asset_path(const IssdModPack *pack, const char *file,
+                            char *out, size_t cap) {
+    char dir[256];
+    snprintf(dir, sizeof dir, "%s", pack->filepath);
+    char *cut = strrchr(dir, '/');
+    char *alt = strrchr(dir, '\\');
+    if (alt && (!cut || alt > cut)) cut = alt;
+    if (cut) *cut = '\0'; else dir[0] = '\0';
+    if (dir[0]) snprintf(out, cap, "%s/%s", dir, file);
+    else        snprintf(out, cap, "%s", file);
+}
+
 bool issd_mod_team_photo_path(int team_id, char *out, size_t cap) {
     bool found = false;
     for (int i = 0; ; i++) {
@@ -632,16 +663,8 @@ bool issd_mod_team_photo_path(int team_id, char *out, size_t cap) {
             const int slot = t->new_team ? t->assigned_slot : (int)t->team_id;
             if (slot != team_id) continue;
             if (!t->photo[0]) continue;
-            /* The photograph sits beside the pack that names it, so a
-             * pack is one folder a player can move around. */
-            char dir[256];
-            snprintf(dir, sizeof dir, "%s", pack->filepath);
-            char *cut = strrchr(dir, '/');
-            char *alt = strrchr(dir, '\\');
-            if (alt && (!cut || alt > cut)) cut = alt;
-            if (cut) *cut = '\0'; else dir[0] = '\0';
-            if (dir[0]) snprintf(out, cap, "%s/%s", dir, t->photo);
-            else        snprintf(out, cap, "%s", t->photo);
+            /* The photograph sits beside the pack that names it. */
+            pack_asset_path(pack, t->photo, out, cap);
             found = true;
         }
     }
@@ -660,18 +683,93 @@ bool issd_mod_team_flag_path(int team_id, char *out, size_t cap) {
             const int slot = t->new_team ? t->assigned_slot : (int)t->team_id;
             if (slot != team_id) continue;
             if (!t->flag[0]) continue;
-            char dir[256];
-            snprintf(dir, sizeof dir, "%s", pack->filepath);
-            char *cut = strrchr(dir, '/');
-            char *alt = strrchr(dir, '\\');
-            if (alt && (!cut || alt > cut)) cut = alt;
-            if (cut) *cut = '\0'; else dir[0] = '\0';
-            if (dir[0]) snprintf(out, cap, "%s/%s", dir, t->flag);
-            else        snprintf(out, cap, "%s", t->flag);
+            pack_asset_path(pack, t->flag, out, cap);
             found = true;
         }
     }
     return found;
+}
+
+/* Resolution is naming, not loading: the boot path decides whether the file
+ * opens, whether it is the right shape and whether its hash matches, and the
+ * player must keep playing the retail cartridge when any of that fails. */
+static void add_cartridge_note(IssdModCartridgeStatus *status, const char *why) {
+    if (!status || status->note_count >= ISSD_MOD_CARTRIDGE_NOTE_MAX) return;
+    snprintf(status->notes[status->note_count],
+             ISSD_MOD_CARTRIDGE_NOTE_SIZE, "%s", why);
+    status->note_count++;
+}
+
+bool issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
+                                char *file_out, size_t file_cap,
+                                bool *is_patch_out, char *sha256_out,
+                                size_t sha_cap,
+                                IssdModCartridgeStatus *status) {
+    if (pack_name_out && name_cap) pack_name_out[0] = 0;
+    if (file_out && file_cap) file_out[0] = 0;
+    if (sha256_out && sha_cap) sha256_out[0] = 0;
+    if (status) memset(status, 0, sizeof *status);
+
+    /* The stack is walked from its top down: the pack enabled last wins, as
+     * it does for every other field. The bottom-up accessor only counts
+     * slots, so collecting them first keeps the winning rule in one loop. */
+    int order[ISSD_MAX_MOD_PACKS];
+    int count = 0;
+    for (;; count++) {
+        if (count >= ISSD_MAX_MOD_PACKS) break;
+        const int pi = issd_mod_pack_at_order(count);
+        if (pi < 0) break;
+        order[count] = pi;
+    }
+
+    const IssdModPack *winner = NULL;
+    bool refused = false;
+    for (int slot = count - 1; slot >= 0; slot--) {
+        const IssdModPack *pack = &g_mod_packs[order[slot]];
+        const bool has_image = pack->cartridge_image[0] != 0;
+        const bool has_patch = pack->cartridge_patch[0] != 0;
+        if (!has_image && !has_patch) continue;
+
+        const char *label = pack->name[0] ? pack->name : base_name(pack->filepath);
+        if (has_image && has_patch) {
+            char why[96];
+            snprintf(why, sizeof why, "%s: cartridge names both image and patch",
+                     label);
+            issd_mod_result_note_error(why);
+            if (status && !status->reason[0])
+                snprintf(status->reason, sizeof status->reason, "%s", why);
+            refused = true;
+            continue;
+        }
+        if (winner) {
+            char why[96];
+            snprintf(why, sizeof why, "%s: cartridge shadowed by %s",
+                     label, winner->name[0] ? winner->name : "the pack above");
+            issd_mod_result_note_warning(why);
+            add_cartridge_note(status, why);
+            continue;
+        }
+        winner = pack;
+    }
+    if (!winner) {
+        if (status) {
+            status->state = refused ? ISSD_MOD_CARTRIDGE_REFUSED
+                                    : ISSD_MOD_CARTRIDGE_NONE;
+        }
+        return false;
+    }
+
+    const bool is_patch = winner->cartridge_patch[0] != 0;
+    const char *file = is_patch ? winner->cartridge_patch : winner->cartridge_image;
+    if (pack_name_out && name_cap)
+        snprintf(pack_name_out, name_cap, "%s", winner->name);
+    if (file_out && file_cap)
+        pack_asset_path(winner, file, file_out, file_cap);
+    if (is_patch_out) *is_patch_out = is_patch;
+    if (sha256_out && sha_cap)
+        snprintf(sha256_out, sha_cap, "%s", winner->cartridge_sha256);
+    if (status) status->state = ISSD_MOD_CARTRIDGE_WINNER;
+    return true;
 }
 
 const char *issd_mod_team_plate_name(int team_id) {

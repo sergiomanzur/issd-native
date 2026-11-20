@@ -42,6 +42,7 @@
 #include "issd_campaign.h"
 #include "issd_snapshot.h"
 #include "issd_mod.h"
+#include "issd_cartridge.h"
 #include "issd_stadium_scene.h"
 #include "issd_stadium_assets.h"
 #include "issd_menu.h"
@@ -273,6 +274,27 @@ void issd_restart_application(void) {
 static const uint8_t *g_rom_data;
 static size_t g_rom_size;
 
+/* The buffer LoadRomFile allocated, freed exactly once by the exit path. It
+ * is NOT the image the game necessarily plays: a substituted cartridge image
+ * belongs to issd_cartridge, which frees it in its release hook. Keeping the
+ * loader pointer separate is what stops the exit path from double-freeing a
+ * module-owned image after an in-process cartridge switch.
+ *
+ * `g_loaded_rom_size` is its size as read, copier header included when the
+ * file had one. `g_loaded_rom_pristine` is a copy taken before any pack wrote
+ * into it: with no cartridge pack the engine plays the loader buffer exactly
+ * as this branch found it (pre-existing behavior), and the save context must
+ * keep hashing those bytes even after a restart away from a cartridge pack. */
+static uint8_t *g_loaded_rom_data;
+static size_t g_loaded_rom_size;
+static uint8_t *g_loaded_rom_pristine;
+static size_t g_loaded_rom_pristine_size;
+
+/* Why the boot path refused a cartridge pack, kept until after
+ * issd_mod_reapply - whose reset clears the result counters the menu reads -
+ * so the player is told instead of getting a silent vanilla boot. */
+static char g_cartridge_refusal[192];
+
 static void IssdCaptureAppliedTeamNames(void) {
     for (unsigned i = 0; i < ISSD_ROM_TEAMS + ISSD_MAX_ADDED_TEAMS; ++i) {
         const char *name = issd_mod_team_plate_name((int)i);
@@ -327,6 +349,171 @@ static void IssdRefreshSaveContext(void) {
         issd_campaign_reset();
         issd_menu_refresh_continue();
     }
+}
+
+/* A cartridge pack toggled from the pause menu takes effect on the in-process
+ * restart path, which is the Android/soft-reset variant of "save and restart"
+ * (design ruling 1, 2026-11-19). Desktop relaunches the process and gets the
+ * boot path instead.
+ *
+ * Called after issd_mod_reapply, because that resets the result counters the
+ * resolver notes into and a resolve before it would lose its warnings. The
+ * module remembers which pack supplied the current base, so a restart that
+ * only toggled roster packs costs one comparison and no file reads.
+ *
+ * With no cartridge pack active the live image goes back to the loader buffer
+ * main owns, never the module's retail work copy: that is the buffer a boot
+ * without a cartridge pack plays, and the save context hashes its pristine
+ * copy. A rebase re-applies the packs on top of the new base, which resets
+ * the counters once more - so a refusal and the resolver's shadow notes are
+ * restated after that second pass. Returns true when the live image moved. */
+static const uint8_t *IssdLoaderBase(size_t *size) {
+    if (g_loaded_rom_pristine) {
+        if (size) *size = g_loaded_rom_pristine_size;
+        return g_loaded_rom_pristine;
+    }
+    if (size) *size = g_loaded_rom_size;
+    return g_loaded_rom_data;
+}
+
+/* The resolver's notes live in counters issd_mod_reapply resets, so a caller
+ * that re-applied must say them again or the player never sees the shadow. */
+static void IssdRestateCartridgeNotes(const IssdModCartridgeStatus *status) {
+    for (int i = 0; i < status->note_count; i++)
+        issd_mod_result_note_warning(status->notes[i]);
+}
+
+static bool IssdRebaseCartridge(void) {
+    char why[192] = "";
+    char pack_name[64] = "", cart_file[512] = "", cart_sha[73] = "";
+    bool cart_patch = false;   /* the resolver leaves it alone on a miss */
+    size_t cart_size = 0;
+    bool changed = false;
+    IssdModCartridgeStatus status;
+    const uint8_t *base = NULL;
+    const char *refusal = NULL;
+
+    const bool resolved = issd_mod_cartridge_resolve(
+        pack_name, sizeof pack_name, cart_file, sizeof cart_file,
+        &cart_patch, cart_sha, sizeof cart_sha, &status);
+    const char *label =
+        pack_name[0] ? pack_name : "Unnamed cartridge pack";
+
+    if (resolved) {
+        base = issd_cartridge_select_base(
+            cart_file, cart_patch, cart_sha, &cart_size, &changed,
+            why, sizeof why);
+        if (!base || why[0]) {
+            refusal = why[0] ? why : "no usable image";
+            base = NULL;
+        }
+    }
+    if (!resolved || !base) {
+        /* Nothing can play from the module: go back to the loader buffer,
+         * exactly as a boot without a cartridge pack does. */
+        issd_cartridge_clear_active();
+        base = g_loaded_rom_data;
+        cart_size = g_loaded_rom_size;
+        changed = false;
+        if (!base) return false;
+        if (!resolved && status.state == ISSD_MOD_CARTRIDGE_REFUSED)
+            refusal = status.reason;
+    }
+
+    const bool rebase = changed || g_rom_data != base || g_rom_size != cart_size;
+    if (!rebase) {
+        if (refusal) {
+            if (resolved)
+                printf("[Init] Cartridge pack '%s' refused (%s). Playing the "
+                       "retail cartridge.\n", label, refusal);
+            else
+                printf("[Init] Cartridge pack refused (%s). Playing the "
+                       "retail cartridge.\n", refusal);
+            issd_mod_result_note_warning(refusal);
+        }
+        /* The resolve ran after the reapply above, so its shadow notes are
+         * still live; no second reset happened here. */
+        return false;
+    }
+
+    /* The base is the cartridge before any pack is layered on it: that is
+     * what the save fingerprint hashes and what the pristine copy keeps, so
+     * it is captured before the reapply below writes over the live image.
+     * Returning to the loader buffer hashes the pristine copy taken at load
+     * time, not bytes an earlier pack reapply wrote there. */
+    const uint8_t *saved_source = base;
+    size_t saved_size = cart_size;
+    if (base == g_loaded_rom_data) saved_source = IssdLoaderBase(&saved_size);
+    uint8_t *saved = (uint8_t *)malloc(saved_size);
+    if (!saved)
+        Die("Unable to preserve the cartridge base for save compatibility");
+    memcpy(saved, saved_source, saved_size);
+    free(g_base_rom_data);
+    g_base_rom_data = saved;
+    g_rom_data = base;
+    g_rom_size = cart_size;
+
+    /* Going back to the loader buffer must hand set_image the bytes boot
+     * found, not the ones a pack's boot-time reapply left there: the module
+     * snapshots whatever it receives as its new pristine baseline, so without
+     * this a pack that was just disabled would survive as that baseline and
+     * its writes would stay active after the next reapply. */
+    if (base == g_loaded_rom_data && g_loaded_rom_pristine &&
+        g_loaded_rom_pristine_size == g_loaded_rom_size)
+        memcpy(g_loaded_rom_data, g_loaded_rom_pristine, g_loaded_rom_size);
+
+    issd_mod_rom_set_image((uint8_t *)base, cart_size);
+    issd_mod_reapply();
+
+    if (refusal) {
+        /* The note made before the second reapply died with it. */
+        if (resolved)
+            printf("[Init] Cartridge pack '%s' refused (%s). Playing the "
+                   "retail cartridge.\n", label, refusal);
+        else
+            printf("[Init] Cartridge pack refused (%s). Playing the retail "
+                   "cartridge.\n", refusal);
+        issd_mod_result_note_warning(refusal);
+    } else if (resolved) {
+        printf("[Init] Cartridge pack '%s' active.\n", label);
+    } else {
+        printf("[Init] No cartridge pack active; back to the loaded "
+               "cartridge.\n");
+    }
+    /* Also died with that second reset. */
+    IssdRestateCartridgeNotes(&status);
+    return true;
+}
+
+/* The runner keeps its own headerless 2 MB copy: snes_loadRom stripped a
+ * copier header at boot and the file is never re-read. After a rebase the live
+ * image must be copied in that same shape. A loader buffer that still carries
+ * its copier header (the no-cartridge case) keeps the pre-existing behavior:
+ * the engine plays it as loaded, and only the runner copy is stripped. Nothing
+ * but g_rom points into that buffer. */
+static void IssdSyncRunnerCartridge(void) {
+    if (!g_snes || !g_snes->cart || !g_snes->cart->rom || !g_rom_data)
+        Die("Cannot synchronize the applied cartridge image");
+    const uint8_t *source = g_rom_data;
+    size_t source_size = g_rom_size;
+    if (g_rom_size == (size_t)ISSD_RETAIL_SIZE + ISSD_COPIER_HEADER_SIZE) {
+        source += ISSD_COPIER_HEADER_SIZE;
+        source_size -= ISSD_COPIER_HEADER_SIZE;
+    }
+    if (source_size != (size_t)ISSD_RETAIL_SIZE)
+        Die("Cannot synchronize an un-normalized cartridge image");
+    if ((size_t)g_snes->cart->romSize != source_size) {
+        uint8_t *resized = (uint8_t *)malloc(source_size);
+        if (!resized) Die("Cannot resize the cartridge image");
+        memcpy(resized, source, source_size);
+        free(g_snes->cart->rom);
+        g_snes->cart->rom = resized;
+        g_snes->cart->romSize = (uint32_t)source_size;
+        g_rom = resized;
+        return;
+    }
+    if (g_snes->cart->rom != source)
+        memcpy(g_snes->cart->rom, source, source_size);
 }
 
 static void IssdSaveLoaded(void) {
@@ -2269,6 +2456,96 @@ int main(int argc, char **argv) {
         return 1;
     }
     printf("[Init] ROM read successfully (%zu bytes)\n", rom_size);
+    g_loaded_rom_data = rom_data;
+    /* The loader buffer is main's, and with no cartridge pack it is what the
+     * engine plays, byte for byte as before cartridge packs existed. Keep a
+     * pristine copy before any pack write: the save context hashes it, and a
+     * restart back to retail must not depend on bytes a pack left there. */
+    g_loaded_rom_size = rom_size;
+    g_loaded_rom_pristine = malloc(rom_size);
+    if (!g_loaded_rom_pristine) Die("Unable to preserve the loaded cartridge");
+    memcpy(g_loaded_rom_pristine, rom_data, rom_size);
+    g_loaded_rom_pristine_size = rom_size;
+
+    /* Zeroed first: the stash-refusal path never reaches the resolver, and
+     * "no cartridge pack" is then the truthful state. */
+    IssdModCartridgeStatus cart_status;
+    memset(&cart_status, 0, sizeof cart_status);
+
+    /* Cartridge packs replace the whole cartridge, and this is the substitution
+     * point: after LoadRomFile has read the file and before g_base_rom_data is
+     * captured below, so the save base, the mod pristine copy and SnesInit's
+     * cartridge all derive from the substitute instead of the retail bytes.
+     *
+     * Only a cartridge pack active changes the image. With none, the engine
+     * keeps the loader buffer exactly as read - a copier-headered dump keeps
+     * its 512-byte prefix, which is the pre-existing behavior (and save
+     * identity) of this path. When a cartridge pack plays, the engine runs
+     * the module's normalized, headerless 2 MB image; that image is what the
+     * save envelope then scopes, so a save made without the pack refuses to
+     * load under it. That is documented cartridge semantics, not a surprise.
+     *
+     * Ownership: LoadRomFile's buffer stays in g_loaded_rom_data and is freed
+     * once by the exit path. issd_cartridge keeps an immutable copy of the
+     * retail image and hands the engine a separate writable work copy, so pack
+     * writes can never poison a later IPS base; any image received from the
+     * module is module-owned and freed by issd_cartridge_release(), never here.
+     *
+     * Every failure plays the retail cartridge and says why: a hack that can
+     * be applied is better than a boot that refuses to start, but a silent
+     * vanilla boot when the player enabled a hack is worse than both. */
+    {
+        char why[192] = "";
+        char pack_name[64] = "", cart_file[512] = "", cart_sha[73] = "";
+        bool cart_patch = false;   /* the resolver leaves it alone on a miss */
+        size_t cart_size = 0;
+
+        /* The resolver reads the enabled stack, and the headless path enables
+         * it only further down; the launcher has already done so when it ran.
+         * Enabling twice is the same list in the same order. */
+        issd_mod_enable_from_list(g_issd_config.active_mod_packs);
+
+        if (!issd_cartridge_stash_retail(rom_data, rom_size, why, sizeof why)) {
+            /* Not a cartridge shape anything downstream can use, so no patch
+             * can be applied either: an IPS patch needs a verified base. Play
+             * what was read, exactly as before cartridge packs existed. */
+            printf("[Init] %s\n", why);
+        } else if (issd_mod_cartridge_resolve(pack_name, sizeof pack_name,
+                                              cart_file, sizeof cart_file,
+                                              &cart_patch, cart_sha,
+                                              sizeof cart_sha, &cart_status)) {
+            const char *label =
+                pack_name[0] ? pack_name : "Unnamed cartridge pack";
+            const uint8_t *base = issd_cartridge_select_base(
+                cart_file, cart_patch, cart_sha, &cart_size, NULL,
+                why, sizeof why);
+            if (why[0] || !base) {
+                if (!why[0]) snprintf(why, sizeof why, "no usable image");
+                printf("[Init] Cartridge pack '%s' refused (%s). Playing "
+                       "the retail cartridge.\n", label, why);
+                snprintf(g_cartridge_refusal, sizeof g_cartridge_refusal,
+                         "%s", why);
+                /* The work copy select_base fell back to is not what plays:
+                 * a boot without a cartridge pack keeps the loader buffer. */
+                issd_cartridge_clear_active();
+            } else {
+                rom_data = (uint8_t *)base;
+                rom_size = cart_size;
+                printf("[Init] Cartridge pack '%s' active.\n", label);
+            }
+        } else if (cart_status.state == ISSD_MOD_CARTRIDGE_REFUSED) {
+            /* A pack asked for a cartridge and cannot be used. This is the
+             * resolver's own state, not the global error counter: a broken
+             * unrelated pack is an error too and must not read as a refusal. */
+            printf("[Init] Cartridge pack refused (%s). Playing the retail "
+                   "cartridge.\n", cart_status.reason);
+            snprintf(g_cartridge_refusal, sizeof g_cartridge_refusal,
+                     "%s", cart_status.reason);
+        } else {
+            printf("[Init] No cartridge pack active.\n");
+        }
+    }
+
     g_rom_data = rom_data;
     g_rom_size = rom_size;
     g_base_rom_data = malloc(rom_size);
@@ -2282,6 +2559,12 @@ int main(int argc, char **argv) {
     issd_mod_rom_set_image(rom_data, rom_size);
     issd_mod_enable_from_list(g_issd_config.active_mod_packs);
     issd_mod_reapply();
+    /* The cartridge substitution ran before this reapply, whose reset clears
+     * the result counters: restate a refusal so the menu reports it too, and
+     * the resolver's shadow notes so they survive the reset. */
+    if (g_cartridge_refusal[0])
+        issd_mod_result_note_warning(g_cartridge_refusal);
+    IssdRestateCartridgeNotes(&cart_status);
     if (!issd_stadium_rebuild_registry()) Die("Invalid stadium profile resources");
     IssdLoadStadiumHd();
     IssdCaptureAppliedTeamNames();
@@ -2321,7 +2604,17 @@ int main(int argc, char **argv) {
     Snes *snes = SnesInit(rom_data, (int)rom_size);
     if (!snes) {
         fprintf(stderr, "[ERROR] SnesInit failed!\n");
-        free(rom_data);
+        /* One owner per buffer: the loader's buffer here, the module's images
+         * in its release hook, the save base copy here. `rom_data` may be a
+         * module-owned image, so it is never freed directly. */
+        free(g_loaded_rom_data);
+        g_loaded_rom_data = NULL;
+        free(g_loaded_rom_pristine);
+        g_loaded_rom_pristine = NULL;
+        g_loaded_rom_pristine_size = 0;
+        issd_cartridge_release();
+        free(g_base_rom_data);
+        g_base_rom_data = NULL;
         return 1;
     }
     printf("[Init] SnesInit succeeded! Recompiled CPU and SNES hardware runtime online.\n");
@@ -2589,9 +2882,12 @@ int main(int argc, char **argv) {
             issd_mod_reapply();
             if (!issd_stadium_rebuild_registry()) Die("Invalid stadium profile resources");
             IssdLoadStadiumHd();
-            if (!g_snes || !g_snes->cart ||
-                !issd_mod_copy_applied_rom(g_snes->cart->rom, g_snes->cart->romSize))
-                Die("Cannot synchronize the applied cartridge image");
+
+            /* Re-substitute the cartridge before the applied image is copied
+             * into the runner's cart, so a pack enabled or disabled here is
+             * what the restarted match actually plays. */
+            (void)IssdRebaseCartridge();
+            IssdSyncRunnerCartridge();
             interp_bridge_reset_dynamic_cache();
             IssdCaptureAppliedTeamNames();
             g_save_gameplay_flags = UINT32_MAX;
@@ -3115,8 +3411,17 @@ int main(int argc, char **argv) {
 
     if (g_apu_mutex) SDL_DestroyMutex(g_apu_mutex);
     issd_stadium_scene_reset(g_snes ? g_snes->cart : NULL);
-    free(rom_data);
+    /* One owner per buffer: LoadRomFile's buffer is freed here; every cartridge
+     * image the module produced (including one a restart switched to) is freed
+     * by its release hook, never through the stale `rom_data` local. */
+    free(g_loaded_rom_data);
+    g_loaded_rom_data = NULL;
+    free(g_loaded_rom_pristine);
+    g_loaded_rom_pristine = NULL;
+    g_loaded_rom_pristine_size = 0;
+    issd_cartridge_release();
     free(g_base_rom_data);
+    g_base_rom_data = NULL;
     printf("[Shutdown] Clean exit complete.\n");
     return 0;
 }

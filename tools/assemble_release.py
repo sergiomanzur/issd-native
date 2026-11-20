@@ -73,7 +73,8 @@ def archive_tar(destination, files, prefix=''):
 
 def editor_sources():
     files = {f'tools/{name}': ROOT/'tools'/name for name in
-             ('mod_studio_launch.py', 'validate_mod.py', 'stadium_profile.py')}
+             ('mod_studio_launch.py', 'validate_mod.py', 'stadium_profile.py',
+              'convert_rom_hack.py')}
     for source in (ROOT/'tools/mod_studio').glob('*.py'):
         files[f'tools/mod_studio/{source.name}'] = source
     for name in ('baked.json', 'README.md'):
