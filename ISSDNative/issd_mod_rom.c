@@ -1467,13 +1467,17 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                        team->team_id, team->name);
             if (patch_formation(rom, rom_size, pack->name, team, n))
                 formations_patched++;
-            if (patch_kit(rom, rom_size, pack->name, team)) kits_patched++;
-            /* The keeper record is a separate palette behind its own
-             * table, so the strip write above never reaches it. Tone 1
-             * has no keeper counterpart, so only tone 0 is followed. */
-            if (team->skin_rgb[0] &&
-                patch_keeper_skin(rom, rom_size, pack->name, team))
-                keepers_patched++;
+            if (patch_kit(rom, rom_size, pack->name, team)) {
+                kits_patched++;
+                /* The keeper record is a separate palette behind its own
+                 * table, so the strip write above never reaches it. It is
+                 * painted only when the outfield kit was, or a refused kit
+                 * would leave the same team with two complexions. Tone 1
+                 * has no keeper counterpart, so only tone 0 is followed. */
+                if (team->skin_rgb[0] &&
+                    patch_keeper_skin(rom, rom_size, pack->name, team))
+                    keepers_patched++;
+            }
             /* Tone 1 and the select-screen heads are not part of the kit
              * record, so both are reached by the team's table slot - the
              * stock id, or the slot an added team was just handed. */

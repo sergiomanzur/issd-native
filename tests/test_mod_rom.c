@@ -872,6 +872,47 @@ int main(void) {
         assert(rom_word(rom, gk + 10) == 0x42FCu);
     }
 
+    {
+        /* The keeper is only repainted when the outfield kit was: a team
+         * whose kit record fails its signature keeps both palettes as the
+         * cartridge had them. Painting the keeper alone would put two
+         * complexions in one match, the mismatch this feature prevents. */
+        const size_t gk = keeper_at(3);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *gp = issd_mod_get_pack(0);
+        assert(gp);
+        gp->team_count = 1;
+        memset(&gp->teams[0], 0, sizeof gp->teams[0]);
+        gp->teams[0].team_id = 3;
+        gp->teams[0].kit_record = -1;
+        gp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+
+        memset(rom, 0xEE, sizeof rom);
+        keeper_header(rom, gk);
+        keeper_point(rom, 3, gk);
+        for (unsigned c = 0; c < 11; c++) {
+            rom[gk + 2 + c * 2]     = (uint8_t)(0x40u + c);
+            rom[gk + 2 + c * 2 + 1] = (uint8_t)(0x70u + c);
+        }
+        uint8_t keeper_before[22];
+        memcpy(keeper_before, rom + gk + 2, sizeof keeper_before);
+
+        /* The home pointer resolves, but the two constants the strip
+         * signature checks are not the cartridge's. */
+        kit_point(rom, KITS_HOME, 3, 27);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "the kit refusal is still reported");
+        assert(memcmp(keeper_before, rom + gk + 2,
+                      sizeof keeper_before) == 0 &&
+               "a refused outfield kit leaves its keeper's skin alone");
+    }
+
     /* --- tone 1 -------------------------------------------------------
      *
      * Tone 1 is separate from the kit record. Two per-team tables at
