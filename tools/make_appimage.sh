@@ -19,7 +19,11 @@ APPDIR="$(mktemp -d "$OUTPUT_DIR/ISSDNative.AppDir.XXXXXX")"
 fail() { echo "[AppImage] $* (staging retained at $APPDIR)" >&2; exit 1; }
 check_glibc() {
     local highest
-    highest=$(objdump -T "$1" | sed -n 's/.*(GLIBC_\([0-9][0-9.]*\)).*/\1/p' | sort -Vu | tail -1)
+    # objdump -T prints symbol versions either parenthesized in the name
+    # column (older binutils) or bare in a trailing column (sniper's
+    # binutils); match the token itself so both layouts give a floor,
+    # then drop the GLIBC_ prefix so the ceiling compares numerically.
+    highest=$(objdump -T "$1" | grep -o 'GLIBC_[0-9][0-9.]*' | sed 's/^GLIBC_//' | sort -Vu | tail -1)
     [[ -n "$highest" ]] || fail "Cannot establish glibc floor for $1"
     [[ "$(printf '%s\n%s\n' "$MAX_GLIBC" "$highest" | sort -V | tail -1)" == "$MAX_GLIBC" ]] || fail "$1 requires glibc $highest; maximum is $MAX_GLIBC"
     echo "[AppImage] $(basename "$1"): glibc <= $highest"
