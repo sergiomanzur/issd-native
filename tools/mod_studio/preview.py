@@ -8,7 +8,10 @@ in the file is not what the player will see:
   - a formation, because ten pairs of signed numbers are not a shape;
   - a pitch, because 138 x 90 and 114 x 74 are the same two numbers until you
     put them side by side;
-  - a player's appearance byte, because it does not do what its name says.
+  - a player's appearance byte, because it does not do what its name says;
+  - a team's two skin tones and a player's look card, because the pack's hex
+    is not the colour the loader stores and a hair style is a graphic, not a
+    number.
 
 Two of these are photographs of the game rather than drawings of it. The
 pitch a formation sits on is the plan view the stadium screen draws, one per
@@ -25,6 +28,11 @@ from PIL import Image, ImageDraw
 import os
 
 from . import model, repo
+
+try:                                    # imported as tools.mod_studio.preview
+    from .. import looks
+except ImportError:                     # run from inside tools/
+    import looks
 
 ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 _cache: dict = {}
@@ -264,4 +272,342 @@ def stat_bar(value: int, size=(150, 14)) -> Image.Image:
     fill = (int(210 - 150 * ramp), int(90 + 120 * ramp), int(90 + 60 * ramp))
     d.rectangle([0, 4, max(2, w * value / 99), h - 5], fill=fill)
     d.rectangle([0, 0, w - 1, h - 1], outline=(190, 194, 202))
+    return im
+
+
+# ------------------------------------------------- skin and hair, resolved ----
+# The hair graphics and the decode below are a port of the contributed patch's
+# `tools/mod_studio/looks.py` (`decode_tiles` / `hair_graphic` /
+# `standard_head`). Its offsets are measured, not guessed: $81:ED6D holds
+# thirteen 24-bit pointers four bytes apart, each naming a 24-frame strip of
+# 4bpp tiles at DATA_97CD58, and $A9:A7C4 is the standard body sprite, whose
+# head is the middle two tiles of its top row. Overlay pixels are drawn almost
+# entirely in palette index 1, the hair colour.
+HAIR_TABLE = 0x0ED6D        # $81:ED6D: thirteen 24-bit pointers, 4 bytes apart
+HAIR_STYLES = 13            # 14 and 15 are written but read past the table
+HAIR_FRAME = 3              # the frame the studio shows: fourth of 24
+BODY_SPRITE = 0xA9A7C4      # $A9:A7C4: a two-byte length, then the tiles
+
+BACKDROP = (236, 240, 246)
+TEXT = (60, 64, 72)
+MUTED_TEXT = (96, 102, 116)
+
+# ISSDNative/issd_mod_rom.c:write_skin_steps. The loader does not copy a
+# palette, it rebuilds one at these percentages of the authored colour, so a
+# preview that shows the authored hex would be showing a colour the game never
+# draws.
+SKIN_STEPS = (46, 68, 82, 89, 100)
+
+
+def _lorom(address: int) -> int:
+    """A 24-bit SNES address as a file offset."""
+    return ((address >> 16) & 0x7F) * 0x8000 + (address & 0x7FFF)
+
+
+def decode_tiles(data: bytes, bpp: int, columns: int) -> list:
+    """SNES planar tiles as rows of palette indices."""
+    size = bpp * 8
+    if bpp not in (2, 4, 8) or len(data) % size or (len(data) // size) % columns:
+        raise ValueError("bad tile data")
+    rows = len(data) // size // columns
+    out = []
+    for y in range(rows * 8):
+        row = []
+        for x in range(columns * 8):
+            tile = (y // 8) * columns + x // 8
+            colour = 0
+            for plane in range(bpp):
+                idx = tile * size + (plane // 2) * 16 + (y % 8) * 2 + plane % 2
+                colour |= ((data[idx] >> (7 - x % 8)) & 1) << plane
+            row.append(colour)
+        out.append(row)
+    return out
+
+
+def hair_graphic(rom, style: int):
+    """The overlay for hair_style 1-13 as 8x8 palette indices, or None."""
+    if rom is None:
+        return None
+    try:
+        style = int(style or 0)
+    except (TypeError, ValueError):
+        return None
+    if not 1 <= style <= HAIR_STYLES:
+        return None
+    try:
+        at = HAIR_TABLE + (style - 1) * 4
+        address = rom[at] | (rom[at + 1] << 8) | (rom[at + 2] << 16)
+        off = _lorom(address) + HAIR_FRAME * 32
+        return decode_tiles(bytes(rom[off:off + 32]), 4, 1)
+    except (IndexError, ValueError):
+        return None
+
+
+def standard_head(rom):
+    """hair_style 0: the head of the standard body sprite, shirt cropped out."""
+    if rom is None:
+        return None
+    try:
+        off = _lorom(BODY_SPRITE) + 2
+        body = decode_tiles(bytes(rom[off:off + 64]), 4, 2)
+    except (IndexError, ValueError):
+        return None
+    return [[0 if px >= 7 else px for px in row[4:12]] for row in body]
+
+
+def head(rom, style: int):
+    """The 8x8 head for a hair style, or None when there is no graphic."""
+    try:
+        style = int(style or 0)
+    except (TypeError, ValueError):
+        return None
+    return standard_head(rom) if style == 0 else hair_graphic(rom, style)
+
+
+# --------------------------------------------------------------- the tones --
+def skin_ramp(rgb) -> list:
+    """The five stored shades write_skin_steps derives from an authored skin."""
+    return [looks.to_rgb(looks.to555(
+        tuple(min(255, channel * step // 100) for channel in rgb)))
+        for step in SKIN_STEPS]
+
+
+def _stored(rgb):
+    """An authored colour as the cartridge stores it: five bits a channel."""
+    return looks.to_rgb(looks.to555(rgb))
+
+
+def _team_id(team):
+    tid = team.get("team_id") if isinstance(team, dict) else None
+    return tid if isinstance(tid, int) and not isinstance(tid, bool) else None
+
+
+def _tone_entries(team):
+    entries = team.get("skin_tones") if isinstance(team, dict) else None
+    return entries if isinstance(entries, list) else []
+
+
+def _has_looks(team) -> bool:
+    """Whether any player still carries the named look vocabulary."""
+    players = team.get("players") if isinstance(team, dict) else None
+    for player in players or []:
+        if isinstance(player, dict) and any(key in player for key in looks.LOOK_KEYS):
+            return True
+    return False
+
+
+def _nibbles(team) -> dict:
+    """How many players the pack already puts on each tone."""
+    counts = {0: 0, 1: 0}
+    players = team.get("players") if isinstance(team, dict) else None
+    for player in players or []:
+        if not isinstance(player, dict):
+            continue
+        try:
+            tone = int(player.get("skin_tone", 0) or 0)
+        except (TypeError, ValueError):
+            tone = 0
+        if tone in counts:
+            counts[tone] += 1
+    return counts
+
+
+def tone_report(team: dict, palettes=None) -> list:
+    """What each of a team's two tones is drawn with, and who wears it.
+
+    A tone with no `skin` part keeps the cartridge's own ramp - the fitter
+    writes such an entry when it leaves the team unchanged - so the report
+    shows the words the loader will leave alone. Counts and the closest-match
+    warning come from `tools/looks.py`, the same solver the fitter uses; they
+    are only meaningful while look keys remain in the pack.
+    """
+    team = team if isinstance(team, dict) else {}
+    entries = _tone_entries(team)
+    tid = _team_id(team)
+    exact = palettes is not None and tid is not None and palettes.has_kit(tid)
+    solving = _has_looks(team)
+    res = looks.resolve(palettes, team) if solving else None
+    counts = dict(res.tone_counts) if res is not None else _nibbles(team)
+    warning = None
+    if res is not None:
+        warning = next((w for w in res.warnings if "closest" in w.lower()), None)
+
+    report = []
+    for tone in (0, 1):
+        entry = (entries[tone] if tone < len(entries) and
+                 isinstance(entries[tone], dict) else {})
+        skin_text = entry.get("skin")
+        skin_rgb = model.parse_colour(skin_text)
+        if skin_rgb is not None:
+            ramp = skin_ramp(skin_rgb)
+        elif exact:
+            ramp = [looks.to_rgb(word)
+                    for word in palettes.current_skin(tid, tone)]
+        else:
+            ramp = skin_ramp(looks.SKIN_CANON["light" if tone == 0 else "dark"])
+
+        hair_text = entry.get("hair")
+        hair_rgb = model.parse_colour(hair_text)
+        authored_hair = hair_rgb is not None
+        if hair_rgb is not None:
+            hair_rgb = _stored(hair_rgb)
+        elif exact:
+            hair_rgb = looks.to_rgb(palettes.current_hair(tid, tone))
+        else:
+            hair_rgb = _stored(looks.HAIR_PAINT["brown"])
+
+        report.append({
+            "tone": tone,
+            "skin": skin_text if skin_rgb is not None else None,
+            "hair": hair_text if authored_hair else None,
+            "ramp": ramp,
+            "hair_rgb": hair_rgb,
+            "count": counts.get(tone, 0),
+            "warning": warning if tone == 0 else None,
+        })
+    return report
+
+
+def _tone_colours(team, tone, palettes=None, report=None) -> list:
+    """A tone as the sprite's sixteen palette entries: 0 clear, 1 hair, 2-6
+    skin, the rest the strip."""
+    report = report or tone_report(team, palettes)
+    out = [None] * 16
+    for index, colour in enumerate(report[tone]["ramp"]):
+        out[looks.KIT_SKIN + index] = colour
+    out[looks.KIT_HAIR] = report[tone]["hair_rgb"]
+    tid = _team_id(team)
+    if palettes is not None and tid is not None and palettes.has_kit(tid):
+        kit = palettes.teams[tid]["kit"] or []
+        for index in range(7, min(16, len(kit))):
+            out[index] = looks.to_rgb(kit[index])
+    return out
+
+
+def _swatch_row(ramp, hair, size) -> Image.Image:
+    """The five skin shades and the hair colour, as a strip."""
+    w, h = size
+    im = Image.new("RGB", size, BACKDROP)
+    d = ImageDraw.Draw(im)
+    cell = w / 6.0
+    for i, colour in enumerate(ramp[:5]):
+        d.rectangle([i * cell, 0, (i + 1) * cell - 2, h - 1], fill=colour)
+    d.rectangle([5 * cell, 0, w - 1, h - 1], fill=hair)
+    return im
+
+
+def _wrapped(d, text, xy, width, fill, max_lines=3):
+    words, lines, line = text.split(), [], ""
+    for word in words:
+        candidate = (line + " " + word).strip()
+        if line and d.textlength(candidate) > width:
+            lines.append(line)
+            line = word
+        else:
+            line = candidate
+    if line:
+        lines.append(line)
+    x, y = xy
+    for i, line in enumerate(lines[:max_lines]):
+        d.text((x, y + i * 11), line, fill=fill)
+
+
+def palette_pair(team: dict, palettes=None, size=(366, 178)) -> Image.Image:
+    """Both tones' five-shade skin ramps and hair, with who wears which.
+
+    The colours are the loader's own derivation, not the pack's hex; the
+    counts and the closest-match line come from the solver. This is the team
+    pane's "Skin tones" picture.
+    """
+    report = tone_report(team, palettes)
+    w, h = size
+    im = Image.new("RGB", size, BACKDROP)
+    d = ImageDraw.Draw(im)
+    gap = 8
+    column = (w - gap * 3) // 2
+
+    for tone, entry in enumerate(report):
+        x0 = gap + tone * (column + gap)
+        d.text((x0, 6), "Tone %d" % tone, fill=INK)
+        d.text((x0, 19), "%d player%s" % (entry["count"],
+                                          "" if entry["count"] == 1 else "s"),
+               fill=MUTED_TEXT)
+        im.paste(_swatch_row(entry["ramp"], entry["hair_rgb"], (column, 28)),
+                 (x0, 34))
+        skin_hex = entry["skin"] or "#%02X%02X%02X" % entry["ramp"][-1]
+        hair_hex = entry["hair"] or "#%02X%02X%02X" % entry["hair_rgb"]
+        d.text((x0, 68), "skin %s%s" % (
+            skin_hex, "" if entry["skin"] else " (cartridge)"), fill=TEXT)
+        d.text((x0, 82), "hair %s%s" % (
+            hair_hex, "" if entry["hair"] else " (cartridge)"), fill=TEXT)
+
+    warning = next((entry["warning"] for entry in report if entry["warning"]),
+                   None)
+    if warning:
+        d.rectangle([0, h - 42, w - 1, h - 1], fill=(250, 226, 200))
+        _wrapped(d, warning, (8, h - 36), w - 16, (160, 80, 0))
+    else:
+        _wrapped(d, "The cartridge can draw two skin and hair combinations "
+                    "per team; every player is on one of them.",
+                 (8, h - 32), w - 16, MUTED_TEXT, 2)
+    d.rectangle([0, 0, w - 1, h - 1], outline=(200, 204, 212))
+    return im
+
+
+def look_card(player: dict, team: dict, palettes=None,
+              size=(250, 124)) -> Image.Image:
+    """One player's head with his tone's swatches - the per-player look.
+
+    The head is the real graphic: the standard sprite head for hair_style 0,
+    or the overlay the cartridge's table names for 1-13, drawn in the palette
+    his `skin_tone` selects. Without a cartridge, or for a style past the
+    table, the card says so rather than inventing a face.
+    """
+    player = player if isinstance(player, dict) else {}
+    try:
+        tone = 1 if int(player.get("skin_tone", 0) or 0) == 1 else 0
+    except (TypeError, ValueError):
+        tone = 0
+    try:
+        style = int(player.get("hair_style", 0) or 0)
+    except (TypeError, ValueError):
+        style = 0
+
+    report = tone_report(team, palettes)
+    colours = _tone_colours(team, tone, palettes, report)
+    rom = getattr(palettes, "rom", None) if palettes is not None else None
+
+    w, h = size
+    im = Image.new("RGB", size, BACKDROP)
+    d = ImageDraw.Draw(im)
+    scale = max(1, (h - 16) // 8)
+    side = 8 * scale
+    face = Image.new("RGB", (side, side), BACKDROP)
+    fd = ImageDraw.Draw(face)
+    grid = head(rom, style)
+    if grid is None:
+        fd.rectangle([0, 0, side - 1, side - 1], outline=(190, 194, 202))
+        fd.text((6, side // 2 - 6),
+                "no cartridge" if rom is None else "no graphic",
+                fill=(120, 124, 134))
+    else:
+        for y, row in enumerate(grid):
+            for x, pixel in enumerate(row):
+                colour = colours[pixel] if pixel < len(colours) else None
+                if colour is not None:
+                    fd.rectangle([x * scale, y * scale, (x + 1) * scale - 1,
+                                  (y + 1) * scale - 1], fill=colour)
+    im.paste(face, (6, 6))
+
+    x = 6 + side + 10
+    im.paste(_swatch_row(report[tone]["ramp"], report[tone]["hair_rgb"],
+                         (max(20, w - x - 6), 20)), (x, 8))
+    d.text((x, 36), "Tone %d" % tone, fill=INK)
+    caption = str(player.get("name") or player.get("position") or "this player")
+    d.text((x, 50), caption[:28], fill=TEXT)
+    d.text((x, 64), "hair style %d" % style, fill=MUTED_TEXT)
+    if grid is None:
+        d.text((x, 78), "no graphic" if rom is not None else "no cartridge",
+               fill=(150, 120, 90))
+    d.rectangle([0, 0, w - 1, h - 1], outline=(200, 204, 212))
     return im
