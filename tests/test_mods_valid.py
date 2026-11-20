@@ -35,8 +35,9 @@ def test_shipped_packs_validate():
 # no team's strip is another's. The checker used to carry a list of teams it
 # claimed shared one (record 17 and 53) and warned when they were recoloured
 # without a kit_record; that warning described sharing the image does not
-# have. The real sharing is in the alternate skin and hair records, which the
-# loader counts and reports itself.
+# have. The runtime counts real pointer sharing when it applies a strip, and a
+# pack's tone-1 records are written fresh, so nothing reaches the cartridge's
+# shared alternate records.
 def test_colour_on_a_former_shared_strip_team_is_clean():
     report = _report(_team(team_id=15, shirt="#C8102E", shorts="#123A6B",
                            socks="#FFFFFF"))

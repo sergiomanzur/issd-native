@@ -486,7 +486,7 @@ library counts its roles the way its label claims.
 ## 6a. Strips, skin tones, plates and squad photographs
 
 Four things carry a team's identity on screen, and each is reached a
-different way; the last subsection turns a description of a player into the
+different way; a later subsection turns a description of a player into the
 palette he is drawn with.
 
 ### The strip
@@ -514,8 +514,10 @@ and away palette addresses from the cartridge's pointer tables; measured on
 the retail image, those 86 pointers name 86 distinct records, so recolouring
 a team's strip changes only that team. The sharing the cartridge does have is
 in the alternate skin and hair records: eleven teams point at four skin
-records and thirty-four at four hair records, so repainting a tone-1 record
-can reach other teams, and the loader says how many.
+records and thirty-four at four hair records. Pack tone-1 writes always add
+fresh records in `$89:FA42` and repoint only the writing team's entries, so
+they never reach those shared records; the sharing matters only to someone
+editing the cartridge image directly.
 
 `kit_record` redirects both of a team's strip pointers to a record from 0 to
 83 after checking the palette's signature, leaving its former records alone.
@@ -593,8 +595,9 @@ labelling: it finds the retail cartridge, picks the two palettes closest to
 what the squad asked for, rewrites the pack into `skin_tones` and
 `skin_tone`, and warns for each player it cannot show exactly.
 [APPEARANCE_GUIDE.md](APPEARANCE_GUIDE.md) has the vocabulary (two skin tones,
-five hair colours, thirteen hair styles) and a ready-to-paste prompt for
-labelling photos with an LLM.
+five hair colours, and fourteen `hair_style` values - the standard head and
+thirteen overlays) and a ready-to-paste prompt for labelling photos with an
+LLM.
 
 ### The name plate
 

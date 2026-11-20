@@ -51,8 +51,10 @@ SQUAD_SLOTS = 20
 
 # Kit palettes: records 0-83, the numbers a pack's `kit_record` may name.
 # Measured on the retail image, all 86 home and away pointers name distinct
-# records, so no team's strip is another's; the sharing that does exist is
-# in the alternate skin and hair tables, which the loader counts and reports.
+# records, so no team's strip is another's. A static "this team shares its
+# strip" list was therefore wrong: the runtime counts real pointer sharing
+# when it applies a strip, and a pack's tone-1 records are written fresh, so
+# there is no pack-time sharing for this checker to predict.
 KIT_RECORDS = 84
 
 # What the host-drawn team plate fits.
