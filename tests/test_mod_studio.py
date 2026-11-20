@@ -10,6 +10,7 @@ an editor quietly eats somebody's work.
 import json
 import os
 import sys
+import tkinter as tk
 
 import pytest
 
@@ -328,6 +329,12 @@ def test_a_palette_pair_is_the_loaders_own_ramp():
     assert [t["hair"] for t in report] == ["#3A2A1A", "#101010"]
     assert [t["count"] for t in report] == [1, 1]
     assert not any(t["warning"] for t in report)
+    # The pack wrote these colours, so they are neither the cartridge's nor
+    # the editor's invention.
+    assert [t["skin_source"] for t in report] == ["authored", "authored"]
+    assert [t["hair_source"] for t in report] == ["authored", "authored"]
+    assert [preview.tone_caption(t, "skin") for t in report] == \
+        ["#EAC086", "#6B4226"]
 
 
 @needs_rom
@@ -351,6 +358,48 @@ def test_a_tone_without_a_skin_part_shows_the_cartridge_ramp():
             in preview.palette_pair(team, palettes).getcolors(maxcolors=1 << 20)}
     for colour in report[0]["ramp"]:
         assert colour in seen
+
+
+def test_a_tone_without_a_cartridge_says_its_colours_are_assumed():
+    """The fitter omits `skin` from a tone that keeps the team's stock palette.
+    With no cartridge there is no ramp to read, so the preview invents a
+    default - and must say so rather than call it the cartridge's."""
+    team = {"team_id": 9, "name": "France", "players": [],
+            "skin_tones": [{"hair": "#3A2A1A"}, {"hair": "#101010"}]}
+    report = preview.tone_report(team, None)
+    assert [t["skin_source"] for t in report] == ["default", "default"]
+    assert [t["hair_source"] for t in report] == ["authored", "authored"]
+    for entry in report:
+        skin = preview.tone_caption(entry, "skin")
+        assert "assumed" in skin
+        assert "(cartridge)" not in skin
+    # The authored hair is still the pack's own colour, so it is neither
+    # assumed nor the cartridge's.
+    assert [preview.tone_caption(t, "hair") for t in report] == \
+        ["#3A2A1A", "#101010"]
+    assert preview.has_assumed(report)
+    note = preview.pair_note(report)
+    assert "no cartridge" in note.lower()
+    assert "assumed" in note.lower()
+
+
+@needs_rom
+def test_only_a_loaded_cartridge_earns_the_cartridge_caption():
+    """The same team, with a Palettes in hand, really is showing the
+    cartridge's ramp - so that is when the caption may say so."""
+    import looks
+
+    palettes = looks.Palettes(cartridge.load_rom(ROM))
+    team = {"team_id": 9, "name": "France", "players": [],
+            "skin_tones": [{"hair": "#3A2A1A"}, {}]}
+    report = preview.tone_report(team, palettes)
+    assert [t["skin_source"] for t in report] == ["cartridge", "cartridge"]
+    assert [t["hair_source"] for t in report] == ["authored", "cartridge"]
+    for entry in report:
+        assert "(cartridge)" in preview.tone_caption(entry, "skin")
+    assert preview.tone_caption(report[0], "hair") == "#3A2A1A"
+    assert not preview.has_assumed(report)
+    assert "assumed" not in preview.pair_note(report).lower()
 
 
 def test_a_pair_captions_the_players_who_get_a_closest_match():
@@ -452,12 +501,13 @@ def _studio_or_skip():
 
     A second Tk root in one process on Windows occasionally cannot read Tcl's
     own init.tcl. That is a display problem, not a pane problem, so it skips
-    the same way a missing display does.
+    the same way a missing display does. Only Tcl's own failure is caught: a
+    broken `Studio.__init__` or pane builder must fail the test, not skip it.
     """
     try:
         from mod_studio.app import Studio
         return Studio()
-    except Exception as exc:                      # pragma: no cover
+    except tk.TclError as exc:                    # pragma: no cover
         pytest.skip("no usable display: %s" % exc)
 
 
@@ -493,6 +543,34 @@ def test_every_editor_pane_builds():
         studio.show_selected()
         studio.update_idletasks()
         assert studio.look_card_label is not None
+    finally:
+        studio.destroy()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY") and sys.platform != "win32",
+                    reason="needs a display")
+@needs_rom
+def test_a_pane_reads_a_remembered_cartridge_without_a_dialog(monkeypatch):
+    """The skin preview wants the cartridge's palettes before the user has
+    imported anything. A remembered dump is read headlessly - a pane never
+    opens a file dialog - and with nothing to read it falls back honestly."""
+    from mod_studio import app as app_module
+
+    def no_dialog(*_args, **_kwargs):
+        pytest.fail("building a pane opened a file dialog")
+
+    monkeypatch.setattr(app_module.filedialog, "askopenfilename", no_dialog)
+    studio = _studio_or_skip()
+    try:
+        studio._remember_rom = lambda _path: None
+        studio.rom = None
+        studio.rom_path = ROM
+        assert studio._palettes() is not None
+        assert studio.rom is not None
+
+        studio.rom = None
+        studio.rom_path = None
+        assert studio._palettes() is None
     finally:
         studio.destroy()
 

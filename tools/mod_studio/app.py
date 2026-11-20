@@ -616,14 +616,17 @@ class Studio(tk.Tk):
         self._photo_row(f, 13, team)
 
     def _palettes(self):
-        """The cartridge's palette tables, or None before one is loaded.
+        """The cartridge's palette tables, or None when none can be had.
 
         `Palettes` reads the whole image, so it is cached against the bytes
         it was built from. A pane must never open a file dialog to draw
-        itself: with no cartridge the previews fall back to the pack's own
-        colours and say so.
+        itself: a remembered cartridge is loaded headlessly (`ask=False`), and
+        with none the previews fall back to the pack's own colours and say the
+        rest are assumptions.
         """
         rom = self.rom
+        if rom is None:
+            rom = self.cartridge_bytes(ask=False, quiet=True)
         if rom is None:
             return None
         if self._looks_palettes is None or self._looks_palettes.rom is not rom:
@@ -646,8 +649,10 @@ class Studio(tk.Tk):
         ttk.Label(box, text="A team has two palettes, so at most two skin and "
                             "hair combinations reach the pitch. The shades are "
                             "the five the loader rebuilds from each authored "
-                            "colour; a tone with no skin colour keeps the "
-                            "cartridge's own ramp.",
+                            "colour. A tone with no skin colour keeps the "
+                            "cartridge's own ramp when one is loaded; with no "
+                            "cartridge the preview assumes one and labels it "
+                            "(assumed).",
                   style="Muted.TLabel", wraplength=560, justify="left").grid(
             row=1, column=0, columnspan=2, sticky="w", pady=(2, 8))
         image = ttk.Label(box, style="Panel.TLabel")
@@ -661,14 +666,15 @@ class Studio(tk.Tk):
             photo = ImageTk.PhotoImage(preview.palette_pair(team, palettes))
             self._images.append(photo)
             image.configure(image=photo)
+            report = preview.tone_report(team, palettes)
             lines = []
-            for entry in preview.tone_report(team, palettes):
-                skin = entry["skin"] or ("#%02X%02X%02X (cartridge)"
-                                         % entry["ramp"][-1])
-                hair = entry["hair"] or ("#%02X%02X%02X (cartridge)"
-                                         % entry["hair_rgb"])
+            for entry in report:
                 lines.append("Tone %d:  skin %s, hair %s"
-                             % (entry["tone"], skin, hair))
+                             % (entry["tone"],
+                                preview.tone_caption(entry, "skin"),
+                                preview.tone_caption(entry, "hair")))
+            if preview.has_assumed(report):
+                lines.append(preview.NO_CARTRIDGE_NOTE)
             values.configure(text="\n".join(lines))
 
         redraw()
@@ -1017,8 +1023,12 @@ class Studio(tk.Tk):
         except Exception:
             pass
 
-    def cartridge_bytes(self, ask=True):
-        """The cartridge, asked for once and kept."""
+    def cartridge_bytes(self, ask=True, quiet=False):
+        """The cartridge, asked for once and kept.
+
+        `quiet` is for a pane drawing itself: it still tries a remembered
+        dump, but a bad one must not raise a modal error box mid-redraw.
+        """
         if self.rom is not None:
             return self.rom
         path = self.rom_path
@@ -1036,7 +1046,8 @@ class Studio(tk.Tk):
         try:
             self.rom = cartridge.load_rom(path)
         except Exception as exc:
-            messagebox.showerror(APP_NAME, "%s" % exc, parent=self)
+            if not quiet:
+                messagebox.showerror(APP_NAME, "%s" % exc, parent=self)
             self.rom_path = None
             return None
         self.rom_path = path

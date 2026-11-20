@@ -292,6 +292,13 @@ BACKDROP = (236, 240, 246)
 TEXT = (60, 64, 72)
 MUTED_TEXT = (96, 102, 116)
 
+# What the pair picture says when it has had to invent a colour. The caption
+# beside such a shade says "(assumed)"; this is the sentence underneath.
+NO_CARTRIDGE_NOTE = ("No cartridge loaded: a colour marked (assumed) is the "
+                     "editor's default, not this team's palette.")
+TWO_TONES_NOTE = ("The cartridge can draw two skin and hair combinations per "
+                  "team; every player is on one of them.")
+
 # ISSDNative/issd_mod_rom.c:write_skin_steps. The loader does not copy a
 # palette, it rebuilds one at these percentages of the authored colour, so a
 # preview that shows the authored hex would be showing a colour the game never
@@ -417,9 +424,12 @@ def tone_report(team: dict, palettes=None) -> list:
 
     A tone with no `skin` part keeps the cartridge's own ramp - the fitter
     writes such an entry when it leaves the team unchanged - so the report
-    shows the words the loader will leave alone. Counts and the closest-match
-    warning come from `tools/looks.py`, the same solver the fitter uses; they
-    are only meaningful while look keys remain in the pack.
+    reads it when a `Palettes` is supplied. With no cartridge there is no ramp
+    to read and the editor can only assume one; then the report says so
+    (`skin_source` / `hair_source` are "default", never "cartridge").
+    Counts and the closest-match warning come from `tools/looks.py`, the same
+    solver the fitter uses; they are only meaningful while look keys remain in
+    the pack.
     """
     team = team if isinstance(team, dict) else {}
     entries = _tone_entries(team)
@@ -440,32 +450,74 @@ def tone_report(team: dict, palettes=None) -> list:
         skin_rgb = model.parse_colour(skin_text)
         if skin_rgb is not None:
             ramp = skin_ramp(skin_rgb)
+            skin_source = "authored"
         elif exact:
             ramp = [looks.to_rgb(word)
                     for word in palettes.current_skin(tid, tone)]
+            skin_source = "cartridge"
         else:
             ramp = skin_ramp(looks.SKIN_CANON["light" if tone == 0 else "dark"])
+            skin_source = "default"
 
         hair_text = entry.get("hair")
         hair_rgb = model.parse_colour(hair_text)
         authored_hair = hair_rgb is not None
         if hair_rgb is not None:
             hair_rgb = _stored(hair_rgb)
+            hair_source = "authored"
         elif exact:
             hair_rgb = looks.to_rgb(palettes.current_hair(tid, tone))
+            hair_source = "cartridge"
         else:
             hair_rgb = _stored(looks.HAIR_PAINT["brown"])
+            hair_source = "default"
 
         report.append({
             "tone": tone,
             "skin": skin_text if skin_rgb is not None else None,
             "hair": hair_text if authored_hair else None,
+            "skin_source": skin_source,
+            "hair_source": hair_source,
             "ramp": ramp,
             "hair_rgb": hair_rgb,
             "count": counts.get(tone, 0),
             "warning": warning if tone == 0 else None,
         })
     return report
+
+
+def has_assumed(report) -> bool:
+    """Whether any colour in the report is an invented default."""
+    return any(entry.get("skin_source") == "default" or
+               entry.get("hair_source") == "default" for entry in report)
+
+
+def tone_caption(entry: dict, part: str) -> str:
+    """The text beside a tone's swatches: its hex and where the colour is from.
+
+    Only a colour actually read from `Palettes` is labelled "(cartridge)"; an
+    invented default says "(assumed)". Authored colours stand alone because
+    the pack, not the editor or the cartridge, chose them.
+    """
+    if part == "skin":
+        text, source, shown = (entry["skin"], entry["skin_source"],
+                               entry["ramp"][-1])
+    elif part == "hair":
+        text, source, shown = (entry["hair"], entry["hair_source"],
+                               entry["hair_rgb"])
+    else:
+        raise ValueError("part must be 'skin' or 'hair'")
+    text = text or "#%02X%02X%02X" % shown
+    if source == "cartridge":
+        return "%s (cartridge)" % text
+    if source == "default":
+        return "%s (assumed)" % text
+    return text
+
+
+def pair_note(report) -> str:
+    """The sentence under the pair picture."""
+    return NO_CARTRIDGE_NOTE if has_assumed(report) else TWO_TONES_NOTE
 
 
 def _tone_colours(team, tone, palettes=None, report=None) -> list:
@@ -534,12 +586,8 @@ def palette_pair(team: dict, palettes=None, size=(366, 178)) -> Image.Image:
                fill=MUTED_TEXT)
         im.paste(_swatch_row(entry["ramp"], entry["hair_rgb"], (column, 28)),
                  (x0, 34))
-        skin_hex = entry["skin"] or "#%02X%02X%02X" % entry["ramp"][-1]
-        hair_hex = entry["hair"] or "#%02X%02X%02X" % entry["hair_rgb"]
-        d.text((x0, 68), "skin %s%s" % (
-            skin_hex, "" if entry["skin"] else " (cartridge)"), fill=TEXT)
-        d.text((x0, 82), "hair %s%s" % (
-            hair_hex, "" if entry["hair"] else " (cartridge)"), fill=TEXT)
+        d.text((x0, 68), "skin %s" % tone_caption(entry, "skin"), fill=TEXT)
+        d.text((x0, 82), "hair %s" % tone_caption(entry, "hair"), fill=TEXT)
 
     warning = next((entry["warning"] for entry in report if entry["warning"]),
                    None)
@@ -547,9 +595,7 @@ def palette_pair(team: dict, palettes=None, size=(366, 178)) -> Image.Image:
         d.rectangle([0, h - 42, w - 1, h - 1], fill=(250, 226, 200))
         _wrapped(d, warning, (8, h - 36), w - 16, (160, 80, 0))
     else:
-        _wrapped(d, "The cartridge can draw two skin and hair combinations "
-                    "per team; every player is on one of them.",
-                 (8, h - 32), w - 16, MUTED_TEXT, 2)
+        _wrapped(d, pair_note(report), (8, h - 32), w - 16, MUTED_TEXT, 2)
     d.rectangle([0, 0, w - 1, h - 1], outline=(200, 204, 212))
     return im
 
