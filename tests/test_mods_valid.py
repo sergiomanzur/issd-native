@@ -9,6 +9,7 @@ two palettes - one per player `skin_tone` value - and the loader is lenient
 where the checker is not: a mistyped colour is skipped in silence there and
 must be an error here, so a pack cannot look right and draw the wrong team.
 """
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +29,35 @@ def test_shipped_packs_validate():
         capture_output=True, text=True, cwd=REPO,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+# Measured on the retail image: all 86 home and away records are distinct, so
+# no team's strip is another's. The checker used to carry a list of teams it
+# claimed shared one (record 17 and 53) and warned when they were recoloured
+# without a kit_record; that warning described sharing the image does not
+# have. The runtime counts real pointer sharing when it applies a strip, and a
+# pack's tone-1 records are written fresh, so nothing reaches the cartridge's
+# shared alternate records.
+def test_colour_on_a_former_shared_strip_team_is_clean():
+    report = _report(_team(team_id=15, shirt="#C8102E", shorts="#123A6B",
+                           socks="#FFFFFF"))
+    assert not report.errors and not report.warnings, (report.errors,
+                                                       report.warnings)
+
+
+def test_colour_on_a_former_shared_strip_team_passes_strict(tmp_path):
+    pack = {"name": "Own strip", "teams": [
+        {"team_id": 15, "name": "Test side", "shirt": "#C8102E",
+         "players": []}]}
+    path = tmp_path / "own_strip.json"
+    path.write_text(json.dumps(pack), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(REPO / "tools/validate_mod.py"), "--strict",
+         str(path)],
+        capture_output=True, text=True, cwd=REPO,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "shares its strip" not in result.stdout, result.stdout
 
 
 def _report(team):

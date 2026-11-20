@@ -49,11 +49,13 @@ PITCH_LENGTH = (100, 140)
 PITCH_WIDTH = (64, 96)
 SQUAD_SLOTS = 20
 
-# Kit palettes: 84 of them, two per team for the 42 the select screen can
-# offer. Six teams share record 17 and two share 53, measured a match at a
-# time - see kKitRecord in ISSDNative/issd_mod_rom.c.
+# Kit palettes: records 0-83, the numbers a pack's `kit_record` may name.
+# Measured on the retail image, all 86 home and away pointers name distinct
+# records, so no team's strip is another's. A static "this team shares its
+# strip" list was therefore wrong: the runtime counts real pointer sharing
+# when it applies a strip, and a pack's tone-1 records are written fresh, so
+# there is no pack-time sharing for this checker to predict.
 KIT_RECORDS = 84
-SHARED_KIT_TEAMS = {15, 18, 19, 20, 21, 22, 23, 26}
 
 # What the host-drawn team plate fits.
 PLATE_CHARS = 12
@@ -293,12 +295,6 @@ def check_team(report, team, index, formations, seen_ids):
     stripes = team.get("stripes")
     if stripes is not None and not isinstance(stripes, bool):
         report.error(where, "stripes must be true or false")
-
-    if (team.get("shirt") or team.get("shorts") or team.get("socks")) and (
-            isinstance(team_id, int) and team_id in SHARED_KIT_TEAMS and
-            team.get("kit_record") is None):
-        report.warn(where, "this team shares its strip with others, so "
-                           "recolouring it recolours them too")
 
     # The two skin/hair tones the cartridge offers a team. Index 0 is the
     # default carried in the kit record's colours 1-6, index 1 the alternate
