@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- Add cartridge packs: a mod can substitute the whole 2 MB cartridge with a
+  full image or an IPS patch applied to the user's verified retail ROM, while
+  regular packs still layer on top under their existing guards. Boot, NMI and
+  deny-listed routines run interpreted; the rest is precompiled, so
+  data-preserving hacks work and engine rewrites do not. Documented in the
+  modding guide, including the rule that quick and manual saves are not
+  cartridge-scoped.
+- Add `tools/convert_rom_hack.py`, which turns a hack image or IPS into a
+  cartridge pack and writes a compatibility `REPORT.md` classifying every
+  changed region as honored data, interpreted code or not guaranteed.
+- Refuse added-team roster writes into cartridge free space that a cartridge
+  pack occupies, with a warning, instead of overwriting the hack's data.
+- Validate cartridge pack shape, asset paths and `sha256` in
+  `tools/validate_mod.py`.
 - Add two skin and hair tones per team for roster packs, chosen per player;
   let Mod Studio select the tone and describe the appearance byte, and make
   the validator reject malformed `skin_tones`.

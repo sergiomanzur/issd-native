@@ -165,6 +165,8 @@ The `mods/` directory includes Liga MX/Expansión, World Cup 2026-themed, Chivas
 
 Open the overlay's **Mods** page to select packs. Roster packs patch an in-memory copy of the ROM; the original dump is unchanged. Enabled packs form an ordered stack, with later packs taking precedence and overlaps reported. Save and restart to apply roster changes; background tile packs can be toggled live.
 
+Complete ROM hacks can be played as [cartridge packs](docs/MODDING.md#10a-cartridge-packs): a pack supplies an IPS patch against your own verified retail dump (or a full 2 MB image), and the converter's compatibility report states what carries over and what the precompiled engine ignores. Regular packs still layer on top.
+
 Run the visual editor from source with Python 3.10+ and Pillow:
 
 ```powershell
