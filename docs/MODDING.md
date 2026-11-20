@@ -945,11 +945,14 @@ There are two ways to carry the replacement, and a pack names exactly one:
 
 `image` and `patch` both resolve beside the pack file, the same rule the team
 and stadium graphics use. Naming both is an error - one would silently lose -
-and the pack is skipped, with the retail cartridge played. A `cartridge` block
+so the resolver ignores that pack's cartridge declaration and keeps walking the
+stack: a lower enabled cartridge pack supplies the image, and the retail
+cartridge plays only when no other cartridge pack is enabled. The pack itself
+still loads, and its teams and stadiums still apply on top. A `cartridge` block
 that names neither changes no cartridge and the validator rejects it. `sha256`
 is optional: when present, it is the expected hash of the substituted image,
-and a mismatch refuses the pack rather than playing something the author did
-not intend.
+and a mismatch keeps the retail cartridge rather than playing something the
+author did not intend.
 
 ### Making one with the converter
 
@@ -992,15 +995,26 @@ console says which pack and why, and the mods page carries the warning.
 
 ### In the stack
 
-The topmost enabled cartridge pack supplies the image; enabling more than one
-is allowed but the ones below are shadowed and reported. Like roster packs,
-switching a cartridge pack takes effect on **SAVE & RESTART**.
+When more than one cartridge pack is enabled, the one enabled last plays: packs
+are applied in list order and the topmost usable cartridge wins. The console
+log names the active pack at boot; a shadowed pack's cartridge is simply not
+used. Its teams and stadiums still apply like any other regular pack. Like
+roster packs, switching a cartridge pack takes effect on **SAVE & RESTART**.
 
-Regular packs still apply on top of the substituted cartridge. Their revision
-guards are unchanged: a write whose site no longer holds the vanilla bytes is
-refused with a warning instead of overwriting the hack. That is deliberate - a
-cartridge pack's own data wins, and a roster pack that assumes the retail
-layout is skipped where it would damage it, not half applied.
+Regular packs still apply on top of the substituted cartridge, but only some
+of their writes are guarded against a changed image. The kit palette tails, the
+stadium expansion sites, the added-team gate and its `$87:FC40` roster run, the
+bonus-team group count and the tone-1 free run are checked against the bytes
+the retail cartridge has there; when a check fails, that write is refused with
+a warning and the hack is left alone.
+
+Everything else is written at its retail offset without a revision check.
+Roster names and attributes, formations, stadium names and pitch dimensions,
+the select-screen head index and the stripes flag all overwrite whatever the
+cartridge pack put at those addresses. A roster pack layered over a hack will
+therefore replace the hack's squads and shapes there, byte for byte. That is
+what the stack means: the regular pack is applied later, and its author has to
+know which bytes it will claim.
 
 ### The honest limits
 

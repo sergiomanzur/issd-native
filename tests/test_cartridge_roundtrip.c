@@ -17,6 +17,7 @@
 #include "issd_cartridge.h"
 
 #define RETAIL_PATH "International Superstar Soccer Deluxe (USA).sfc"
+#define COPIER_HEADER 512u
 
 static uint8_t *read_file(const char *path, size_t *size) {
     FILE *f = fopen(path, "rb");
@@ -53,6 +54,12 @@ int main(int argc, char **argv) {
 
     size_t retail_size = 0;
     uint8_t *retail = read_file(RETAIL_PATH, &retail_size);
+    /* The loader accepts the launcher's copier-headered shape, so this gate
+     * must too; drop the 512-byte prefix before hashing and stashing. */
+    if (retail && retail_size == (size_t)ISSD_RETAIL_SIZE + COPIER_HEADER) {
+        memmove(retail, retail + COPIER_HEADER, ISSD_RETAIL_SIZE);
+        retail_size = ISSD_RETAIL_SIZE;
+    }
     if (!retail || retail_size != ISSD_RETAIL_SIZE) {
         fprintf(stderr, "cannot read the retail cartridge as %u bytes\n",
                 (unsigned)ISSD_RETAIL_SIZE);
