@@ -30,12 +30,15 @@
 #define IPS_MAGIC "PATCH"
 #define IPS_MAGIC_SIZE 5u
 
-/* The only mutable state: a private copy of the normalized retail image. It is
- * a copy rather than a borrow because the mod engine writes packs into the
- * buffer the game plays - which is the caller's buffer when no cartridge pack
- * is active - and an IPS base must keep hashing to retail. */
+/* The immutable retail image, and the work copy the engine may write. They are
+ * deliberately different buffers: the mod engine patches whatever image is in
+ * play, so handing it the stash would poison the IPS base (design finding from
+ * fix round 2). `retail_work` is refreshed from the stash on every selection
+ * that plays retail. */
 static uint8_t *retail_base;
 static size_t retail_size;
+static uint8_t *retail_work;
+static bool base_in_play_is_work;
 
 static bool fail(char *why, size_t cap, const char *fmt, ...) {
     if (why && cap) {
@@ -57,9 +60,14 @@ static uint32_t read_be24(const uint8_t *p) {
 
 bool issd_cartridge_stash_retail(const uint8_t *rom, size_t size,
                                  char *why, size_t why_cap) {
+    /* A boot-time operation: dropping the previous images invalidates whatever
+     * the caller last selected, so it must run before anything is in play. */
     free(retail_base);
     retail_base = NULL;
     retail_size = 0;
+    free(retail_work);
+    retail_work = NULL;
+    base_in_play_is_work = false;
 
     if (!rom || size == 0)
         return fail(why, why_cap, "No cartridge image to retain.");
@@ -81,8 +89,17 @@ bool issd_cartridge_stash_retail(const uint8_t *rom, size_t size,
         return fail(why, why_cap,
                     "No memory to retain the retail cartridge image.");
     memcpy(copy, source, ISSD_RETAIL_SIZE);
+    /* The engine's writable image is allocated once here, so selecting retail
+     * later can never fail for want of memory after dropping a live pack. */
+    uint8_t *work = (uint8_t *)malloc(ISSD_RETAIL_SIZE);
+    if (!work) {
+        free(copy);
+        return fail(why, why_cap,
+                    "No memory to prepare the retail cartridge work image.");
+    }
     retail_base = copy;
     retail_size = ISSD_RETAIL_SIZE;
+    retail_work = work;
     return true;
 }
 
@@ -264,11 +281,11 @@ bool issd_cartridge_apply_patch(const uint8_t *patch_data, size_t patch_size,
 
 /* --- the base image in play --------------------------------------------- */
 
-/* The pack currently supplying the base, and the buffer it produced. The
- * buffer is owned here; retail_base above stays borrowed from the caller.
- * `active_path`/`active_sha` are compared string-for-string, which is enough
- * to tell a restart that toggled another pack from one that changed which
- * cartridge is played. */
+/* The pack currently supplying the base, and the buffer it produced. Every
+ * buffer the module hands to the engine is owned here (or is the retail work
+ * copy above); nothing borrowed is ever returned. `active_path`/`active_sha`
+ * are compared string-for-string, which is enough to tell a restart that
+ * toggled another pack from one that changed which cartridge is played. */
 #define ACTIVE_PATH_SIZE 512u
 #define ACTIVE_SHA_SIZE  73u
 static uint8_t *active_image;
@@ -375,6 +392,17 @@ static bool prepare_cartridge(const char *file, bool is_patch,
     return true;
 }
 
+/* Hands the engine a pristine copy of the immutable stash. The work buffer is
+ * allocated with the stash, so this cannot fail once one exists. Calling it on
+ * every retail selection is what makes repeated restarts correct after a
+ * session of pack writes. */
+static uint8_t *retail_work_refresh(void) {
+    if (!retail_base || !retail_work) return NULL;
+    memcpy(retail_work, retail_base, ISSD_RETAIL_SIZE);
+    base_in_play_is_work = true;
+    return retail_work;
+}
+
 const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
                                           const char *sha256, size_t *size_out,
                                           bool *changed_out,
@@ -383,16 +411,27 @@ const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
     if (changed_out) *changed_out = false;
     if (why && why_cap) why[0] = 0;
 
-    /* No pack active: the retained retail cartridge is the base again. */
+    /* No pack active: the engine plays a work copy of the retail cartridge.
+     * It must not be the stash itself, because the mod engine will write pack
+     * bytes into whatever this returns and the IPS base has to stay retail. */
     if (!file || !*file) {
-        if (changed_out) *changed_out = active_image != NULL;
+        const bool was_playing_hack = active_image != NULL;
+        const bool work_was_live = base_in_play_is_work;
         free(active_image);
         active_image = NULL;
         active_path[0] = 0;
         active_sha[0] = 0;
         active_is_patch = false;
-        if (size_out) *size_out = retail_size;
-        return retail_base;
+        uint8_t *work = retail_work_refresh();
+        if (!work) {
+            fail(why, why_cap, "No retail cartridge is stashed.");
+            return NULL;
+        }
+        if (size_out) *size_out = ISSD_RETAIL_SIZE;
+        /* The refresh discards pack writes that may already be live, so a
+         * second retail selection is a change the caller must re-apply. */
+        if (changed_out) *changed_out = was_playing_hack || work_was_live;
+        return work;
     }
 
     /* Same cartridge as the one already in play: keep the buffer, say so. */
@@ -408,20 +447,24 @@ const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
     if (!prepare_cartridge(file, is_patch, sha256, &image, &image_size,
                            why, why_cap)) {
         /* Fail closed: a pack that cannot be built must not keep a previous
-         * (or half-built) image in play. An active image implies the retail
-         * stash exists, because select_base is only reached through it. */
-        if (changed_out) *changed_out = active_image != NULL;
+         * (or half-built) image in play. Fall back to a refreshed work copy,
+         * never the stash. */
+        const bool was_playing_hack = active_image != NULL;
+        const bool work_was_live = base_in_play_is_work;
         free(active_image);
         active_image = NULL;
         active_path[0] = 0;
         active_sha[0] = 0;
         active_is_patch = false;
-        if (size_out) *size_out = retail_size;
-        return retail_base;
+        uint8_t *work = retail_work_refresh();
+        if (size_out) *size_out = work ? ISSD_RETAIL_SIZE : 0;
+        if (changed_out) *changed_out = was_playing_hack || work_was_live;
+        return work;
     }
 
     free(active_image);
     active_image = image;
+    base_in_play_is_work = false;
     snprintf(active_path, sizeof active_path, "%s", file);
     snprintf(active_sha, sizeof active_sha, "%s", sha256 ? sha256 : "");
     active_is_patch = is_patch;
@@ -434,6 +477,9 @@ void issd_cartridge_release(void) {
     free(retail_base);
     retail_base = NULL;
     retail_size = 0;
+    free(retail_work);
+    retail_work = NULL;
+    base_in_play_is_work = false;
     free(active_image);
     active_image = NULL;
     active_path[0] = 0;

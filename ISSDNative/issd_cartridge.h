@@ -27,15 +27,21 @@ extern "C" {
 /* Copies the normalized retail image into memory the module owns and keeps it
  * for later patching. A 512-byte copier header is dropped here; only the
  * headerless 2 MB shape is retained. The caller keeps its own buffer and may
- * keep writing to it - the mod engine patches the image the game plays - which
- * cannot touch the retained copy. Every call replaces the previous copy, and a
+ * keep writing to it - the mod engine patches the image the game plays. The
+ * retained copy is immutable: nothing outside this module ever receives that
+ * pointer, and the engine is handed a separate work copy (see
+ * issd_cartridge_select_base). Every call replaces the previous copy, and a
  * refusal (including a NULL or zero-size buffer) clears it. `why` receives
- * prose on refusal and is untouched on success. */
+ * prose on refusal and is untouched on success.
+ *
+ * This is a boot-time operation: a refused call frees the retained images, so
+ * the caller must not have one selected for play at the moment it runs. */
 bool issd_cartridge_stash_retail(const uint8_t *rom, size_t size,
                                  char *why, size_t why_cap);
 
 /* The retained retail image and its size, or NULL/0 when nothing is stashed.
- * `size` may be NULL. The pointer belongs to the module. */
+ * `size` may be NULL. This is the immutable stash: it is the IPS base and the
+ * source of the work copy, never the image the engine writes into. */
 const uint8_t *issd_cartridge_retail(size_t *size);
 
 /* Frees every image the module owns: the retained retail copy and the pack
@@ -48,18 +54,23 @@ void issd_cartridge_release(void);
  * path, or NULL/empty when no cartridge pack is active; `is_patch` and
  * `sha256` are its other outputs (an empty hash is not checked).
  *
- * Returns a borrowed pointer to the image to play and, in `size_out`, its
- * size: the retained retail image when no pack is active, otherwise a buffer
- * this module owns and keeps alive until the base changes again. `changed_out`
- * is true when the returned base is not the one this call last returned, which
- * is the caller's signal to rebase the live image and the pristine copy.
+ * Always returns module-owned WRITABLE memory and, in `size_out`, its size:
+ * the pack image when one is active, otherwise a work copy of the immutable
+ * retail stash. The stash itself is never returned, because the mod engine
+ * writes packs into whatever this hands it. Every call that selects retail
+ * refreshes the work copy to pristine bytes first, so a restart after a session
+ * of pack writes starts clean and an IPS base stays verified.
  *
- * An image that cannot be opened, is not exactly 2 MB and LoROM/ROM-only, or
- * does not match the pack's hash is refused with prose in `why`; the retail
- * cartridge is returned instead so a broken pack never leaves a half-built
- * image in play. Asking for the same file, mode and hash as the current base
- * returns that same buffer and reports no change, so a restart that toggled
- * another pack does not re-read two megabytes. */
+ * Because that refresh discards pack writes that may already be in play,
+ * `changed_out` reports true both when the base moved and when a refreshed
+ * work copy is the base already playing; the caller must then rebase its live
+ * image and re-apply the packs. An image that cannot be opened, is not exactly
+ * 2 MB and LoROM/ROM-only, or does not match the pack's hash is refused with
+ * prose in `why`; the refreshed retail work copy is returned instead so a
+ * broken pack never leaves a half-built image in play. Asking for the same
+ * file, mode and hash as the current pack returns that same buffer and reports
+ * no change, so a restart that toggled another pack does not re-read two
+ * megabytes. */
 const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
                                           const char *sha256, size_t *size_out,
                                           bool *changed_out,

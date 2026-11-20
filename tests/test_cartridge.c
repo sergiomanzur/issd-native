@@ -721,6 +721,91 @@ static void hex_digest(const void *data, size_t size, char out[65]) {
         snprintf(out + i * 2, 3, "%02x", digest[i]);
 }
 
+/* --- the engine's image is a work copy of the immutable stash ------------ */
+
+/* Fix round 2 regression: select_base must never hand out the stash itself.
+ * The engine is given a work copy; pack writes land there, a later select
+ * refreshes it, and both the stash and every IPS apply stay pristine. This is
+ * the boot-with-no-pack path and the restart-to-retail path. */
+static void test_retail_work_copy(void) {
+    size_t retail_size = 0;
+    uint8_t *retail = load_retail(&retail_size);
+    assert(retail != NULL && retail_size == ISSD_RETAIL_SIZE);
+    assert(issd_cartridge_stash_retail(retail, retail_size, NULL, 0));
+
+    size_t stash_size = 0;
+    const uint8_t *stash = issd_cartridge_retail(&stash_size);
+    assert(stash != NULL && stash != retail &&
+           stash_size == ISSD_RETAIL_SIZE);
+
+    size_t size = 0;
+    bool changed = true;
+    char why[256];
+
+    /* Boot with no cartridge pack: the engine plays a copy, not the stash. */
+    why[0] = 'X';
+    const uint8_t *work = issd_cartridge_select_base(
+        NULL, false, "", &size, &changed, why, sizeof why);
+    assert(work != NULL && work != retail && work != stash &&
+           "the selected retail base is a work copy, never the stash");
+    assert(size == ISSD_RETAIL_SIZE && why[0] == 0);
+    assert(memcmp(work, stash, ISSD_RETAIL_SIZE) == 0);
+    assert(!changed);
+
+    /* What issd_mod_reapply does: write pack bytes into the live image. */
+    memset((uint8_t *)work + 0x1000, 0x00, 64);
+    memset((uint8_t *)work + 0x2000, 0xEE, 32);
+
+    /* The stash does not move and stays retail. */
+    size_t kept = 0;
+    assert(issd_cartridge_retail(&kept) == stash && kept == stash_size);
+    assert(issd_cartridge_sha256_matches(stash, kept, ISSD_RETAIL_SHA256) &&
+           "pack writes to the live image must never reach the stash");
+
+    /* An IPS pack enabled now must still find a verified retail base. */
+    Patch p;
+    ips_begin(&p);
+    ips_record(&p, 0x3000, "OK", 2);
+    ips_eof(&p);
+    static uint8_t out[ISSD_RETAIL_SIZE];
+    why[0] = 0;
+    assert(issd_cartridge_apply_patch(p.bytes, p.len, out, sizeof out,
+                                      why, sizeof why));
+    assert(memcmp(out + 0x1000, stash + 0x1000, 64) == 0);
+    assert(out[0x1000] != 0x00 && out[0x2000] != 0xEE);
+
+    /* Restart to retail: the same work buffer comes back refreshed, and the
+     * caller is told to re-apply because the refresh discarded pack writes. */
+    const uint8_t *again = issd_cartridge_select_base(
+        NULL, false, "", &size, &changed, why, sizeof why);
+    assert(again == work && size == ISSD_RETAIL_SIZE);
+    assert(changed && "a refreshed live image must be re-applied");
+    assert(memcmp(again + 0x1000, stash + 0x1000, 64) == 0 &&
+           again[0x1000] != 0x00);
+    assert(memcmp(again + 0x2000, stash + 0x2000, 32) == 0);
+
+    /* A pack image, then back to retail, also refreshes the work copy. */
+    static uint8_t image[ISSD_RETAIL_SIZE];
+    memset(image, 0x11, sizeof image);
+    image[0x7FD5] = 0x30;
+    image[0x7FD6] = 0x00;
+    char path[600];
+    snprintf(path, sizeof path, "%s/work.sfc", g_scratch);
+    assert(write_bytes(path, image, sizeof image));
+    const uint8_t *hack = issd_cartridge_select_base(
+        path, false, "", &size, &changed, why, sizeof why);
+    assert(hack != NULL && hack != work && hack != stash && changed);
+    memset((uint8_t *)hack + 0x1000, 0x55, 16);
+
+    const uint8_t *back = issd_cartridge_select_base(
+        NULL, false, "", &size, &changed, why, sizeof why);
+    assert(back == work && changed && size == ISSD_RETAIL_SIZE);
+    assert(memcmp(back + 0x1000, stash + 0x1000, 64) == 0);
+    assert(issd_cartridge_sha256_matches(stash, kept, ISSD_RETAIL_SHA256));
+
+    free(retail);
+}
+
 /* A restart changes the enabled stack without reloading the ROM file, so the
  * base has to be rebuilt from the retained retail image - and only when the
  * winner actually changed. This is the function both the boot path and the
@@ -747,11 +832,13 @@ static void test_select_base(void) {
     size_t size = 0;
     bool changed = true;
 
-    /* No pack: the retained retail image is the base and nothing changed. */
+    /* No pack: the engine is handed a work copy of the retained retail image
+     * and nothing changed. */
     why[0] = 'X';
     const uint8_t *base = issd_cartridge_select_base(
         NULL, false, "", &size, &changed, why, sizeof why);
-    assert(base == retained && size == ISSD_RETAIL_SIZE);
+    const uint8_t *work = base;
+    assert(base == work && base != retained && size == ISSD_RETAIL_SIZE);
     assert(!changed && "the retail image already in play is not a change");
     assert(why[0] == 0);
 
@@ -776,10 +863,12 @@ static void test_select_base(void) {
     zero_hash[64] = 0;
     again = issd_cartridge_select_base(path, false, zero_hash, &size, &changed,
                                        why, sizeof why);
-    assert(again == retained && changed && size == ISSD_RETAIL_SIZE);
+    assert(again == work && changed && size == ISSD_RETAIL_SIZE);
     assert(why[0] != 0 && strstr(why, "sha256") != NULL);
 
-    /* An image the engine cannot run is refused before the hash matters. */
+    /* An image the engine cannot run is refused before the hash matters. The
+     * refusal refreshes and returns the retail work copy, so it is a change:
+     * the refresh discarded whatever the previous reapply wrote there. */
     static uint8_t hirom[ISSD_RETAIL_SIZE];
     memcpy(hirom, image, sizeof hirom);
     hirom[0x7FD5] = 0x31;
@@ -788,7 +877,8 @@ static void test_select_base(void) {
     assert(write_bytes(hirom_path, hirom, sizeof hirom));
     again = issd_cartridge_select_base(hirom_path, false, "", &size, &changed,
                                        why, sizeof why);
-    assert(again == retained && !changed && size == ISSD_RETAIL_SIZE);
+    assert(again == work && size == ISSD_RETAIL_SIZE);
+    assert(changed && "a refreshed retail work copy must be re-applied");
     assert(why[0] != 0 && strstr(why, "HiROM") != NULL);
 
     /* The matching hash is accepted. */
@@ -796,7 +886,7 @@ static void test_select_base(void) {
     hex_digest(image, sizeof image, digest);
     base = issd_cartridge_select_base(path, false, digest, &size, &changed,
                                       why, sizeof why);
-    assert(base != NULL && base != retained && changed && why[0] == 0);
+    assert(base != NULL && base != work && changed && why[0] == 0);
     assert(memcmp(base + 0x1000, image + 0x1000, 1) == 0);
 
     /* A patch applies to the retained retail image, not to the pack that was
@@ -811,23 +901,23 @@ static void test_select_base(void) {
     const uint8_t *patched = issd_cartridge_select_base(ips, true, "", &size,
                                                         &changed, why,
                                                         sizeof why);
-    assert(patched != NULL && patched != retained && changed && why[0] == 0);
+    assert(patched != NULL && patched != work && changed && why[0] == 0);
     assert(size == ISSD_RETAIL_SIZE);
     assert(memcmp(patched + 0x2000, "PATCHED", 7) == 0);
     assert(memcmp(patched + 0x1000, retained + 0x1000, 4) == 0 &&
            "an IPS patch starts from retail, never from the previous hack");
 
-    /* Switching the pack off returns to the retail image. */
+    /* Switching the pack off returns to the retail work copy. */
     const uint8_t *back = issd_cartridge_select_base(NULL, false, "", &size,
                                                      &changed, why, sizeof why);
-    assert(back == retained && changed && size == ISSD_RETAIL_SIZE);
+    assert(back == work && changed && size == ISSD_RETAIL_SIZE);
 
     /* A file that is not there is refused with a reason and retail stays. */
     snprintf(path, sizeof path, "%s/missing.sfc", g_scratch);
     why[0] = 0;
     back = issd_cartridge_select_base(path, false, "", &size, &changed, why,
                                       sizeof why);
-    assert(back == retained && !changed);
+    assert(back == work && changed);
     assert(why[0] != 0);
 
     free(retail);
@@ -840,6 +930,7 @@ int main(int argc, char **argv) {
     test_retail_stash();
     test_ips_apply();
     test_stash_is_a_copy();
+    test_retail_work_copy();
     test_image_validation();
     test_sha256();
     test_cartridge_pack();

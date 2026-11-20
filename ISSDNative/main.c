@@ -374,7 +374,7 @@ static bool IssdRebaseCartridge(void) {
     if (!resolved && issd_mod_last_result()->errors)
         snprintf(refusal, sizeof refusal, "%s", issd_mod_last_result()->detail);
 
-    /* No pack active asks for the retail image back; an unchanged winner
+    /* No pack active asks for the retail work copy back; an unchanged winner
      * reports changed == false and leaves the live buffer alone. A size that
      * disagrees with the module's image means the live base is not the
      * normalized cartridge (a copier-headered dump booted before
@@ -2372,10 +2372,10 @@ int main(int argc, char **argv) {
      * cartridge all derive from the substitute instead of the retail bytes.
      *
      * Ownership: LoadRomFile's buffer stays in g_loaded_rom_data and is freed
-     * once by the exit path. issd_cartridge now keeps its own copy of the
-     * retail image, so the mod engine may keep writing into the loaded buffer
-     * without poisoning a later IPS base. Any image returned by the module is
-     * module-owned and freed by issd_cartridge_release(), never here.
+     * once by the exit path. issd_cartridge keeps an immutable copy of the
+     * retail image and hands the engine a separate writable work copy, so pack
+     * writes can never poison a later IPS base; any image received from the
+     * module is module-owned and freed by issd_cartridge_release(), never here.
      *
      * Every failure plays the retail cartridge and says why: a hack that can
      * be applied is better than a boot that refuses to start, but a silent
@@ -2399,17 +2399,20 @@ int main(int argc, char **argv) {
         } else {
             /* A copier header is not cartridge data, and the runner's cart
              * copy is the headerless 2 MB image (snes_loadRom strips it). Play
-             * the module's normalized copy from the start; otherwise every
-             * runtime read after an in-process restart would be 512 bytes off
-             * and g_rom_size would disagree with cart->romSize. */
-            size_t normalized = 0;
-            const uint8_t *retail = issd_cartridge_retail(&normalized);
-            if (retail && normalized == ISSD_RETAIL_SIZE &&
-                rom_size != ISSD_RETAIL_SIZE) {
-                rom_data = (uint8_t *)retail;
-                rom_size = normalized;
-                printf("[Init] Copier header removed; playing the normalized "
-                       "2,097,152-byte image.\n");
+             * the module's normalized WORK COPY from the start - never the
+             * stash, which the pack engine must not write into; otherwise the
+             * IPS base would be poisoned and every runtime read after an
+             * in-process restart would be 512 bytes off. */
+            if (rom_size != ISSD_RETAIL_SIZE) {
+                size_t normalized = 0;
+                const uint8_t *work = issd_cartridge_select_base(
+                    NULL, false, "", &normalized, NULL, why, sizeof why);
+                if (work && normalized == ISSD_RETAIL_SIZE) {
+                    rom_data = (uint8_t *)work;
+                    rom_size = normalized;
+                    printf("[Init] Copier header removed; playing the "
+                           "normalized 2,097,152-byte image.\n");
+                }
             }
 
             if (issd_mod_cartridge_resolve(pack_name, sizeof pack_name,
