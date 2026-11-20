@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.7.0-beta.1 — 2026-11-19
 
 - Add cartridge packs: a mod can substitute the whole 2 MB cartridge with a
   full image or an IPS patch applied to the user's verified retail ROM, while
