@@ -104,16 +104,17 @@ static void test_retail_stash(void) {
 
     size_t size = 0;
     const uint8_t *base = issd_cartridge_retail(&size);
-    assert(base == headered + COPIER_HEADER &&
-           "a copier header is dropped, not treated as cartridge data");
+    assert(base != NULL && base != headered + COPIER_HEADER &&
+           "the module keeps its own copy, not a pointer into the caller's "
+           "buffer");
     assert(size == ISSD_RETAIL_SIZE);
-    assert(base[0] == 0x11);
+    assert(base[0] == 0x11 && base[ISSD_RETAIL_SIZE - 1] == 0x11);
 
     static uint8_t plain[ISSD_RETAIL_SIZE];
     memset(plain, 0x22, sizeof plain);
     assert(issd_cartridge_stash_retail(plain, sizeof plain, why, sizeof why));
     base = issd_cartridge_retail(&size);
-    assert(base == plain && size == ISSD_RETAIL_SIZE);
+    assert(base != plain && size == ISSD_RETAIL_SIZE && base[0] == 0x22);
 
     /* One byte more than the headered shape matches no cartridge. */
     static uint8_t odd[ISSD_RETAIL_SIZE + 1];
@@ -263,17 +264,25 @@ static void test_ips_apply(void) {
         assert(sentinel[i] == 0xCC);
 
     /* Patching into the retained base itself would corrupt the very image a
-     * refused patch is supposed to leave alone, so the alias is refused. */
-    ips_begin(&p);
-    ips_record(&p, 0x1000, "OK", 2);
-    ips_eof(&p);
-    why[0] = 0;
-    assert(!issd_cartridge_apply_patch(p.bytes, p.len, (uint8_t *)retail,
-                                       sizeof out, why, sizeof why));
-    assert(strstr(why, "overlaps") != NULL);
-    assert(issd_cartridge_retail(&base_size) == retail);
-    assert(base_size == ISSD_RETAIL_SIZE);
-    assert(issd_cartridge_sha256_matches(retail, base_size, ISSD_RETAIL_SHA256));
+     * refused patch is supposed to leave alone, so the alias is refused. The
+     * retained base is the module's own copy, so only that pointer aliases. */
+    {
+        size_t retained_size = 0;
+        uint8_t *retained =
+            (uint8_t *)issd_cartridge_retail(&retained_size);
+        assert(retained != NULL && retained_size == ISSD_RETAIL_SIZE);
+        ips_begin(&p);
+        ips_record(&p, 0x1000, "OK", 2);
+        ips_eof(&p);
+        why[0] = 0;
+        assert(!issd_cartridge_apply_patch(p.bytes, p.len, retained,
+                                           retained_size, why, sizeof why));
+        assert(strstr(why, "overlaps") != NULL);
+        assert(issd_cartridge_retail(&base_size) == retained);
+        assert(base_size == ISSD_RETAIL_SIZE);
+        assert(issd_cartridge_sha256_matches(retained, base_size,
+                                             ISSD_RETAIL_SHA256));
+    }
     /* The stash is still usable for a separate output buffer. */
     why[0] = 0;
     assert(issd_cartridge_apply_patch(p.bytes, p.len, out, sizeof out,
@@ -289,6 +298,44 @@ static void test_ips_apply(void) {
     assert(!issd_cartridge_apply_patch(p.bytes, p.len, out, sizeof out,
                                        why, sizeof why));
     assert(why[0] != 0);
+
+    free(retail);
+}
+
+/* --- the stash is a copy, so mod writes cannot poison it ------------------ */
+
+/* The mod engine writes packs into the buffer main loaded and plays. If the
+ * module borrowed that buffer, every roster pack would poison the IPS base and
+ * an IPS cartridge pack could never be enabled in-process: the regression is
+ * roster pack active, no cartridge pack, then enable an IPS pack and restart. */
+static void test_stash_is_a_copy(void) {
+    size_t retail_size = 0;
+    uint8_t *retail = load_retail(&retail_size);
+    assert(retail != NULL && retail_size == ISSD_RETAIL_SIZE);
+    assert(issd_cartridge_stash_retail(retail, retail_size, NULL, 0));
+
+    /* What issd_mod_reapply does to the image the game plays. */
+    memset(retail + 0x1000, 0x00, 64);
+    memset(retail + 0x2000, 0xEE, 32);
+
+    size_t kept = 0;
+    const uint8_t *base = issd_cartridge_retail(&kept);
+    assert(base != NULL && base != retail && kept == ISSD_RETAIL_SIZE);
+    assert(issd_cartridge_sha256_matches(base, kept, ISSD_RETAIL_SHA256) &&
+           "pack writes to the caller's buffer must not reach the stash");
+
+    Patch p;
+    ips_begin(&p);
+    ips_record(&p, 0x3000, "OK", 2);
+    ips_eof(&p);
+    static uint8_t out[ISSD_RETAIL_SIZE];
+    char why[128];
+    why[0] = 0;
+    assert(issd_cartridge_apply_patch(p.bytes, p.len, out, sizeof out,
+                                      why, sizeof why));
+    assert(memcmp(out + 0x1000, base + 0x1000, 64) == 0 &&
+           "the patch starts from the clean retail image");
+    assert(out[0x1000] != 0x00 && out[0x2000] != 0xEE);
 
     free(retail);
 }
@@ -625,18 +672,23 @@ static void test_added_roster_free_space(void) {
         assert(image[ROSTERS + i] == 0x01 &&
                "the hack's own bytes are left exactly as they were");
 
-    /* --- zero-filled free space is still free ---------------------------- */
+    /* --- an all-zero run is NOT free ------------------------------------- */
+    /* Ruling 5 mandates the same free-space rule as rom_is_free: only $FF is
+     * blank. A rebuilt hack may keep meaningful zero bytes there, so refusing
+     * is the safe direction - the pack simply gets no added team. */
     memset(image + ROSTERS, 0x00, RUN);
     issd_mod_result_reset();
     issd_mod_apply_to_rom(image, sizeof image);
-    assert(pack->teams[0].assigned_slot == 36);
-    assert((uint16_t)(image[GATE_A] | (image[GATE_A + 1] << 8)) == 37 * 2);
-    assert(image[ROSTERS + 5] == 0x77 &&
-           "the added squad is a copy of the cartridge's own squad 0");
-    assert((uint16_t)(image[PTRS + 36 * 2] | (image[PTRS + 36 * 2 + 1] << 8))
-           == (uint16_t)(0x8000u + (ROSTERS - 0x38000u)));
+    assert(issd_mod_last_result()->warnings > 0 &&
+           "a zero-filled run must be reported as occupied");
+    assert(pack->teams[0].assigned_slot < 0);
+    assert(image[GATE_A] == 0x48 && image[GATE_A + 1] == 0x00 &&
+           "the gate is not raised without rosters behind it");
+    for (size_t i = 0; i < RUN; i++)
+        assert(image[ROSTERS + i] == 0x00 &&
+               "the zero bytes are left exactly as they were");
 
-    /* --- and so is the cartridge's $FF fill ------------------------------ */
+    /* --- the cartridge's $FF fill is free -------------------------------- */
     /* A fresh image: the stack is re-applied from the pristine copy at
      * runtime, so the gate is back to its retail operand here. */
     image[GATE_A] = 0x48; image[GATE_A + 1] = 0x00;
@@ -645,7 +697,11 @@ static void test_added_roster_free_space(void) {
     issd_mod_result_reset();
     issd_mod_apply_to_rom(image, sizeof image);
     assert(pack->teams[0].assigned_slot == 36);
-    assert(image[ROSTERS + 5] == 0x77);
+    assert((uint16_t)(image[GATE_A] | (image[GATE_A + 1] << 8)) == 37 * 2);
+    assert(image[ROSTERS + 5] == 0x77 &&
+           "the added squad is a copy of the cartridge's own squad 0");
+    assert((uint16_t)(image[PTRS + 36 * 2] | (image[PTRS + 36 * 2 + 1] << 8))
+           == (uint16_t)(0x8000u + (ROSTERS - 0x38000u)));
 }
 
 /* --- the effective base, rebuilt at boot and after a restart -------------- */
@@ -674,6 +730,9 @@ static void test_select_base(void) {
     uint8_t *retail = load_retail(&retail_size);
     assert(retail != NULL && retail_size == ISSD_RETAIL_SIZE);
     assert(issd_cartridge_stash_retail(retail, retail_size, NULL, 0));
+    /* The module keeps a private copy; its base is not the caller's buffer. */
+    const uint8_t *retained = issd_cartridge_retail(NULL);
+    assert(retained != NULL && retained != retail);
 
     static uint8_t image[ISSD_RETAIL_SIZE];
     memset(image, 0x11, sizeof image);
@@ -692,14 +751,14 @@ static void test_select_base(void) {
     why[0] = 'X';
     const uint8_t *base = issd_cartridge_select_base(
         NULL, false, "", &size, &changed, why, sizeof why);
-    assert(base == retail && size == ISSD_RETAIL_SIZE);
+    assert(base == retained && size == ISSD_RETAIL_SIZE);
     assert(!changed && "the retail image already in play is not a change");
     assert(why[0] == 0);
 
     /* An image pack becomes the base. */
     base = issd_cartridge_select_base(path, false, "", &size, &changed,
                                       why, sizeof why);
-    assert(base != NULL && base != retail && size == ISSD_RETAIL_SIZE);
+    assert(base != NULL && base != retained && size == ISSD_RETAIL_SIZE);
     assert(changed && why[0] == 0);
     assert(memcmp(base, image, sizeof image) == 0);
 
@@ -717,7 +776,7 @@ static void test_select_base(void) {
     zero_hash[64] = 0;
     again = issd_cartridge_select_base(path, false, zero_hash, &size, &changed,
                                        why, sizeof why);
-    assert(again == retail && changed && size == ISSD_RETAIL_SIZE);
+    assert(again == retained && changed && size == ISSD_RETAIL_SIZE);
     assert(why[0] != 0 && strstr(why, "sha256") != NULL);
 
     /* An image the engine cannot run is refused before the hash matters. */
@@ -729,7 +788,7 @@ static void test_select_base(void) {
     assert(write_bytes(hirom_path, hirom, sizeof hirom));
     again = issd_cartridge_select_base(hirom_path, false, "", &size, &changed,
                                        why, sizeof why);
-    assert(again == retail && !changed && size == ISSD_RETAIL_SIZE);
+    assert(again == retained && !changed && size == ISSD_RETAIL_SIZE);
     assert(why[0] != 0 && strstr(why, "HiROM") != NULL);
 
     /* The matching hash is accepted. */
@@ -737,7 +796,7 @@ static void test_select_base(void) {
     hex_digest(image, sizeof image, digest);
     base = issd_cartridge_select_base(path, false, digest, &size, &changed,
                                       why, sizeof why);
-    assert(base != NULL && base != retail && changed && why[0] == 0);
+    assert(base != NULL && base != retained && changed && why[0] == 0);
     assert(memcmp(base + 0x1000, image + 0x1000, 1) == 0);
 
     /* A patch applies to the retained retail image, not to the pack that was
@@ -752,23 +811,23 @@ static void test_select_base(void) {
     const uint8_t *patched = issd_cartridge_select_base(ips, true, "", &size,
                                                         &changed, why,
                                                         sizeof why);
-    assert(patched != NULL && patched != retail && changed && why[0] == 0);
+    assert(patched != NULL && patched != retained && changed && why[0] == 0);
     assert(size == ISSD_RETAIL_SIZE);
     assert(memcmp(patched + 0x2000, "PATCHED", 7) == 0);
-    assert(memcmp(patched + 0x1000, retail + 0x1000, 4) == 0 &&
+    assert(memcmp(patched + 0x1000, retained + 0x1000, 4) == 0 &&
            "an IPS patch starts from retail, never from the previous hack");
 
     /* Switching the pack off returns to the retail image. */
     const uint8_t *back = issd_cartridge_select_base(NULL, false, "", &size,
                                                      &changed, why, sizeof why);
-    assert(back == retail && changed && size == ISSD_RETAIL_SIZE);
+    assert(back == retained && changed && size == ISSD_RETAIL_SIZE);
 
     /* A file that is not there is refused with a reason and retail stays. */
     snprintf(path, sizeof path, "%s/missing.sfc", g_scratch);
     why[0] = 0;
     back = issd_cartridge_select_base(path, false, "", &size, &changed, why,
                                       sizeof why);
-    assert(back == retail && !changed);
+    assert(back == retained && !changed);
     assert(why[0] != 0);
 
     free(retail);
@@ -780,11 +839,17 @@ int main(int argc, char **argv) {
 
     test_retail_stash();
     test_ips_apply();
+    test_stash_is_a_copy();
     test_image_validation();
     test_sha256();
     test_cartridge_pack();
     test_added_roster_free_space();
     test_select_base();
+
+    /* The exit path hands the module's images back; release is idempotent. */
+    issd_cartridge_release();
+    assert(issd_cartridge_retail(NULL) == NULL);
+    issd_cartridge_release();
     puts("cartridge tests passed");
     return 0;
 }

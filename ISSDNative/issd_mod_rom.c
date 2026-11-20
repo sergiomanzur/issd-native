@@ -345,16 +345,6 @@ static bool rom_is_free(const uint8_t *rom, size_t at, size_t len) {
     return true;
 }
 
-/* The same question for a run a cartridge leaves empty but may have erased
- * to zero: the added-squad space at the end of bank $87 is $FF in the retail
- * image, and a rebuilt image may zero-fill instead. Anything else is content
- * somebody put there and must not be overwritten. */
-static bool rom_is_blank(const uint8_t *rom, size_t at, size_t len) {
-    for (size_t i = 0; i < len; i++)
-        if (rom[at + i] != 0xFF && rom[at + i] != 0x00) return false;
-    return true;
-}
-
 static bool expand_stadiums(uint8_t *rom, size_t rom_size, unsigned slots) {
     s_stadium_slots = ROM_STADIUMS;
     s_stadium_name_base = ROM_STADIUM_NAME_BASE;
@@ -951,13 +941,13 @@ static int open_added_slots(uint8_t *rom, size_t rom_size, int count) {
     }
 
     /* Ruling 5 (2026-11-19): a cartridge pack may be a complete hack that
-     * keeps its own data in this run. The retail cartridge leaves it blank,
-     * so anything else means writing the squad would destroy the hack's
-     * content. Refuse the whole addition - raising the gate without rosters
-     * behind it would point the seventh group at the dead table entry - and
-     * say so where the menu can report it. */
-    if (!rom_is_blank(rom, ROM_ADDED_ROSTERS,
-                      (size_t)count * ROM_ROSTER_BYTES)) {
+     * keeps its own data in this run. The retail cartridge leaves it $FF, and
+     * the same rule as rom_is_free above applies - only $FF is blank. Refuse
+     * the whole addition - raising the gate without rosters behind it would
+     * point the seventh group at the dead table entry - and say so where the
+     * menu can report it. */
+    if (!rom_is_free(rom, ROM_ADDED_ROSTERS,
+                     (size_t)count * ROM_ROSTER_BYTES)) {
         issd_mod_result_note_warning(
             "no room to add teams: $87:FC40 is occupied");
         fprintf(stderr,

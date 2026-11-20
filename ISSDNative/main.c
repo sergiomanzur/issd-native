@@ -274,6 +274,13 @@ void issd_restart_application(void) {
 static const uint8_t *g_rom_data;
 static size_t g_rom_size;
 
+/* The buffer LoadRomFile allocated, freed exactly once by the exit path. It
+ * is NOT the image the game necessarily plays: a substituted cartridge image
+ * belongs to issd_cartridge, which frees it in its release hook. Keeping the
+ * loader pointer separate is what stops the exit path from double-freeing a
+ * module-owned image after an in-process cartridge switch. */
+static uint8_t *g_loaded_rom_data;
+
 /* Why the boot path refused a cartridge pack, kept until after
  * issd_mod_reapply - whose reset clears the result counters the menu reads -
  * so the player is told instead of getting a silent vanilla boot. */
@@ -368,12 +375,18 @@ static bool IssdRebaseCartridge(void) {
         snprintf(refusal, sizeof refusal, "%s", issd_mod_last_result()->detail);
 
     /* No pack active asks for the retail image back; an unchanged winner
-     * reports changed == false and leaves the live buffer alone. */
+     * reports changed == false and leaves the live buffer alone. A size that
+     * disagrees with the module's image means the live base is not the
+     * normalized cartridge (a copier-headered dump booted before
+     * normalization existed), and must be rebased too: the runner always holds
+     * the headerless 2 MB image, so every ROM read would otherwise be off by
+     * the header length. */
     const uint8_t *base = issd_cartridge_select_base(
         resolved ? cart_file : NULL, cart_patch, cart_sha, &cart_size,
         &changed, why, sizeof why);
     if (why[0]) snprintf(refusal, sizeof refusal, "%s", why);
-    if (!base || !changed) {
+    const bool rebase = base && (changed || g_rom_size != cart_size);
+    if (!rebase) {
         if (refusal[0]) {
             printf("[Init] Cartridge pack '%s' refused (%s). Playing the "
                    "retail cartridge.\n", label, refusal);
@@ -2351,15 +2364,18 @@ int main(int argc, char **argv) {
         return 1;
     }
     printf("[Init] ROM read successfully (%zu bytes)\n", rom_size);
+    g_loaded_rom_data = rom_data;
 
     /* Cartridge packs replace the whole cartridge, and this is the substitution
      * point: after LoadRomFile has read the file and before g_base_rom_data is
      * captured below, so the save base, the mod pristine copy and SnesInit's
      * cartridge all derive from the substitute instead of the retail bytes.
      *
-     * The retail buffer is retained by issd_cartridge - it borrows that image
-     * so an IPS patch can be re-applied when a pack is toggled at runtime - so
-     * it is deliberately left for the life of the process.
+     * Ownership: LoadRomFile's buffer stays in g_loaded_rom_data and is freed
+     * once by the exit path. issd_cartridge now keeps its own copy of the
+     * retail image, so the mod engine may keep writing into the loaded buffer
+     * without poisoning a later IPS base. Any image returned by the module is
+     * module-owned and freed by issd_cartridge_release(), never here.
      *
      * Every failure plays the retail cartridge and says why: a hack that can
      * be applied is better than a boot that refuses to start, but a silent
@@ -2380,37 +2396,54 @@ int main(int argc, char **argv) {
              * can be applied either: an IPS patch needs a verified base. Play
              * what was read, exactly as before cartridge packs existed. */
             printf("[Init] %s\n", why);
-        } else if (issd_mod_cartridge_resolve(pack_name, sizeof pack_name,
-                                              cart_file, sizeof cart_file,
-                                              &cart_patch, cart_sha,
-                                              sizeof cart_sha)) {
-            const char *label =
-                pack_name[0] ? pack_name : "Unnamed cartridge pack";
-            const uint8_t *base = issd_cartridge_select_base(
-                cart_file, cart_patch, cart_sha, &cart_size, NULL,
-                why, sizeof why);
-            if (why[0] || !base) {
-                if (!why[0]) snprintf(why, sizeof why, "no usable image");
-                printf("[Init] Cartridge pack '%s' refused (%s). Playing the "
-                       "retail cartridge.\n", label, why);
-                snprintf(g_cartridge_refusal, sizeof g_cartridge_refusal,
-                         "%s", why);
-            } else {
-                rom_data = (uint8_t *)base;
-                rom_size = cart_size;
-                printf("[Init] Cartridge pack '%s' active.\n", label);
-            }
-        } else if (issd_mod_last_result()->errors) {
-            /* The resolver notes why it could not use a cartridge - a pack
-             * naming both sources, say. Distinguishing that from "no pack
-             * asked for one" is the difference between a vanilla boot and a
-             * player wondering why their hack is not playing. */
-            printf("[Init] Cartridge pack refused (%s). Playing the retail "
-                   "cartridge.\n", issd_mod_last_result()->detail);
-            snprintf(g_cartridge_refusal, sizeof g_cartridge_refusal,
-                     "%s", issd_mod_last_result()->detail);
         } else {
-            printf("[Init] No cartridge pack active.\n");
+            /* A copier header is not cartridge data, and the runner's cart
+             * copy is the headerless 2 MB image (snes_loadRom strips it). Play
+             * the module's normalized copy from the start; otherwise every
+             * runtime read after an in-process restart would be 512 bytes off
+             * and g_rom_size would disagree with cart->romSize. */
+            size_t normalized = 0;
+            const uint8_t *retail = issd_cartridge_retail(&normalized);
+            if (retail && normalized == ISSD_RETAIL_SIZE &&
+                rom_size != ISSD_RETAIL_SIZE) {
+                rom_data = (uint8_t *)retail;
+                rom_size = normalized;
+                printf("[Init] Copier header removed; playing the normalized "
+                       "2,097,152-byte image.\n");
+            }
+
+            if (issd_mod_cartridge_resolve(pack_name, sizeof pack_name,
+                                           cart_file, sizeof cart_file,
+                                           &cart_patch, cart_sha,
+                                           sizeof cart_sha)) {
+                const char *label =
+                    pack_name[0] ? pack_name : "Unnamed cartridge pack";
+                const uint8_t *base = issd_cartridge_select_base(
+                    cart_file, cart_patch, cart_sha, &cart_size, NULL,
+                    why, sizeof why);
+                if (why[0] || !base) {
+                    if (!why[0]) snprintf(why, sizeof why, "no usable image");
+                    printf("[Init] Cartridge pack '%s' refused (%s). Playing "
+                           "the retail cartridge.\n", label, why);
+                    snprintf(g_cartridge_refusal, sizeof g_cartridge_refusal,
+                             "%s", why);
+                } else {
+                    rom_data = (uint8_t *)base;
+                    rom_size = cart_size;
+                    printf("[Init] Cartridge pack '%s' active.\n", label);
+                }
+            } else if (issd_mod_last_result()->errors) {
+                /* The resolver notes why it could not use a cartridge - a pack
+                 * naming both sources, say. Distinguishing that from "no pack
+                 * asked for one" is the difference between a vanilla boot and
+                 * a player wondering why their hack is not playing. */
+                printf("[Init] Cartridge pack refused (%s). Playing the "
+                       "retail cartridge.\n", issd_mod_last_result()->detail);
+                snprintf(g_cartridge_refusal, sizeof g_cartridge_refusal,
+                         "%s", issd_mod_last_result()->detail);
+            } else {
+                printf("[Init] No cartridge pack active.\n");
+            }
         }
     }
 
@@ -2470,7 +2503,14 @@ int main(int argc, char **argv) {
     Snes *snes = SnesInit(rom_data, (int)rom_size);
     if (!snes) {
         fprintf(stderr, "[ERROR] SnesInit failed!\n");
-        free(rom_data);
+        /* One owner per buffer: the loader's buffer here, the module's images
+         * in its release hook, the save base copy here. `rom_data` may be a
+         * module-owned image, so it is never freed directly. */
+        free(g_loaded_rom_data);
+        g_loaded_rom_data = NULL;
+        issd_cartridge_release();
+        free(g_base_rom_data);
+        g_base_rom_data = NULL;
         return 1;
     }
     printf("[Init] SnesInit succeeded! Recompiled CPU and SNES hardware runtime online.\n");
@@ -2744,13 +2784,17 @@ int main(int argc, char **argv) {
              * what the restarted match actually plays. */
             (void)IssdRebaseCartridge();
 
-            /* A copier-headered retail dump boots as 2,097,664 bytes while a
-             * substituted cartridge is the normalized 2 MB image. The
-             * runner's copy has to change size with it or the copy below
-             * refuses. This is a LoROM ROM-only cart, so nothing but g_rom
-             * points into that buffer. */
+            /* The runner's cart copy is always the normalized 2 MB cartridge:
+             * snes_loadRom strips a copier header at boot, and the rebase above
+             * has made the live image the module's normalized copy. Only a
+             * cartridge the module could not normalize can still disagree, and
+             * copying that would shift every runtime read, so refuse instead.
+             * This is a LoROM ROM-only cart, so nothing but g_rom points into
+             * that buffer. */
             if (g_snes && g_snes->cart && g_snes->cart->rom &&
                 (size_t)g_snes->cart->romSize != g_rom_size) {
+                if (g_rom_size != ISSD_RETAIL_SIZE)
+                    Die("Cannot synchronize an un-normalized cartridge image");
                 uint8_t *resized = (uint8_t *)malloc(g_rom_size);
                 if (!resized) Die("Cannot resize the cartridge image");
                 memcpy(resized, g_rom_data, g_rom_size);
@@ -3286,8 +3330,14 @@ int main(int argc, char **argv) {
 
     if (g_apu_mutex) SDL_DestroyMutex(g_apu_mutex);
     issd_stadium_scene_reset(g_snes ? g_snes->cart : NULL);
-    free(rom_data);
+    /* One owner per buffer: LoadRomFile's buffer is freed here; every cartridge
+     * image the module produced (including one a restart switched to) is freed
+     * by its release hook, never through the stale `rom_data` local. */
+    free(g_loaded_rom_data);
+    g_loaded_rom_data = NULL;
+    issd_cartridge_release();
     free(g_base_rom_data);
+    g_base_rom_data = NULL;
     printf("[Shutdown] Clean exit complete.\n");
     return 0;
 }

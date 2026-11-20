@@ -30,8 +30,11 @@
 #define IPS_MAGIC "PATCH"
 #define IPS_MAGIC_SIZE 5u
 
-/* The only mutable state: the retained retail image, owned by the caller. */
-static const uint8_t *retail_base;
+/* The only mutable state: a private copy of the normalized retail image. It is
+ * a copy rather than a borrow because the mod engine writes packs into the
+ * buffer the game plays - which is the caller's buffer when no cartridge pack
+ * is active - and an IPS base must keep hashing to retail. */
+static uint8_t *retail_base;
 static size_t retail_size;
 
 static bool fail(char *why, size_t cap, const char *fmt, ...) {
@@ -52,28 +55,35 @@ static uint32_t read_be24(const uint8_t *p) {
     return ((uint32_t)p[0] << 16) | ((uint32_t)p[1] << 8) | p[2];
 }
 
-bool issd_cartridge_stash_retail(uint8_t *rom, size_t size,
+bool issd_cartridge_stash_retail(const uint8_t *rom, size_t size,
                                  char *why, size_t why_cap) {
+    free(retail_base);
     retail_base = NULL;
     retail_size = 0;
 
     if (!rom || size == 0)
         return fail(why, why_cap, "No cartridge image to retain.");
 
+    const uint8_t *source;
     if (size == (size_t)ISSD_RETAIL_SIZE + COPIER_HEADER_SIZE) {
         /* The 512-byte prefix is copier metadata, not cartridge data. */
-        retail_base = rom + COPIER_HEADER_SIZE;
-        retail_size = ISSD_RETAIL_SIZE;
-        return true;
+        source = rom + COPIER_HEADER_SIZE;
+    } else if (size == (size_t)ISSD_RETAIL_SIZE) {
+        source = rom;
+    } else {
+        return fail(why, why_cap,
+                    "Unsupported cartridge size %zu bytes; expected 2,097,152 "
+                    "bytes, or 2,097,664 with a copier header.", size);
     }
-    if (size == (size_t)ISSD_RETAIL_SIZE) {
-        retail_base = rom;
-        retail_size = size;
-        return true;
-    }
-    return fail(why, why_cap,
-                "Unsupported cartridge size %zu bytes; expected 2,097,152 "
-                "bytes, or 2,097,664 with a copier header.", size);
+
+    uint8_t *copy = (uint8_t *)malloc(ISSD_RETAIL_SIZE);
+    if (!copy)
+        return fail(why, why_cap,
+                    "No memory to retain the retail cartridge image.");
+    memcpy(copy, source, ISSD_RETAIL_SIZE);
+    retail_base = copy;
+    retail_size = ISSD_RETAIL_SIZE;
+    return true;
 }
 
 const uint8_t *issd_cartridge_retail(size_t *size) {
@@ -418,4 +428,15 @@ const uint8_t *issd_cartridge_select_base(const char *file, bool is_patch,
     if (changed_out) *changed_out = true;
     if (size_out) *size_out = image_size;
     return active_image;
+}
+
+void issd_cartridge_release(void) {
+    free(retail_base);
+    retail_base = NULL;
+    retail_size = 0;
+    free(active_image);
+    active_image = NULL;
+    active_path[0] = 0;
+    active_sha[0] = 0;
+    active_is_patch = false;
 }

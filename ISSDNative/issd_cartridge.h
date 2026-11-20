@@ -24,18 +24,24 @@ extern "C" {
 #define ISSD_RETAIL_SHA256 \
     "d2fe66c1ce66c65ce14e478c94be2e616f9e2cad374b5783a6a64d3c1a99cfa9"
 
-/* Retains the retail buffer for later patching and normalizes a 512-byte
- * copier header away. The caller keeps ownership of `rom`; the effective
- * pointer is whatever issd_cartridge_retail() reports afterwards. Every call
- * replaces the previous stash, and a refusal (including a NULL or zero-size
- * buffer) clears it. `why` receives prose on refusal and is untouched on
- * success. */
-bool issd_cartridge_stash_retail(uint8_t *rom, size_t size,
+/* Copies the normalized retail image into memory the module owns and keeps it
+ * for later patching. A 512-byte copier header is dropped here; only the
+ * headerless 2 MB shape is retained. The caller keeps its own buffer and may
+ * keep writing to it - the mod engine patches the image the game plays - which
+ * cannot touch the retained copy. Every call replaces the previous copy, and a
+ * refusal (including a NULL or zero-size buffer) clears it. `why` receives
+ * prose on refusal and is untouched on success. */
+bool issd_cartridge_stash_retail(const uint8_t *rom, size_t size,
                                  char *why, size_t why_cap);
 
-/* The normalized retail image and its size, or NULL/0 when nothing is stashed.
- * `size` may be NULL. */
+/* The retained retail image and its size, or NULL/0 when nothing is stashed.
+ * `size` may be NULL. The pointer belongs to the module. */
 const uint8_t *issd_cartridge_retail(size_t *size);
+
+/* Frees every image the module owns: the retained retail copy and the pack
+ * image currently in play. Called once by the process exit path; safe to call
+ * when nothing was stashed. */
+void issd_cartridge_release(void);
 
 /* The base image the enabled stack asks for, decided once at boot and again
  * after every in-process restart. `file` is issd_mod_cartridge_resolve's full
