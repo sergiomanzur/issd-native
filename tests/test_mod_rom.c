@@ -817,6 +817,9 @@ int main(void) {
 
         memset(rom, 0xEE, sizeof rom);
         memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        /* The added-squad run is free space in the retail cartridge; a
+         * guard refuses to write over anything else there. */
+        memset(rom + 0x03FC40u, 0xFF, ISSD_MAX_ADDED_TEAMS * 160);
         rom[GATE_A - 1] = 0xE0; rom[GATE_A] = 0x48; rom[GATE_A + 1] = 0x00;
         rom[GATE_B - 1] = 0xE0; rom[GATE_B] = 0x48; rom[GATE_B + 1] = 0x00;
         rom[PTRS] = 0x8E; rom[PTRS + 1] = 0x81;
@@ -1012,6 +1015,7 @@ int main(void) {
         assert(ap->teams[0].assigned_slot < 0 && "and no slot handed out");
 
         /* Now with the bytes the real cartridge has. */
+        memset(rom + ROSTERS, 0xFF, ISSD_MAX_ADDED_TEAMS * 160);
         rom[GATE_A - 1] = 0xE0; rom[GATE_A] = 0x48; rom[GATE_A + 1] = 0x00;
         rom[GATE_B - 1] = 0xE0; rom[GATE_B] = 0x48; rom[GATE_B + 1] = 0x00;
         rom[PTRS] = 0x8E; rom[PTRS + 1] = 0x81;      /* entry 0 = $818E */
@@ -1053,7 +1057,7 @@ int main(void) {
             ap->teams[i] = ap->teams[0];
             ap->teams[i].assigned_slot = -1;
         }
-        memset(rom + ROSTERS, 0xEE, ISSD_MAX_ADDED_TEAMS * 160);
+        memset(rom + ROSTERS, 0xFF, ISSD_MAX_ADDED_TEAMS * 160);
         rom[GATE_A] = 0x48; rom[GATE_A + 1] = 0x00;
         rom[GATE_B] = 0x48; rom[GATE_B + 1] = 0x00;
         issd_mod_result_reset();

@@ -940,6 +940,22 @@ static int open_added_slots(uint8_t *rom, size_t rom_size, int count) {
         return 0;
     }
 
+    /* Ruling 5 (2026-11-19): a cartridge pack may be a complete hack that
+     * keeps its own data in this run. The retail cartridge leaves it $FF, and
+     * the same rule as rom_is_free above applies - only $FF is blank. Refuse
+     * the whole addition - raising the gate without rosters behind it would
+     * point the seventh group at the dead table entry - and say so where the
+     * menu can report it. */
+    if (!rom_is_free(rom, ROM_ADDED_ROSTERS,
+                     (size_t)count * ROM_ROSTER_BYTES)) {
+        issd_mod_result_note_warning(
+            "no room to add teams: $87:FC40 is occupied");
+        fprintf(stderr,
+                "[ModLoader] The space added teams need at $87:FC40 is not "
+                "free in this cartridge. No teams added.\n");
+        return 0;
+    }
+
     const uint16_t gate = (uint16_t)((ROM_STOCK_TEAMS + count) * 2);
     for (int i = 0; i < 2; i++) {
         rom[gates[i]] = (uint8_t)(gate & 0xFF);

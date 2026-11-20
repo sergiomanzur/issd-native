@@ -47,6 +47,7 @@ set(ISSD_GAME_SOURCES
     "${ISSD_ROOT}/ISSDNative/issd_password.c"
     "${ISSD_ROOT}/ISSDNative/issd_password_ui.c"
     "${ISSD_ROOT}/ISSDNative/issd_mod.c"
+    "${ISSD_ROOT}/ISSDNative/issd_cartridge.c"
     "${ISSD_ROOT}/ISSDNative/issd_stadium.c"
     "${ISSD_ROOT}/ISSDNative/issd_asset_path.c"
     "${ISSD_ROOT}/ISSDNative/issd_stadium_assets.c"

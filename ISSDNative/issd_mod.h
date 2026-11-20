@@ -159,6 +159,19 @@ typedef struct {
      * of them change the same team the higher number wins. Enabling a
      * pack puts it last, which is what 'this one on top' means. */
     int         apply_order;
+    /* A cartridge pack replaces the whole image. It names either
+     * `cartridge_image` (a complete 2 MB image beside the pack) or
+     * `cartridge_patch` (an IPS patch applied to the user's own verified
+     * retail ROM), never both - two sources would leave no honest answer
+     * which one to use. `cartridge_sha256` is optional and is the expected
+     * hash of the substituted image. Empty means absent.
+     *
+     * Parsing only records the names; issd_mod_cartridge_resolve decides
+     * which pack the enabled stack actually plays and nothing here reads a
+     * byte of the file. */
+    char        cartridge_image[64];
+    char        cartridge_patch[64];
+    char        cartridge_sha256[73];  /* 64 hex digits and their terminator */
     int         team_count;
     IssdModTeam teams[ISSD_MAX_TEAMS_PER_PACK];
     int         stadium_count;      /* entries in `stadiums` below */
@@ -208,6 +221,25 @@ bool        issd_mod_team_photo_path(int team_id, char *out, size_t cap);
 /* The full path of the custom flag graphic a pack gives a team, resolved
  * against the pack's own directory. False when no enabled pack has one. */
 bool        issd_mod_team_flag_path(int team_id, char *out, size_t cap);
+
+/* The cartridge the enabled stack asks for, or false when none does. Packs
+ * are walked in apply order and the topmost usable cartridge wins; every
+ * cartridge pack it shadows is counted as a warning, because the player
+ * enabled something that will not be played.
+ *
+ * A pack naming both an image and a patch cannot be used: one of the two
+ * would silently lose, so it is counted as an error and skipped by the
+ * resolver. A pack naming neither is not a cartridge pack at all.
+ *
+ * `pack_name_out` receives the winning pack's display name, `file_out` the
+ * image or patch joined to the pack's own directory (the same rule the team
+ * graphics use), `is_patch` whether that file is an IPS patch, and
+ * `sha256_out` its expected hash as written, or an empty string. Nothing is
+ * opened or read here; the caller loads the file. Any output may be NULL. */
+bool        issd_mod_cartridge_resolve(char *pack_name_out, size_t name_cap,
+                                       char *file_out, size_t file_cap,
+                                       bool *is_patch, char *sha256_out,
+                                       size_t sha_cap);
 
 /* The select screen's grid is not in team order: its first cell is
  * England. These read the cartridge's own cell table, so anything drawn
