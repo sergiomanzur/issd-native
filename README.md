@@ -4,7 +4,7 @@ A native recompilation and modernization of **International Superstar Soccer Del
 
 The goal is to preserve the original gameplay while adding modern controls, presentation options, saves, and editable mod packs. This is a **beta project working toward 1.0**; recompilation coverage does not establish complete gameplay or hardware fidelity.
 
-The current release is **[v0.6.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.6.0-beta.1)**, a GitHub prerelease for Windows, Linux, Steam Deck (AppImage) and Android. It adds an original retro broadcast launcher, a penalty timing-input correction in the bug-fix bundle, optional short goal kicks and final-attack protection, roster-based team summaries and expanded match durations. It retains the existing widescreen, tactical camera, touch/controller, replay, campaign and Mod Studio features. See [CHANGELOG.md](CHANGELOG.md) and [release notes](docs/releases/v0.6.0-beta.1.md).
+The current release is **[v0.7.0-beta.1](https://github.com/sergiomanzur/issd-native/releases/tag/v0.7.0-beta.1)**, a GitHub prerelease for Windows, Linux, Steam Deck (AppImage) and Android. It adds cartridge packs: a mod pack can now carry a complete ROM hack - a full image or an IPS patch applied to your own verified retail ROM - with a converter tool that reports what will carry over before you install anything. It retains the broadcast launcher, match options, skin tones, widescreen, tactical camera, touch/controller, replay, campaign and Mod Studio features. See [CHANGELOG.md](CHANGELOG.md) and [release notes](docs/releases/v0.7.0-beta.1.md).
 
 Ball Outline has been removed, including legacy saved enables.
 
@@ -16,8 +16,8 @@ Project metadata for [recomp.board](https://recomp.fyi) and other tools lives in
 
 An original retro broadcast launcher, optional short goal kicks and final-attack
 protection, roster-based team summaries, expanded match durations and a penalty
-input correction are available in source. See [Matchday options](docs/MATCHDAY_OPTIONS.md)
-and [Steam Deck AppImage builds](docs/APPIMAGE.md). These additions ship in v0.6.0-beta.1.
+input correction shipped in v0.6.0-beta.1. See [Matchday options](docs/MATCHDAY_OPTIONS.md)
+and [Steam Deck AppImage builds](docs/APPIMAGE.md).
 
 ## Latest source improvements
 
