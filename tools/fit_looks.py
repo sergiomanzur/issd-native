@@ -34,9 +34,11 @@ from pathlib import Path
 try:
     from . import looks
     from .convert_rom_hack import ConversionError, load_base
+    from .mod_studio.model import _strip_comments
 except ImportError:                     # run from inside tools/, or as a script
     import looks
     from convert_rom_hack import ConversionError, load_base
+    from mod_studio.model import _strip_comments
 
 
 def _hex(rgb) -> str:
@@ -73,9 +75,17 @@ def fit_pack(pack, palettes, report=None):
         result = looks.resolve(palettes, team)
         label = _label(team, result)
 
-        team["skin_tones"] = [
-            {"skin": _hex(tone.skin_rgb), "hair": _hex(tone.hair_rgb)}
-            for tone in result.tones]
+        tones = []
+        for tone in result.tones:
+            entry = {}
+            if tone.emit_skin:
+                entry["skin"] = _hex(tone.skin_rgb)
+            entry["hair"] = _hex(tone.hair_rgb)
+            tones.append(entry)
+        if "skin_tones" in team:
+            report("team %s: overwrites the pack's existing skin_tones"
+                   % label)
+        team["skin_tones"] = tones
 
         for slot, player in enumerate(team.get("players") or []):
             if not isinstance(player, dict):
@@ -130,7 +140,9 @@ def main(argv=None) -> int:
     pack_path = Path(args.pack)
     try:
         raw = pack_path.read_bytes()
-        pack = json.loads(raw.decode("utf-8-sig"))
+        # The loader accepts // and /* */ in a pack, so hand-written files in
+        # the wild carry them. Reuse the studio's stripper; strings are safe.
+        pack = json.loads(_strip_comments(raw.decode("utf-8-sig")))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         print("fit_looks: cannot read %s: %s" % (pack_path, exc),
               file=sys.stderr)

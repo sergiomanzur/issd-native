@@ -263,19 +263,23 @@ def _is_keeper(player) -> bool:
 
 
 def wants(player):
-    """(skin, hair, problem) a player asks for. Either may be None."""
+    """(skin, hair, problem) a player asks for. Either may be None.
+
+    Both bad values are reported: fixing one at a time should not take a
+    second run to discover the other.
+    """
     skin = player.get("skin") or None
     hair = player.get("hair_color") or player.get("hair_colour") or None
-    problem = None
+    problems = []
     if skin is not None and skin not in SKINS:
-        problem, skin = "skin must be light or dark", None
+        problems.append("skin must be light or dark")
+        skin = None
     if hair == "gray":
         hair = "grey"
     if hair is not None and hair not in HAIR_CLASSES:
-        problem = (problem or
-                   "hair_color must be black, brown, blond, red or grey")
+        problems.append("hair_color must be black, brown, blond, red or grey")
         hair = None
-    return skin, hair, problem
+    return skin, hair, "; ".join(problems) if problems else None
 
 
 def _hits(want_skin, want_hair, skin, hair):
@@ -284,21 +288,46 @@ def _hits(want_skin, want_hair, skin, hair):
 
 
 class Palette:
-    """One of a team's two palettes: its labels and the colours to write."""
+    """One of a team's two palettes: its labels and the colours to write.
 
-    def __init__(self, index, skin, hair, skin_words, hair_word, paint=False):
+    `skin_words` is the ramp the choice came from; `skin_rgb` is what the pack
+    should carry. They are not the same colour: the loader does not copy a
+    ramp, it rebuilds one at {46, 68, 82, 89, 100}% of the authored colour
+    (`write_skin_steps`), so an emitted value has to be chosen for that
+    RE-DERIVED ramp.
+    """
+
+    def __init__(self, index, skin, hair, skin_words, hair_word, paint=False,
+                 emit_skin=True):
         self.index = index
         self.skin = skin
         self.hair = hair
         self.skin_words = skin_words
         self.hair_word = hair_word
         self.hair_paint = paint
+        # False when this tone keeps the team's own record: the fitter omits
+        # the skin part and the loader leaves the stock ramp untouched.
+        self.emit_skin = emit_skin
+
+    @property
+    def skin_middle_rgb(self):
+        """The source ramp's own middle shade, as RGB."""
+        if not self.skin_words:
+            return SKIN_CANON.get(self.skin or "light")
+        return to_rgb(self.skin_words[SKIN_BASE])
 
     @property
     def skin_rgb(self):
+        """The colour to author, so the loader's 82% step is the middle.
+
+        The loader's middle shade is 82% of the authored colour, so invert
+        that step: middle / 0.82. The old `lightest word` value made a dark
+        donor's rebuilt middle read as light (0x8366 came out #E6AC83).
+        """
         if not self.skin_words:
             return SKIN_CANON.get(self.skin or "light")
-        return _lightest_rgb(self.skin_words)
+        return tuple(min(255, channel * 100 // 82)
+                     for channel in self.skin_middle_rgb)
 
     @property
     def hair_rgb(self):
@@ -377,8 +406,8 @@ class Resolution:
 
 
 class _Skin:
-    def __init__(self, dark, words):
-        self.dark, self.words = dark, words
+    def __init__(self, dark, words, current=False):
+        self.dark, self.words, self.current = dark, words, current
 
     @property
     def cls(self):
@@ -397,7 +426,7 @@ def _has_hair(options, cls):
 def _skin_options(palettes, dark, words):
     """The current skin first, then the cartridge's first donor of the other
     darkness, in the same order the patch's search used."""
-    options = [_Skin(dark, words)]
+    options = [_Skin(dark, words, True)]
     for alternative, donor in palettes.donor_skins():
         if alternative != dark and not any(o.dark == alternative
                                            for o in options):
@@ -472,6 +501,7 @@ def resolve(palettes, team_requests) -> Resolution:
 
     exact = (palettes is not None and palettes.has_kit(res.team_id))
     res.exact = exact
+    has_alt_skin = False
     if exact:
         team = palettes.teams[res.team_id]
         skin0 = palettes.kit_skin(res.team_id)
@@ -490,9 +520,23 @@ def resolve(palettes, team_requests) -> Resolution:
         s1o, h1o = _generic_options()
 
     (a, b, c, d), _ = _search(asked, s0o, h0o, s1o, h1o)
+
+    # A tone that keeps the team's own record needs no skin colour at all:
+    # omitting the part leaves the cartridge's ramp untouched, which is
+    # class-exact by construction. Tone 1 shares the kit record when the team
+    # has no alternate of its own, so it can only stay omitted while tone 0
+    # also keeps the kit.
+    if not exact:
+        emit0 = emit1 = True
+    elif has_alt_skin:
+        emit0, emit1 = not a.current, not c.current
+    else:
+        emit0 = not a.current
+        emit1 = not (c.current and a.current)
+
     res.tones = [
-        Palette(0, a.cls, b.cls, a.words, b.word, b.paint),
-        Palette(1, c.cls, d.cls, c.words, d.word, d.paint),
+        Palette(0, a.cls, b.cls, a.words, b.word, b.paint, emit0),
+        Palette(1, c.cls, d.cls, c.words, d.word, d.paint, emit1),
     ]
 
     for p in asked:
