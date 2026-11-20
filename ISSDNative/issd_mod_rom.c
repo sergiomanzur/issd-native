@@ -717,6 +717,88 @@ static bool patch_kit(uint8_t *rom, size_t rom_size, const char *pack_name,
     return true;
 }
 
+/* ------------------------------------------------ keeper kits ---- */
+
+/* A team's keepers do not wear the outfield strip: their kits are a third
+ * table of addresses, DATA_828326 (file 0x010326), 43 words like the home
+ * and change tables and read the same way - take the team's token, load
+ * the word, and add two to skip the length prefix. Each word names a
+ * twenty-four-byte record in bank $89: a $0015 length word, then eleven
+ * colours. Decoding those colours off the retail image shows five skin
+ * shades in 0-4 (the same 46/68/82/89/100 ramp the outfield kit uses),
+ * four keeper-kit shades in 5-8, and the same two constants every kit
+ * ends with in 9-10. There is no hair colour in the record, so a keeper's
+ * hair cannot follow a pack's tone-0 hair - only the skin can.
+ *
+ * The records are written in place, never in free space: all 43 retail
+ * records are distinct, so repainting a team's own changes it alone and
+ * costs the cartridge nothing. The length word is the signature - a
+ * cartridge that keeps something else two bytes before the address is
+ * warned about and left alone rather than scribbled on. */
+#define ROM_KIT_PTRS_GK       0x010326u
+#define ROM_KEEPER_PTR_TEAMS        43
+#define ROM_KEEPER_LENGTH      0x0015u
+#define ROM_KEEPER_STRIDE        24u
+
+/* Repaint one team's keeper skin. Returns true when anything changed. */
+static bool patch_keeper_skin(uint8_t *rom, size_t rom_size,
+                              const char *pack_name, const IssdModTeam *team) {
+    if (!team->skin_rgb[0]) return false;
+
+    /* Keepers are per select-screen token, so an added team resolves to
+     * the slot it was handed exactly as the tone-1 and head tables do. */
+    const int slot = team->assigned_slot >= 0 ? team->assigned_slot
+                                              : (int)team->team_id;
+    if (slot < 0 || slot >= ROM_KEEPER_PTR_TEAMS) {
+        char why[112];
+        snprintf(why, sizeof why, "%s: team %u has no keeper slot",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    const size_t ptr = ROM_KIT_PTRS_GK + (size_t)slot * 2u;
+    if (ptr + 2u > rom_size) return false;
+    const uint16_t addr = (uint16_t)(rom[ptr] | (rom[ptr + 1] << 8));
+    if (addr < 0x8000u) {
+        char why[112];
+        snprintf(why, sizeof why,
+                 "%s: team %u's keeper kit is not where it was measured",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    const size_t base = (size_t)(ROM_KIT_BANK & 0x7Fu) * 0x8000u;
+    /* The word addresses the length word, so the colours start two bytes
+     * in, the same +2 the strip tables use. */
+    const size_t rec = base + (addr - 0x8000u) + 2u;
+    if (rec + ROM_KEEPER_STRIDE > rom_size) {
+        char why[112];
+        snprintf(why, sizeof why,
+                 "%s: team %u's keeper kit is not where it was measured",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    const uint16_t length = (uint16_t)(rom[rec - 2] | (rom[rec - 1] << 8));
+    if (length != ROM_KEEPER_LENGTH) {
+        char why[112];
+        snprintf(why, sizeof why,
+                 "%s: team %u's keeper kit is not where it was measured",
+                 pack_name, team->team_id);
+        issd_mod_result_note_warning(why);
+        return false;
+    }
+
+    /* Colours 5-10 are the keeper's own strip and the shared constants;
+     * only the five skin shades follow a pack. */
+    write_skin_steps(rom, rec, team->skin_rgb[0]);
+    printf("[ModLoader] Team %u's keepers follow its skin.\n", team->team_id);
+    return true;
+}
+
 /* ------------------------------------------------- tone 1 skin/hair ---- */
 
 /* A team has two skins. Tone 0 is the one baked into its kit record; tone 1
@@ -1214,7 +1296,7 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
 
     int players_patched = 0, teams_patched = 0, formations_patched = 0;
     int stadiums_patched = 0, kits_patched = 0, tone1_patched = 0;
-    int heads_patched = 0;
+    int heads_patched = 0, keepers_patched = 0;
     /* Tone-1 records share the free run at the end of bank $89. The cursor
      * starts at its base on every apply so re-applying the same stack is
      * deterministic rather than walking further each time. */
@@ -1385,7 +1467,17 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
                        team->team_id, team->name);
             if (patch_formation(rom, rom_size, pack->name, team, n))
                 formations_patched++;
-            if (patch_kit(rom, rom_size, pack->name, team)) kits_patched++;
+            if (patch_kit(rom, rom_size, pack->name, team)) {
+                kits_patched++;
+                /* The keeper record is a separate palette behind its own
+                 * table, so the strip write above never reaches it. It is
+                 * painted only when the outfield kit was, or a refused kit
+                 * would leave the same team with two complexions. Tone 1
+                 * has no keeper counterpart, so only tone 0 is followed. */
+                if (team->skin_rgb[0] &&
+                    patch_keeper_skin(rom, rom_size, pack->name, team))
+                    keepers_patched++;
+            }
             /* Tone 1 and the select-screen heads are not part of the kit
              * record, so both are reached by the team's table slot - the
              * stock id, or the slot an added team was just handed. */
@@ -1414,6 +1506,10 @@ int issd_mod_apply_to_rom(uint8_t *rom, size_t rom_size) {
 
     if (kits_patched)
         printf("[ModLoader] Repainted %d strip(s).\n", kits_patched);
+
+    if (keepers_patched)
+        printf("[ModLoader] Gave %d team(s)' keepers the team skin.\n",
+               keepers_patched);
 
     if (tone1_patched)
         printf("[ModLoader] Wrote alternate skin and hair for %d team(s).\n",
