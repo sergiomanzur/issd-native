@@ -453,6 +453,15 @@ static bool IssdRebaseCartridge(void) {
     g_rom_data = base;
     g_rom_size = cart_size;
 
+    /* Going back to the loader buffer must hand set_image the bytes boot
+     * found, not the ones a pack's boot-time reapply left there: the module
+     * snapshots whatever it receives as its new pristine baseline, so without
+     * this a pack that was just disabled would survive as that baseline and
+     * its writes would stay active after the next reapply. */
+    if (base == g_loaded_rom_data && g_loaded_rom_pristine &&
+        g_loaded_rom_pristine_size == g_loaded_rom_size)
+        memcpy(g_loaded_rom_data, g_loaded_rom_pristine, g_loaded_rom_size);
+
     issd_mod_rom_set_image((uint8_t *)base, cart_size);
     issd_mod_reapply();
 
