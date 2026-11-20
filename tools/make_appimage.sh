@@ -16,6 +16,9 @@ mkdir -p -- "$OUTPUT_DIR"
 OUTPUT_DIR="$(cd -- "$OUTPUT_DIR" && pwd -P)"
 # Fresh, unique staging path; never delete a caller-computed directory.
 APPDIR="$(mktemp -d "$OUTPUT_DIR/ISSDNative.AppDir.XXXXXX")"
+# mktemp -d creates 0700; appimagetool refuses an AppDir group/other
+# cannot read, and the image is run by other users than the packager.
+chmod 0755 "$APPDIR"
 fail() { echo "[AppImage] $* (staging retained at $APPDIR)" >&2; exit 1; }
 check_glibc() {
     local highest
