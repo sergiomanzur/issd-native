@@ -324,7 +324,7 @@ half-read.
 | `shirt` | `"#RRGGBB"` | Shirt colour. The three shades the cartridge uses are derived from it. |
 | `shorts` | `"#RRGGBB"` | Shorts colour. |
 | `socks` | `"#RRGGBB"` | Sock colour. |
-| `kit_record` | 0-83 | Redirects the team's home and away strip to this palette before painting it. Use a unique record to isolate a shared strip - see section 6a. Needs a strip colour to take effect. |
+| `kit_record` | 0-83 | Redirects the team's home and away strip to this palette before painting it. Use it to move a team onto another record - see section 6a. Needs a strip colour to take effect. |
 | `skin_tones` | array | One or two `{ "skin": "#RRGGBB", "hair": "#RRGGBB" }` objects: the team's default tone and its alternate. A player's `skin_tone` picks between them. See section 6a. |
 | `formation` | text | See section 6. Optional. |
 | `tactics` | text | `attacking`, `balanced`, `defensive`. Optional. |
@@ -486,7 +486,8 @@ library counts its roles the way its label claims.
 ## 6a. Strips, skin tones, plates and squad photographs
 
 Four things carry a team's identity on screen, and each is reached a
-different way.
+different way; a later subsection turns a description of a player into the
+palette he is drawn with.
 
 ### The strip
 
@@ -508,22 +509,29 @@ Palette recoloring alone is flat per part. The mod loader also supports vertical
 shirt stripes through the `stripes` field and the original jersey-detail
 mapping; this does not provide arbitrary replacement sprite artwork.
 
-**Some teams share a strip.** The loader reads each team's home and away
-palette addresses from the cartridge's pointer tables. Recolouring a shared
-home palette also recolours its other wearers; the loader warns in the results.
-To give a team its own strip, set `kit_record` to a distinct record from 0 to 83.
-After checking the palette's signature, the loader redirects both of that team's
-pointers and paints the selected record, leaving its former shared palettes alone.
-An invalid record or signature leaves the pointers unchanged. Selecting a record
-that another team still wears can recolour that team, so allocation must account
-for both home and away pointers and every team the pack leaves untouched.
+**Home and away strips are not shared.** The loader reads each team's home
+and away palette addresses from the cartridge's pointer tables; measured on
+the retail image, those 86 pointers name 86 distinct records, so recolouring
+a team's strip changes only that team. The sharing the cartridge does have is
+in the alternate skin and hair records: eleven teams point at four skin
+records and thirty-four at four hair records. Pack tone-1 writes always add
+fresh records in `$89:FA42` and repoint only the writing team's entries, so
+they never reach those shared records; the sharing matters only to someone
+editing the cartridge image directly.
 
-The shipped Liga MX and World Cup packs reserve records 36-43 for teams that
-the validator identifies as sharing strips. Those records originally serve as
-away strips for teams that both packs replace; their away pointers move to
-their home strips when those replacements load. The allocation avoids the
-original home and all-star palettes. These numbers are a pack-specific choice,
-not a guarantee that records 36-43 are free for every other pack.
+`kit_record` redirects both of a team's strip pointers to a record from 0 to
+83 after checking the palette's signature, leaving its former records alone.
+An invalid record or signature leaves the pointers unchanged. Selecting a
+record that another team still wears can recolour that team, so allocation
+must account for both home and away pointers and every team the pack leaves
+untouched.
+
+The shipped Liga MX and World Cup packs redirect teams to records 36-43.
+Those records originally serve as away strips for teams that both packs
+replace; their away pointers move to their home strips when those
+replacements load. The allocation avoids the original home and all-star
+palettes. These numbers are a pack-specific choice, not a guarantee that
+records 36-43 are free for every other pack.
 
 ### The two skin tones
 
@@ -570,6 +578,80 @@ The goalkeeper and the referee are drawn with palettes of their own, which is
 why `skin_tone` 2 and 3 put a footballer in the keeper's or the official's
 colours instead - orange or green when the rest of the side wears something
 else.
+
+### Naming a look instead of a palette
+
+A pack can describe a player by what he looks like:
+
+```json
+  { "shirt_number": 10, "name": "Mbappe",
+    "skin": "dark", "hair_color": "blond", "hair_style": 12 }
+```
+
+The loader does not read `skin` or `hair_color`; they are labels for the
+fitter, which turns them into the team's `skin_tones` and the player's
+`skin_tone`. Run `python tools/fit_looks.py --pack <pack.json>` after
+labelling: it finds the retail cartridge, picks the two palettes closest to
+what the squad asked for, rewrites the pack into `skin_tones` and
+`skin_tone`, and warns for each player it cannot show exactly. Add
+`--base <rom>` when the cartridge is not in the working directory, and
+`--out <pack.json>` to write a new file instead of rewriting the pack in
+place.
+[APPEARANCE_GUIDE.md](APPEARANCE_GUIDE.md) has the vocabulary (two skin tones,
+five hair colours, and fourteen `hair_style` values - the standard head and
+thirteen overlays) and a ready-to-paste prompt for labelling photos with an
+LLM.
+
+### Label, fit, play
+
+1. **Label.** Give each player `skin` (`light` or `dark`), `hair_color`
+   (`black`, `brown`, `blond`, `red` or `grey`) and `hair_style`. The guide's
+   LLM prompt answers with exactly those keys.
+2. **Fit.** Run
+
+   ```sh
+   python tools/fit_looks.py --pack mods/my_pack.json
+   ```
+
+   The fitter finds the retail cartridge in the working directory and
+   hash-checks it; pass `--base <rom>` when it lives elsewhere. It rewrites
+   the pack in place, so add `--out mods/my_pack_fitted.json` for a
+   non-destructive rewrite. Teams without look keys are not changed, but a
+   file that needs a rewrite is re-serialised: comments and formatting are
+   not preserved unless `--out` keeps the original. `--dry-run` reports what
+   would change without writing.
+3. **Play.** Drop the fitted pack in `mods/` and enable it. A pack that still
+   carries `skin` or `hair_color` loads - the loader skips keys it does not
+   know - but the look does nothing until the fitter has converted it.
+
+A team has two palettes, so the fitter can serve two skin-and-hair
+combinations. It searches for the pair that serves the most requests, then
+warns for each player it cannot show exactly, naming the closest palette used.
+That warning is the honest ceiling of the format: three hair colours in one
+squad cannot all be drawn, and the right response is to accept the closest
+match or relabel, not to run the fitter again hoping for a different answer.
+
+Three players - light and blond, dark and black, light and black - in a team
+whose own tone 0 is dark and brown:
+
+```json
+  { "team_id": 27, "name": "Example FC",
+    "skin_tones": [
+      { "hair": "#201000" },
+      { "skin": "#FAA98C", "hair": "#201000" }
+    ],
+    "players": [
+      { "shirt_number": 1, "name": "A", "skin_tone": 1, "hair_style": 4 },
+      { "shirt_number": 2, "name": "B", "skin_tone": 0, "hair_style": 0 },
+      { "shirt_number": 3, "name": "C", "skin_tone": 1, "hair_style": 8 }
+    ] }
+```
+
+The pair it kept is dark/black and light/black, so the light-and-blond player
+is served the closest light palette and named in a warning. Tone 0 keeps the
+cartridge's own skin ramp, so its `skin` is omitted and only its `hair` is
+written; a tone that changes its skin gets a `skin` value as well. The hex
+values come from the cartridge's donor records; the shape is what stays fixed.
 
 ### The name plate
 
@@ -1082,9 +1164,13 @@ Being straight about the ceiling saves everyone time.
 - **More than two skin tones per team.** Each team has a default and an
   alternate, and a player picks one with `skin_tone`. Hair belongs to the
   tone, so every player on the same tone shares it. The alternate goes in
-  the free run at `$89:FA42`, which holds about 84 teams' records (1470
-  bytes, 16 per team); stacked packs that allocate for many teams can
-  exhaust it, and a team that no longer fits is skipped with a warning.
+  the free run at `$89:FA42`, which one of two 43-entry pointer tables
+  names, so at most 43 teams can have one (one entry per select token). A
+  skin-and-hair write costs 16 bytes of the run's 1470, so one pass over
+  all 43 fits in 688 bytes. A hair-only tone costs 4 bytes. Stacked packs
+  write fresh records for each re-authored team and can exhaust the RUN
+  (about 91 records), even though the entry tables are only 43; a team
+  that no longer fits is skipped with a warning.
 - **Player names longer than 8 characters**, and no accents or digits. A
   full stop is fine: the cartridge is full of them.
 - **New formation labels.** The screen can only print three numbers and the

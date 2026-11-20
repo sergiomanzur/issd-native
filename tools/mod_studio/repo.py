@@ -212,10 +212,6 @@ STADIUM_NAME_CHARS = 7
 DISPLAY_NAME_CHARS = 12
 KIT_RECORDS = 84
 
-# Measured, not guessed: six teams wear one strip and two wear another, so
-# recolouring one of them recolours the rest. See kKitRecord.
-SHARED_KIT_TEAMS = {15, 18, 19, 20, 21, 22, 23, 26}
-
 
 def main() -> int:
     root = _repo_root()

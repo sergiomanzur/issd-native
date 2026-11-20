@@ -58,6 +58,28 @@ static void kit_tail(uint8_t *rom, size_t rec) {
     rom[rec + 32] = 0x1F; rom[rec + 33] = 0x00;
 }
 
+/* Keepers wear a flap of their own: a third per-team table at $82:8326
+ * (file 0x010326) whose words are bank $89 addresses of twenty-four-byte
+ * records. A record is its $0015 length word, five skin colours, four
+ * keeper-kit shades and two constants - there is no hair slot. The tests
+ * plant pointers and length words the way the cartridge has them, and
+ * compute the pointer the same way the loader does: the word addresses the
+ * length word, so the colours start two bytes later. */
+#define KEEPER_PTRS   0x010326u
+#define KEEPER_RECORD 0x048D4Eu   /* slot 0's record on the retail image */
+#define KEEPER_STRIDE 24u
+static size_t keeper_at(unsigned slot) {
+    return KEEPER_RECORD + (size_t)slot * KEEPER_STRIDE;
+}
+static void keeper_point(uint8_t *rom, int team, size_t rec) {
+    const uint16_t addr = (uint16_t)(0x8000u + rec - 0x48000u);
+    rom[KEEPER_PTRS + (size_t)team * 2u]     = (uint8_t)(addr & 0xFF);
+    rom[KEEPER_PTRS + (size_t)team * 2u + 1] = (uint8_t)(addr >> 8);
+}
+static void keeper_header(uint8_t *rom, size_t rec) {
+    rom[rec] = 0x15; rom[rec + 1] = 0x00;
+}
+
 /* Tone 1 is not part of the kit record: it lives behind two per-team tables
  * of addresses, DATA_82837C (skin) and DATA_8283D2 (hair), whose entries are
  * either zero or the bank $89 address of a length-prefixed record. New
@@ -671,6 +693,266 @@ int main(void) {
         assert(memcmp(home_ptr_now, rom + KITS_HOME, sizeof home_ptr_now) == 0 &&
                memcmp(away_ptr_now, rom + KITS_AWAY, sizeof away_ptr_now) == 0 &&
                "nor move a pointer");
+    }
+
+    /* --- keeper kits --------------------------------------------------
+     *
+     * A team's keeper wears a record from a table of its own at $82:8326,
+     * not the outfield strip. The record is a $0015 length word and eleven
+     * colours: five skin shades, four keeper-kit shades and two constants.
+     * When a pack authors tone 0, the keepers must match the outfield skin
+     * or the same team shows two complexions in one match. The skin goes
+     * into colours 0-4; everything from colour 5 on is the cartridge's. */
+    {
+        const size_t gk = keeper_at(0);
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *gp = issd_mod_get_pack(0);
+        assert(gp);
+        gp->team_count = 1;
+        memset(&gp->teams[0], 0, sizeof gp->teams[0]);
+        gp->teams[0].team_id = 0;
+        gp->teams[0].kit_record = -1;
+        gp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+
+        memset(rom, 0xEE, sizeof rom);
+        keeper_header(rom, gk);
+        keeper_point(rom, 0, gk);
+        /* Four kit shades and two constants, each distinct, so a write
+         * past colour 4 shows up as a changed byte. Colours start after
+         * the length word, at gk + 2. */
+        for (unsigned c = 5; c < 11; c++) {
+            rom[gk + 2 + c * 2]     = (uint8_t)(0x10u + c);
+            rom[gk + 2 + c * 2 + 1] = (uint8_t)(0x80u + c);
+        }
+        uint8_t keeper_tail[12];
+        memcpy(keeper_tail, rom + gk + 2 + 5 * 2, sizeof keeper_tail);
+
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 0, 27);
+        kit_point(rom, KITS_AWAY, 0, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        /* The same five-step ramp tone 0 writes into the outfield kit. */
+        assert(rom_word(rom, gk) == 0x0015u &&
+               "the keeper length word is the record's, not a colour");
+        assert(rom_word(rom, gk + 2) == 0x1D4Du);
+        assert(rom_word(rom, gk + 4) == 0x2DF3u);
+        assert(rom_word(rom, gk + 6) == 0x3677u);
+        assert(rom_word(rom, gk + 8) == 0x3A99u);
+        assert(rom_word(rom, gk + 10) == 0x42FCu);
+        assert(memcmp(keeper_tail, rom + gk + 2 + 5 * 2,
+                      sizeof keeper_tail) == 0 &&
+               "keeper colours 5-10 are the kit and its constants, not skin");
+        assert(issd_mod_last_result()->warnings == 0 &&
+               "a keeper record found where it was measured is warning-free");
+    }
+
+    {
+        /* No skin_tones means no keeper write either: the keeper table is
+         * not the place to put a hair colour, and a strip-only pack must
+         * leave every keeper complexion alone. */
+        const size_t gk = keeper_at(1);
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *gp = issd_mod_get_pack(0);
+        assert(gp);
+        gp->team_count = 1;
+        memset(&gp->teams[0], 0, sizeof gp->teams[0]);
+        gp->teams[0].team_id = 1;
+        gp->teams[0].kit_record = -1;
+        gp->teams[0].shirt_rgb = 0xFFC8102Eu;
+        gp->teams[0].hair_rgb[0] = 0xFF3A2A1Au;
+
+        memset(rom, 0xEE, sizeof rom);
+        keeper_header(rom, gk);
+        keeper_point(rom, 1, gk);
+        for (unsigned c = 0; c < 5; c++) {
+            rom[gk + 2 + c * 2]     = (uint8_t)(0x30u + c);
+            rom[gk + 2 + c * 2 + 1] = (uint8_t)(0x90u + c);
+        }
+        uint8_t keeper_before[KEEPER_STRIDE];
+        memcpy(keeper_before, rom + gk, sizeof keeper_before);
+
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 1, 27);
+        kit_point(rom, KITS_AWAY, 1, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(memcmp(keeper_before, rom + gk, sizeof keeper_before) == 0 &&
+               "a pack with no skin_tones must not repaint a keeper");
+        assert(rom_word(rom, gk) == 0x0015u);
+    }
+
+    {
+        /* Tone 1 has no keeper counterpart: a pack that authors only the
+         * alternate skin must leave every keeper complexion alone, even when
+         * its strip change does reach the kit record. */
+        const size_t gk = keeper_at(2);
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *gp = issd_mod_get_pack(0);
+        assert(gp);
+        gp->team_count = 1;
+        memset(&gp->teams[0], 0, sizeof gp->teams[0]);
+        gp->teams[0].team_id = 2;
+        gp->teams[0].kit_record = -1;
+        gp->teams[0].shirt_rgb = 0xFFC8102Eu;
+        gp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        keeper_header(rom, gk);
+        keeper_point(rom, 2, gk);
+        for (unsigned c = 0; c < 5; c++) {
+            rom[gk + 2 + c * 2]     = (uint8_t)(0x30u + c);
+            rom[gk + 2 + c * 2 + 1] = (uint8_t)(0x90u + c);
+        }
+        uint8_t keeper_before[KEEPER_STRIDE];
+        memcpy(keeper_before, rom + gk, sizeof keeper_before);
+
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 2, 27);
+        kit_point(rom, KITS_AWAY, 2, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(memcmp(keeper_before, rom + gk, sizeof keeper_before) == 0 &&
+               "tone 1 has no keeper counterpart: the keeper stays untouched");
+        assert(rom_word(rom, gk) == 0x0015u);
+    }
+
+    {
+        /* The length word is the record's signature. A cartridge that
+         * keeps something else there is warned about, not scribbled on. */
+        const size_t gk = keeper_at(2);
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *gp = issd_mod_get_pack(0);
+        assert(gp);
+        gp->team_count = 1;
+        memset(&gp->teams[0], 0, sizeof gp->teams[0]);
+        gp->teams[0].team_id = 2;
+        gp->teams[0].kit_record = -1;
+        gp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+
+        memset(rom, 0xEE, sizeof rom);
+        keeper_point(rom, 2, gk);
+        rom[gk] = 0x14; rom[gk + 1] = 0x00;   /* nineteen, not twenty-one */
+        memset(rom + gk + 2, 0x5A, KEEPER_STRIDE - 2);
+        uint8_t keeper_before[24];
+        memcpy(keeper_before, rom + gk, sizeof keeper_before);
+
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 2, 27);
+        kit_point(rom, KITS_AWAY, 2, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "a keeper record that is not where it was measured is reported");
+        assert(memcmp(keeper_before, rom + gk, sizeof keeper_before) == 0 &&
+               "and nothing is written into it");
+    }
+
+    {
+        /* Added teams resolve to the slot they were handed, exactly as the
+         * other per-team tables do - the keeper table has 43 entries too. */
+        const size_t GATE_A = 0x004F2Eu, GATE_B = 0x004F50u;
+        const size_t PTRS = 0x038138u;
+        const size_t gk = keeper_at(36);
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *gp = issd_mod_get_pack(0);
+        assert(gp);
+        gp->team_count = 1;
+        memset(&gp->teams[0], 0, sizeof gp->teams[0]);
+        gp->teams[0].new_team = true;
+        gp->teams[0].assigned_slot = -1;
+        gp->teams[0].kit_record = -1;
+        gp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + 0x03FC40u, 0xFF, ISSD_MAX_ADDED_TEAMS * 160);
+        rom[GATE_A - 1] = 0xE0; rom[GATE_A] = 0x48; rom[GATE_A + 1] = 0x00;
+        rom[GATE_B - 1] = 0xE0; rom[GATE_B] = 0x48; rom[GATE_B + 1] = 0x00;
+        rom[PTRS] = 0x8E; rom[PTRS + 1] = 0x81;
+        rom[0x02A567u - 1] = 0xA2; rom[0x02A567u] = 6;
+        keeper_header(rom, gk);
+        keeper_point(rom, 36, gk);
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 36, 27);
+        kit_point(rom, KITS_AWAY, 36, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(gp->teams[0].assigned_slot == 36);
+        assert(rom_word(rom, gk + 2) == 0x1D4Du &&
+               "an added team's keepers follow its own slot");
+        assert(rom_word(rom, gk + 10) == 0x42FCu);
+    }
+
+    {
+        /* The keeper is only repainted when the outfield kit was: a team
+         * whose kit record fails its signature keeps both palettes as the
+         * cartridge had them. Painting the keeper alone would put two
+         * complexions in one match, the mismatch this feature prevents. */
+        const size_t gk = keeper_at(3);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *gp = issd_mod_get_pack(0);
+        assert(gp);
+        gp->team_count = 1;
+        memset(&gp->teams[0], 0, sizeof gp->teams[0]);
+        gp->teams[0].team_id = 3;
+        gp->teams[0].kit_record = -1;
+        gp->teams[0].skin_rgb[0] = 0xFFEAC086u;
+
+        memset(rom, 0xEE, sizeof rom);
+        keeper_header(rom, gk);
+        keeper_point(rom, 3, gk);
+        for (unsigned c = 0; c < 11; c++) {
+            rom[gk + 2 + c * 2]     = (uint8_t)(0x40u + c);
+            rom[gk + 2 + c * 2 + 1] = (uint8_t)(0x70u + c);
+        }
+        uint8_t keeper_before[22];
+        memcpy(keeper_before, rom + gk + 2, sizeof keeper_before);
+
+        /* The home pointer resolves, but the two constants the strip
+         * signature checks are not the cartridge's. */
+        kit_point(rom, KITS_HOME, 3, 27);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(issd_mod_last_result()->warnings > 0 &&
+               "the kit refusal is still reported");
+        assert(memcmp(keeper_before, rom + gk + 2,
+                      sizeof keeper_before) == 0 &&
+               "a refused outfield kit leaves its keeper's skin alone");
     }
 
     /* --- tone 1 -------------------------------------------------------

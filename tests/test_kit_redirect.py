@@ -17,11 +17,16 @@ def test_native_kit_redirect_isolates_home_and_away(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-def test_shipped_pack_shared_kits_have_unique_redirects():
+def test_shipped_packs_give_the_formerly_shared_teams_distinct_records():
+    """The retail table ships no shared strips; these packs must not create
+    any. The set is the old pre-pointer-table assumption of eight teams on two
+    strips, kept as the likely places a pack would induce sharing. The measured
+    truth is the assertion: each names a distinct spare record in 36-43."""
     repo = Path(__file__).resolve().parents[1]
-    shared = {15, 18, 19, 20, 21, 22, 23, 26}
+    former_shared = {15, 18, 19, 20, 21, 22, 23, 26}
     for name in ("liga_mx_expansion", "world_cup_2026"):
         teams = json.loads((repo / "mods" / (name + ".json")).read_text(encoding="utf-8"))["teams"]
-        overrides = [team["kit_record"] for team in teams if team["team_id"] in shared]
+        overrides = [team["kit_record"] for team in teams
+                     if team["team_id"] in former_shared]
         assert len(overrides) == len(set(overrides))
         assert all(36 <= record < 44 for record in overrides)
