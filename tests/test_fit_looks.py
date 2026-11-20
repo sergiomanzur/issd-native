@@ -10,6 +10,7 @@ The retail cartridge at the repository root is the fixture every measured
 expectation here comes from; the tests are skipped when it is absent so a
 source-only checkout still runs.
 """
+import codecs
 import json
 import subprocess
 import sys
@@ -300,6 +301,20 @@ def test_a_third_hair_colour_cannot_be_shown_and_is_named(palettes):
 
 
 @needs_rom
+def test_mixed_case_look_words_fit_cleanly(palettes):
+    # An LLM pipelines these labels, so "Light" and "Blond" have to mean the
+    # same thing as "light" and "blond" rather than earning a warning.
+    res = looks.resolve(palettes, team([
+        player(0, skin="Light", hair_color="Blond"),
+        player(1, skin="DARK", hair_color="Black"),
+        player(2, skin=" Light ", hair_color=" blond "),
+    ]))
+    assert not res.unmet
+    assert [t.label() for t in res.tones] == ["light/blond", "dark/black"]
+    assert not any("must be" in warning for warning in res.warnings)
+
+
+@needs_rom
 def test_an_unknown_skin_value_is_a_warning_not_a_guess(palettes):
     res = looks.resolve(palettes, team([
         player(0, skin="tan", hair_color="blond")]))
@@ -396,6 +411,33 @@ def test_a_comment_bearing_pack_is_fitted_not_rejected(tmp_path):
     fitted = json.loads(path.read_text(encoding="utf-8"))
     assert "skin_tones" in fitted["teams"][0]
     assert not keys_named(fitted, {"skin", "hair_color"})
+    # A rewrite goes through json.dumps, so the note has to admit what that
+    # costs rather than claim the file was left alone.
+    assert "comments and formatting are not preserved" in result.stderr
+    assert "--out" in result.stderr
+
+
+@needs_rom
+def test_a_bom_pack_rewrite_says_the_original_bytes_are_not_kept(tmp_path):
+    body = json.dumps(pack_document([{"team_id": 9, "players": [
+        player(0, skin="light", hair_color="brown")]}]), indent=2).encode()
+    path = tmp_path / "bom.json"
+    path.write_bytes(codecs.BOM_UTF8 + body)
+
+    result = run_fitter(path)
+    assert result.returncode == 0, result.stderr
+    assert "comments and formatting are not preserved" in result.stderr
+    assert "--out" in result.stderr
+
+
+@needs_rom
+def test_a_canonical_rewrite_does_not_warn_about_formatting(tmp_path):
+    path = write_pack(tmp_path / "canonical.json", [{"team_id": 9, "players": [
+        player(0, skin="light", hair_color="brown")]}])
+
+    result = run_fitter(path)
+    assert result.returncode == 0, result.stderr
+    assert "not preserved" not in result.stderr
 
 
 def test_a_comment_bearing_pack_without_looks_stays_byte_identical(tmp_path):
@@ -408,6 +450,7 @@ def test_a_comment_bearing_pack_without_looks_stays_byte_identical(tmp_path):
     result = run_fitter(path)
     assert result.returncode == 0, result.stderr
     assert path.read_bytes() == raw
+    assert "not preserved" not in result.stderr
 
 
 @needs_rom

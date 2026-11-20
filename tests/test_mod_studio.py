@@ -33,6 +33,14 @@ def test_baked_snapshot_matches_the_repository():
                            "run `python tools/mod_studio/repo.py`")
 
 
+def test_no_static_strip_sharing_advisory_is_baked_in():
+    """The retail image gives every team its own strip, so a fixed list of
+    "shared" teams would advise sharing that does not exist. Real sharing is
+    induced by a pack's kit_record and warned about when the strip is applied,
+    not guessed from a team id."""
+    assert not hasattr(repo, "SHARED_KIT_TEAMS")
+
+
 def test_quantiser_matches_the_documented_bands():
     """The bands are published in docs/MODDING.md so a modder can see what a
     rating becomes. The editor draws them, so it has to agree."""
@@ -445,7 +453,8 @@ def test_a_look_card_draws_the_decoded_hair_graphic():
     thirteen graphics at $81:ED6D. Both are drawn from the cartridge."""
     import looks
 
-    palettes = looks.Palettes(cartridge.load_rom(ROM))
+    rom = cartridge.load_rom(ROM)
+    palettes = looks.Palettes(rom)
     plain = preview.look_card({"hair_style": 0, "skin_tone": 0}, FRANCE,
                               palettes)
     short = preview.look_card({"hair_style": 5, "skin_tone": 1}, FRANCE,
@@ -458,6 +467,16 @@ def test_a_look_card_draws_the_decoded_hair_graphic():
 
     hair = _loader_colour(model.parse_colour(FRANCE["skin_tones"][1]["hair"]))
     assert hair in {c for _n, c in short.getcolors(maxcolors=1 << 20)}
+
+    # The table is the retail one, not an offset that happens to decode:
+    # thirteen 24-bit pointers at $81:ED6D, four bytes apart, first at
+    # DATA_97CD58 and each strip $300 bytes after the one before.
+    def pointer(index):
+        at = preview.HAIR_TABLE + index * 4
+        return rom[at] | (rom[at + 1] << 8) | (rom[at + 2] << 16)
+
+    assert pointer(0) == 0x97CD58
+    assert pointer(12) == 0x97CD58 + 0x300 * 12
 
 
 @needs_rom

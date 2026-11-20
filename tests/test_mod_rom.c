@@ -779,8 +779,8 @@ int main(void) {
             rom[gk + 2 + c * 2]     = (uint8_t)(0x30u + c);
             rom[gk + 2 + c * 2 + 1] = (uint8_t)(0x90u + c);
         }
-        uint8_t keeper_before[12];
-        memcpy(keeper_before, rom + gk + 2, sizeof keeper_before);
+        uint8_t keeper_before[KEEPER_STRIDE];
+        memcpy(keeper_before, rom + gk, sizeof keeper_before);
 
         kit_tail(rom, home);
         kit_tail(rom, away);
@@ -789,8 +789,50 @@ int main(void) {
         issd_mod_result_reset();
         issd_mod_apply_to_rom(rom, sizeof rom);
 
-        assert(memcmp(keeper_before, rom + gk + 2, sizeof keeper_before) == 0 &&
+        assert(memcmp(keeper_before, rom + gk, sizeof keeper_before) == 0 &&
                "a pack with no skin_tones must not repaint a keeper");
+        assert(rom_word(rom, gk) == 0x0015u);
+    }
+
+    {
+        /* Tone 1 has no keeper counterpart: a pack that authors only the
+         * alternate skin must leave every keeper complexion alone, even when
+         * its strip change does reach the kit record. */
+        const size_t gk = keeper_at(2);
+        const size_t home = kit_at(27), away = kit_at(53);
+
+        issd_mod_init();
+        assert(issd_mod_scan_and_load("tests/fixtures/mods") > 0);
+        issd_mod_enable_from_list("Fixture Pack");
+        IssdModPack *gp = issd_mod_get_pack(0);
+        assert(gp);
+        gp->team_count = 1;
+        memset(&gp->teams[0], 0, sizeof gp->teams[0]);
+        gp->teams[0].team_id = 2;
+        gp->teams[0].kit_record = -1;
+        gp->teams[0].shirt_rgb = 0xFFC8102Eu;
+        gp->teams[0].skin_rgb[1] = 0xFFEAC086u;
+
+        memset(rom, 0xEE, sizeof rom);
+        memset(rom + TONE1_FREE, 0xFF, TONE1_FREE_END - TONE1_FREE);
+        keeper_header(rom, gk);
+        keeper_point(rom, 2, gk);
+        for (unsigned c = 0; c < 5; c++) {
+            rom[gk + 2 + c * 2]     = (uint8_t)(0x30u + c);
+            rom[gk + 2 + c * 2 + 1] = (uint8_t)(0x90u + c);
+        }
+        uint8_t keeper_before[KEEPER_STRIDE];
+        memcpy(keeper_before, rom + gk, sizeof keeper_before);
+
+        kit_tail(rom, home);
+        kit_tail(rom, away);
+        kit_point(rom, KITS_HOME, 2, 27);
+        kit_point(rom, KITS_AWAY, 2, 53);
+        issd_mod_result_reset();
+        issd_mod_apply_to_rom(rom, sizeof rom);
+
+        assert(memcmp(keeper_before, rom + gk, sizeof keeper_before) == 0 &&
+               "tone 1 has no keeper counterpart: the keeper stays untouched");
         assert(rom_word(rom, gk) == 0x0015u);
     }
 

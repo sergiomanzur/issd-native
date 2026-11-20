@@ -212,14 +212,6 @@ STADIUM_NAME_CHARS = 7
 DISPLAY_NAME_CHARS = 12
 KIT_RECORDS = 84
 
-# The retail image gives every team its own record: all 86 home and away
-# pointers name distinct strips, so nothing ships shared. These eight were
-# listed as shared under the pre-pointer-table reading; kept only for the
-# editor's advisory. Sharing is now induced by a pack - a `kit_record` that
-# points several teams at one record - and the runtime counts real pointer
-# sharing when it applies a strip. See patch_kit in issd_mod_rom.c.
-SHARED_KIT_TEAMS = {15, 18, 19, 20, 21, 22, 23, 26}
-
 
 def main() -> int:
     root = _repo_root()

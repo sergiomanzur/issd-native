@@ -616,8 +616,10 @@ LLM.
    The fitter finds the retail cartridge in the working directory and
    hash-checks it; pass `--base <rom>` when it lives elsewhere. It rewrites
    the pack in place, so add `--out mods/my_pack_fitted.json` for a
-   non-destructive rewrite. Teams without look keys are left byte-for-byte
-   untouched, and `--dry-run` reports what would change without writing.
+   non-destructive rewrite. Teams without look keys are not changed, but a
+   file that needs a rewrite is re-serialised: comments and formatting are
+   not preserved unless `--out` keeps the original. `--dry-run` reports what
+   would change without writing.
 3. **Play.** Drop the fitted pack in `mods/` and enable it. A pack that still
    carries `skin` or `hair_color` loads - the loader skips keys it does not
    know - but the look does nothing until the fitter has converted it.
@@ -1162,11 +1164,13 @@ Being straight about the ceiling saves everyone time.
 - **More than two skin tones per team.** Each team has a default and an
   alternate, and a player picks one with `skin_tone`. Hair belongs to the
   tone, so every player on the same tone shares it. The alternate goes in
-  the free run at `$89:FA42`, which two 43-entry pointer tables index, so at
-  most 43 teams can have one. Each takes 16 bytes - 688 of the run's 1470
-  bytes - and the rest stays free. Stacked packs that allocate for many
-  teams can exhaust the 43 entries, and a team that no longer fits is
-  skipped with a warning.
+  the free run at `$89:FA42`, which one of two 43-entry pointer tables
+  names, so at most 43 teams can have one (one entry per select token). A
+  skin-and-hair write costs 16 bytes of the run's 1470, so one pass over
+  all 43 fits in 688 bytes. A hair-only tone costs 4 bytes. Stacked packs
+  write fresh records for each re-authored team and can exhaust the RUN
+  (about 91 records), even though the entry tables are only 43; a team
+  that no longer fits is skipped with a warning.
 - **Player names longer than 8 characters**, and no accents or digits. A
   full stop is fine: the cartridge is full of them.
 - **New formation labels.** The screen can only print three numbers and the

@@ -14,9 +14,10 @@ offline, once, so nothing new is needed at runtime:
 It rewrites the pack in place (or with `--out`), replacing those two keys on
 each requesting player with `skin_tone`, passing `hair_style` through, and
 writing the winning palette pair as `skin_tones`. Teams without look requests
-are left byte-for-byte untouched. The solver is `tools/looks.py` - the same
-one the studio preview uses - so the warning a modder reads before a match is
-the one the game's loader will produce.
+are left unchanged, but a file that does need a rewrite is re-serialised:
+comments and layout survive only when `--out` is used. The solver is
+`tools/looks.py` - the same one the studio preview uses - so the warning a
+modder reads before a match is the one the game's loader will produce.
 
 The cartridge is located and hash-verified through
 `tools/convert_rom_hack.py`'s `load_base`, so only the retail image is
@@ -152,6 +153,11 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 1
 
+    # A rewrite goes through json.dumps. Decide now, while `pack` still holds
+    # exactly what was read, whether that would reproduce the file's bytes:
+    # comments, a BOM and hand layout all disappear.
+    loses_formatting = _serialise(pack, raw) != raw
+
     teams = _look_teams(pack)
     palettes = None
     if teams:
@@ -169,6 +175,9 @@ def main(argv=None) -> int:
     if args.dry_run:
         print("would write %s (%d team(s) fitted)" % (out_path, changed))
         return 0
+    if changed and loses_formatting:
+        print("fit_looks: comments and formatting are not preserved in a "
+              "rewrite; use --out to keep the original", file=sys.stderr)
     try:
         if changed:
             out_path.write_bytes(_serialise(pack, raw))

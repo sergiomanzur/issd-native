@@ -691,11 +691,6 @@ class Studio(tk.Tk):
             notes.append("This is an all-star side: it picks its players from "
                          "its group when the match loads, so a squad here is "
                          "refused. Use 'Add as a new team' instead.")
-        if tid in repo.SHARED_KIT_TEAMS:
-            notes.append("A pack can make teams share a strip by pointing "
-                         "several `kit_record`s at one record; recolouring it "
-                         "then recolours every team wearing it, and the game "
-                         "warns when it counts more than one wearer.")
         label.configure(text="\n".join(notes))
 
     def _colour_row(self, parent, row, label, target, key, on_change):

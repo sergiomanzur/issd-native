@@ -270,8 +270,12 @@ def wants(player):
     Both bad values are reported: fixing one at a time should not take a
     second run to discover the other.
     """
-    skin = player.get("skin") or None
-    hair = player.get("hair_color") or player.get("hair_colour") or None
+    skin = player.get("skin")
+    if isinstance(skin, str):
+        skin = skin.strip().lower() or None
+    hair = player.get("hair_color") or player.get("hair_colour")
+    if isinstance(hair, str):
+        hair = hair.strip().lower() or None
     problems = []
     if skin is not None and skin not in SKINS:
         problems.append("skin must be light or dark")
